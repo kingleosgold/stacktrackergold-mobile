@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, Tooltip } from 'recharts';
 
 // API Configuration - Change this to your deployed backend URL
-const API_BASE_URL = 'https://api.stacktracker.app'; // or http://localhost:3000 for dev
+const API_BASE_URL = 'const API_BASE_URL = 'https://stack-tracker-pro-production.up.railway.app'; // or http://localhost:3000 for dev
 
 export default function StackTrackerPro() {
   // Core state
