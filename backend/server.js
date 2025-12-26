@@ -127,10 +127,6 @@ function loadHistoricalData() {
 
     // Process monthly data into daily lookups
     Object.entries(monthlyPrices).forEach(([month, prices]) => {
-      // Store monthly price
-      historicalData.gold[month] = prices.gold;
-      historicalData.silver[month] = prices.silver;
-
       // Expand to daily prices for the month (copy monthly price to all days)
       const [year, monthNum] = month.split('-');
       const daysInMonth = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
@@ -191,16 +187,22 @@ function loadFallbackHistoricalData() {
     '2022-04': 24, '2022-03': 25, '2022-02': 24, '2022-01': 24,
   };
   
-  // Expand monthly data to daily
+  // Expand monthly data to daily (only valid days in each month)
   Object.entries(fallbackGold).forEach(([month, price]) => {
-    for (let day = 1; day <= 31; day++) {
+    const [year, monthNum] = month.split('-');
+    const daysInMonth = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
+
+    for (let day = 1; day <= daysInMonth; day++) {
       const date = `${month}-${day.toString().padStart(2, '0')}`;
       historicalData.gold[date] = price;
     }
   });
-  
+
   Object.entries(fallbackSilver).forEach(([month, price]) => {
-    for (let day = 1; day <= 31; day++) {
+    const [year, monthNum] = month.split('-');
+    const daysInMonth = new Date(parseInt(year), parseInt(monthNum), 0).getDate();
+
+    for (let day = 1; day <= daysInMonth; day++) {
       const date = `${month}-${day.toString().padStart(2, '0')}`;
       historicalData.silver[date] = price;
     }
@@ -248,6 +250,36 @@ app.get('/api/spot-prices', async (req, res) => {
 });
 
 /**
+ * Debug endpoint - check historical data
+ */
+app.get('/api/historical-debug', (req, res) => {
+  const { date } = req.query;
+
+  if (date) {
+    // Check specific date
+    res.json({
+      date,
+      goldPrice: historicalData.gold[date],
+      silverPrice: historicalData.silver[date],
+      allKeysContaining: Object.keys(historicalData.gold).filter(k => k.includes(date)).slice(0, 10)
+    });
+  } else {
+    // Show sample data
+    const goldKeys = Object.keys(historicalData.gold).slice(0, 20);
+    const sample = {};
+    goldKeys.forEach(k => {
+      sample[k] = { gold: historicalData.gold[k], silver: historicalData.silver[k] };
+    });
+    res.json({
+      totalKeys: Object.keys(historicalData.gold).length,
+      loaded: historicalData.loaded,
+      sampleKeys: goldKeys,
+      sampleData: sample
+    });
+  }
+});
+
+/**
  * Get historical spot price for a specific date
  */
 app.get('/api/historical-spot', (req, res) => {
@@ -260,43 +292,59 @@ app.get('/api/historical-spot', (req, res) => {
       return res.status(400).json({ error: 'Date parameter required (YYYY-MM-DD)' });
     }
 
-    // Normalize date format
+    // Normalize date format (YYYY-MM-DD)
     const normalizedDate = date.trim();
+
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+      console.log(`   Invalid date format: ${normalizedDate}`);
+      return res.status(400).json({ error: 'Date must be in YYYY-MM-DD format' });
+    }
 
     // Try exact date first
     let price = historicalData[metal]?.[normalizedDate];
+    let usedDate = normalizedDate;
+    let source = 'exact';
+
     console.log(`   Exact match for ${normalizedDate}: ${price ? '$' + price : 'not found'}`);
 
     // If not found, try to find nearest date
     if (!price) {
-      const targetDate = new Date(normalizedDate);
+      const targetDate = new Date(normalizedDate + 'T00:00:00');
       const dates = Object.keys(historicalData[metal] || {}).sort();
-      console.log(`   Total dates available: ${dates.length}`);
+      console.log(`   Searching ${dates.length} dates for nearest match...`);
 
       // Find closest date
       let closestDate = null;
       let minDiff = Infinity;
 
       for (const d of dates) {
-        const diff = Math.abs(new Date(d) - targetDate);
+        const diff = Math.abs(new Date(d + 'T00:00:00') - targetDate);
         if (diff < minDiff) {
           minDiff = diff;
           closestDate = d;
         }
       }
 
-      if (closestDate && minDiff < 7 * 24 * 60 * 60 * 1000) { // Within 7 days
+      const daysAway = Math.floor(minDiff / (24 * 60 * 60 * 1000));
+
+      if (closestDate && minDiff < 30 * 24 * 60 * 60 * 1000) { // Within 30 days
         price = historicalData[metal][closestDate];
-        console.log(`   Using nearest date ${closestDate}: $${price} (${Math.floor(minDiff / (24 * 60 * 60 * 1000))} days away)`);
+        usedDate = closestDate;
+        source = 'nearest';
+        console.log(`   Using nearest date ${closestDate}: $${price} (${daysAway} days away)`);
+      } else {
+        console.log(`   No nearby dates found. Closest was ${daysAway} days away.`);
       }
     }
 
     if (price) {
       res.json({
         date: normalizedDate,
+        usedDate,
         metal,
         price: Math.round(price * 100) / 100,
-        source: 'historical',
+        source,
         success: true
       });
     } else {
@@ -313,6 +361,7 @@ app.get('/api/historical-spot', (req, res) => {
     }
   } catch (error) {
     console.error('❌ Historical spot error:', error);
+    console.error('Stack trace:', error.stack);
     res.status(500).json({ error: 'Failed to lookup historical price' });
   }
 });
