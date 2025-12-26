@@ -1,135 +1,290 @@
 /**
  * Stack Tracker Pro - React Native App
  * Privacy-First Precious Metals Portfolio Tracker
+ * "Make Stacking Great Again" Edition 🪙
+ * 
+ * Features:
+ * - Dashboard with portfolio value & charts
+ * - Holdings management with AI receipt scanning
+ * - Cloud Backup (iCloud/Google Drive via share sheet)
+ * - Speculation tool, Junk Silver Calculator
+ * - Gold/Silver Ratio tracking
+ * - Break-even analysis
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Alert,
-  Modal,
-  Image,
-  Platform,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  Keyboard,
-  TouchableWithoutFeedback,
-  KeyboardAvoidingView,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
+  Alert, Modal, Platform, SafeAreaView, StatusBar, ActivityIndicator,
+  Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
-// Configuration - Railway backend URL
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const API_BASE_URL = 'https://stack-tracker-pro-production.up.railway.app';
 
-// Encryption helper (use react-native-aes-crypto in production)
-const encryptData = async (data, key) => {
-  return btoa(JSON.stringify(data));
-};
+// ============================================
+// REUSABLE COMPONENTS
+// ============================================
 
-const decryptData = async (encrypted, key) => {
-  try {
-    return JSON.parse(atob(encrypted));
-  } catch {
-    return null;
-  }
-};
+const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, prefix, editable = true }) => (
+  <View style={styles.floatingContainer}>
+    <Text style={styles.floatingLabel}>{label}</Text>
+    <View style={[styles.inputRow, !editable && { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+      {prefix && <Text style={styles.inputPrefix}>{prefix}</Text>}
+      <TextInput
+        style={[styles.floatingInput, prefix && { paddingLeft: 4 }]}
+        placeholder={placeholder}
+        placeholderTextColor="#52525b"
+        keyboardType={keyboardType || 'default'}
+        value={value}
+        onChangeText={onChangeText}
+        editable={editable}
+      />
+    </View>
+  </View>
+);
 
-// Floating Label Input Component
-const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, prefix, suffix }) => {
+const PieChart = ({ data, size = 150 }) => {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  if (total === 0) return null;
+  
+  let currentAngle = 0;
+  const segments = data.map((item) => {
+    const percentage = item.value / total;
+    const angle = percentage * 360;
+    const startAngle = currentAngle;
+    currentAngle += angle;
+    return { ...item, percentage, startAngle, angle };
+  });
+
   return (
-    <View style={styles.floatingContainer}>
-      <Text style={styles.floatingLabel}>{label}</Text>
-      <View style={styles.inputRow}>
-        {prefix && <Text style={styles.inputPrefix}>{prefix}</Text>}
-        <TextInput
-          style={[styles.floatingInput, prefix && { paddingLeft: 4 }]}
-          placeholder={placeholder}
-          placeholderTextColor="#52525b"
-          keyboardType={keyboardType || 'default'}
-          value={value}
-          onChangeText={onChangeText}
-        />
-        {suffix && <Text style={styles.inputSuffix}>{suffix}</Text>}
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', position: 'relative' }}>
+        {segments.map((segment, index) => (
+          <View
+            key={index}
+            style={{
+              position: 'absolute',
+              width: size,
+              height: size,
+              transform: [{ rotate: `${segment.startAngle}deg` }],
+            }}
+          >
+            <View style={{ width: size / 2, height: size, backgroundColor: segment.color }} />
+          </View>
+        ))}
+        <View style={{
+          position: 'absolute',
+          width: size * 0.6,
+          height: size * 0.6,
+          borderRadius: size * 0.3,
+          backgroundColor: '#1a1a2e',
+          top: size * 0.2,
+          left: size * 0.2,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+            ${(total / 1000).toFixed(1)}k
+          </Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
+        {segments.map((segment, index) => (
+          <View key={index} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: segment.color, marginRight: 6 }} />
+            <Text style={{ color: '#a1a1aa', fontSize: 12 }}>{segment.label} {(segment.percentage * 100).toFixed(0)}%</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
 };
 
+const ProgressBar = ({ value, max, color, label }) => {
+  const percentage = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ color: '#a1a1aa', fontSize: 12 }}>{label}</Text>
+        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{percentage.toFixed(0)}%</Text>
+      </View>
+      <View style={{ height: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4 }}>
+        <View style={{ height: 8, width: `${percentage}%`, backgroundColor: color, borderRadius: 4 }} />
+      </View>
+    </View>
+  );
+};
+
+// ============================================
+// MAIN APP
+// ============================================
+
 export default function App() {
-  // State
+  // Core State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [tab, setTab] = useState('portfolio');
+  const [isLoading, setIsLoading] = useState(true);
+  const [tab, setTab] = useState('dashboard');
   const [metalTab, setMetalTab] = useState('silver');
-  const [silverSpot, setSilverSpot] = useState(30.25);
-  const [goldSpot, setGoldSpot] = useState(2650.00);
+  
+  // Spot Prices
+  const [silverSpot, setSilverSpot] = useState(74.50);
+  const [goldSpot, setGoldSpot] = useState(4490.00);
+  const [priceSource, setPriceSource] = useState('loading...');
+  
+  // Portfolio Data
   const [silverItems, setSilverItems] = useState([]);
   const [goldItems, setGoldItems] = useState([]);
-  const [alerts, setAlerts] = useState([]);
+  
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showSpeculationModal, setShowSpeculationModal] = useState(false);
+  const [showJunkCalcModal, setShowJunkCalcModal] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  
+  // Scan State
   const [scanStatus, setScanStatus] = useState(null);
   const [scanMessage, setScanMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [editingItem, setEditingItem] = useState(null);
 
-  // Form state
+  // Form State
   const [form, setForm] = useState({
-    productName: '',
-    source: '',
-    datePurchased: '',
-    ozt: '',
-    quantity: '1',
-    unitPrice: '',
-    taxes: '0',
-    shipping: '0',
-    spotPrice: '',
-    premium: '0',
+    productName: '', source: '', datePurchased: '', ozt: '',
+    quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
+    spotPrice: '', premium: '0',
   });
 
-  // Biometric authentication
-  const authenticate = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+  // Speculation State
+  const [specSilverPrice, setSpecSilverPrice] = useState('100');
+  const [specGoldPrice, setSpecGoldPrice] = useState('5000');
 
-    if (hasHardware && isEnrolled) {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Unlock Stack Tracker Pro',
-        fallbackLabel: 'Use Passcode',
-      });
-      if (result.success) {
+  // Junk Silver Calculator State
+  const [junkType, setJunkType] = useState('90');
+  const [junkFaceValue, setJunkFaceValue] = useState('');
+
+  // Colors
+  const colors = {
+    silver: '#94a3b8',
+    gold: '#fbbf24',
+    success: '#22c55e',
+    error: '#ef4444',
+    text: '#e4e4e7',
+    muted: '#71717a',
+  };
+
+  // ============================================
+  // CALCULATIONS
+  // ============================================
+
+  const totalSilverOzt = silverItems.reduce((sum, i) => sum + (i.ozt * i.quantity), 0);
+  const totalGoldOzt = goldItems.reduce((sum, i) => sum + (i.ozt * i.quantity), 0);
+  
+  const silverMeltValue = totalSilverOzt * silverSpot;
+  const goldMeltValue = totalGoldOzt * goldSpot;
+  const totalMeltValue = silverMeltValue + goldMeltValue;
+  
+  const silverCostBasis = silverItems.reduce((sum, i) => sum + (i.unitPrice * i.quantity) + i.taxes + i.shipping, 0);
+  const goldCostBasis = goldItems.reduce((sum, i) => sum + (i.unitPrice * i.quantity) + i.taxes + i.shipping, 0);
+  const totalCostBasis = silverCostBasis + goldCostBasis;
+  
+  const silverPremiumsPaid = silverItems.reduce((sum, i) => sum + (i.premium * i.quantity), 0);
+  const goldPremiumsPaid = goldItems.reduce((sum, i) => sum + (i.premium * i.quantity), 0);
+  const totalPremiumsPaid = silverPremiumsPaid + goldPremiumsPaid;
+  
+  const totalGainLoss = totalMeltValue - totalCostBasis;
+  const totalGainLossPct = totalCostBasis > 0 ? ((totalGainLoss / totalCostBasis) * 100) : 0;
+  
+  const goldSilverRatio = silverSpot > 0 ? (goldSpot / silverSpot) : 0;
+  
+  const avgSilverCostPerOz = totalSilverOzt > 0 ? (silverCostBasis / totalSilverOzt) : 0;
+  const avgGoldCostPerOz = totalGoldOzt > 0 ? (goldCostBasis / totalGoldOzt) : 0;
+
+  // Speculation
+  const specSilverNum = parseFloat(specSilverPrice) || silverSpot;
+  const specGoldNum = parseFloat(specGoldPrice) || goldSpot;
+  const specTotalValue = (totalSilverOzt * specSilverNum) + (totalGoldOzt * specGoldNum);
+  const specGainLoss = specTotalValue - totalCostBasis;
+  const specGainLossPct = totalCostBasis > 0 ? ((specGainLoss / totalCostBasis) * 100) : 0;
+
+  // Junk Silver
+  const junkMultipliers = { '90': 0.715, '40': 0.295, '35': 0.0563 };
+  const junkFaceNum = parseFloat(junkFaceValue) || 0;
+  const junkOzt = junkType === '35' ? (junkFaceNum / 0.05) * junkMultipliers['35'] : junkFaceNum * junkMultipliers[junkType];
+  const junkMeltValue = junkOzt * silverSpot;
+
+  // Break-even
+  const silverBreakeven = totalSilverOzt > 0 ? (silverCostBasis / totalSilverOzt) : 0;
+  const goldBreakeven = totalGoldOzt > 0 ? (goldCostBasis / totalGoldOzt) : 0;
+
+  // Milestones
+  const silverMilestones = [10, 50, 100, 250, 500, 1000];
+  const goldMilestones = [1, 5, 10, 25, 50, 100];
+  const nextSilverMilestone = silverMilestones.find(m => totalSilverOzt < m) || 1000;
+  const nextGoldMilestone = goldMilestones.find(m => totalGoldOzt < m) || 100;
+
+  // ============================================
+  // AUTO-CALCULATE PREMIUM
+  // ============================================
+
+  useEffect(() => {
+    const unitPrice = parseFloat(form.unitPrice) || 0;
+    const spotPrice = parseFloat(form.spotPrice) || 0;
+    const ozt = parseFloat(form.ozt) || 0;
+    
+    if (unitPrice > 0 && spotPrice > 0 && ozt > 0) {
+      const calculatedPremium = unitPrice - (spotPrice * ozt);
+      if (calculatedPremium > 0) {
+        setForm(prev => ({ ...prev, premium: calculatedPremium.toFixed(2) }));
+      }
+    }
+  }, [form.unitPrice, form.spotPrice, form.ozt]);
+
+  // ============================================
+  // AUTHENTICATION & DATA
+  // ============================================
+
+  const authenticate = async () => {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+      if (hasHardware && isEnrolled) {
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Unlock Stack Tracker Pro',
+          fallbackLabel: 'Use Passcode',
+        });
+        if (result.success) {
+          setIsAuthenticated(true);
+          loadData();
+        }
+      } else {
         setIsAuthenticated(true);
         loadData();
       }
-    } else {
+    } catch (e) {
       setIsAuthenticated(true);
       loadData();
     }
   };
 
-  // Load encrypted data from local storage
   const loadData = async () => {
     try {
-      const [silver, gold, alertsData, silverS, goldS] = await Promise.all([
+      const [silver, gold, silverS, goldS] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
-        AsyncStorage.getItem('stack_alerts'),
         AsyncStorage.getItem('stack_silver_spot'),
         AsyncStorage.getItem('stack_gold_spot'),
       ]);
 
       if (silver) setSilverItems(JSON.parse(silver));
       if (gold) setGoldItems(JSON.parse(gold));
-      if (alertsData) setAlerts(JSON.parse(alertsData));
       if (silverS) setSilverSpot(parseFloat(silverS));
       if (goldS) setGoldSpot(parseFloat(goldS));
 
@@ -141,7 +296,6 @@ export default function App() {
     }
   };
 
-  // Save data to local storage
   const saveData = async (key, data) => {
     try {
       await AsyncStorage.setItem(key, JSON.stringify(data));
@@ -150,31 +304,90 @@ export default function App() {
     }
   };
 
-  // Auto-save on changes
   useEffect(() => {
-    if (isAuthenticated) {
-      saveData('stack_silver', silverItems);
-    }
+    if (isAuthenticated) saveData('stack_silver', silverItems);
   }, [silverItems, isAuthenticated]);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      saveData('stack_gold', goldItems);
-    }
+    if (isAuthenticated) saveData('stack_gold', goldItems);
   }, [goldItems, isAuthenticated]);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      saveData('stack_alerts', alerts);
+  useEffect(() => { authenticate(); }, []);
+
+  // ============================================
+  // CLOUD BACKUP
+  // ============================================
+
+  const createBackup = async () => {
+    try {
+      const backup = {
+        version: '1.0',
+        timestamp: new Date().toISOString(),
+        data: {
+          silverItems,
+          goldItems,
+        }
+      };
+
+      const json = JSON.stringify(backup, null, 2);
+      const filename = `stack-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const filepath = `${FileSystem.documentDirectory}${filename}`;
+
+      await FileSystem.writeAsStringAsync(filepath, json);
+      await Sharing.shareAsync(filepath, {
+        mimeType: 'application/json',
+        dialogTitle: 'Save Backup to Cloud',
+        UTI: 'public.json'
+      });
+
+      Alert.alert('Backup Created', 'Save this file to iCloud Drive, Google Drive, or your preferred cloud storage.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to create backup: ' + error.message);
     }
-  }, [alerts, isAuthenticated]);
+  };
 
-  // Initial auth
-  useEffect(() => {
-    authenticate();
-  }, []);
+  const restoreBackup = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
 
-  // Fetch spot prices from backend
+      if (result.canceled) return;
+
+      const file = result.assets[0];
+      const content = await FileSystem.readAsStringAsync(file.uri);
+      const backup = JSON.parse(content);
+
+      if (!backup.data || !backup.version) {
+        Alert.alert('Invalid Backup', 'This file does not appear to be a valid Stack Tracker backup.');
+        return;
+      }
+
+      Alert.alert(
+        'Restore Backup',
+        `This will replace your current data with backup from ${backup.timestamp}. Continue?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore',
+            onPress: async () => {
+              if (backup.data.silverItems) setSilverItems(backup.data.silverItems);
+              if (backup.data.goldItems) setGoldItems(backup.data.goldItems);
+              Alert.alert('Success', 'Backup restored successfully!');
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Failed to restore backup: ' + error.message);
+    }
+  };
+
+  // ============================================
+  // API CALLS
+  // ============================================
+
   const fetchSpotPrices = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/spot-prices`);
@@ -188,33 +401,26 @@ export default function App() {
           setGoldSpot(data.gold);
           await AsyncStorage.setItem('stack_gold_spot', data.gold.toString());
         }
+        setPriceSource(data.source || 'live');
       }
     } catch (error) {
       console.log('Using cached spot prices');
+      setPriceSource('cached');
     }
   };
 
-  // Fetch historical spot price for a specific date and metal
   const fetchHistoricalSpot = async (date, metal) => {
     if (!date || date.length < 10) return null;
-    
-    const metalToUse = metal || metalTab;
-    
     try {
-      const response = await fetch(`${API_BASE_URL}/api/historical-spot?date=${date}&metal=${metalToUse}`);
+      const response = await fetch(`${API_BASE_URL}/api/historical-spot?date=${date}&metal=${metal || metalTab}`);
       const data = await response.json();
-      if (data.success && data.price) {
-        return data.price;
-      }
+      if (data.success && data.price) return data.price;
     } catch (error) {
       console.log('Could not fetch historical spot');
     }
-    
-    // Fallback to current spot
-    return metalToUse === 'gold' ? goldSpot : silverSpot;
+    return metal === 'gold' ? goldSpot : silverSpot;
   };
 
-  // Handle date change - auto-fill spot price
   const handleDateChange = async (date) => {
     setForm(prev => ({ ...prev, datePurchased: date }));
     if (date.length === 10) {
@@ -225,21 +431,18 @@ export default function App() {
     }
   };
 
-  // Receipt scanning
+  // ============================================
+  // RECEIPT SCANNING
+  // ============================================
+
   const scanReceipt = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
     if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please allow access to your photos to scan receipts.');
+      Alert.alert('Permission Required', 'Please allow access to your photos.');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      base64: true,
-    });
-
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
     if (result.canceled) return;
 
     setScanStatus('scanning');
@@ -247,99 +450,12 @@ export default function App() {
 
     try {
       const formData = new FormData();
-      formData.append('receipt', {
-        uri: result.assets[0].uri,
-        type: 'image/jpeg',
-        name: 'receipt.jpg',
-      });
+      formData.append('receipt', { uri: result.assets[0].uri, type: 'image/jpeg', name: 'receipt.jpg' });
 
       const response = await fetch(`${API_BASE_URL}/api/scan-receipt`, {
         method: 'POST',
         body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        const d = data.data;
-        const extractedMetal = d.metal === 'gold' ? 'gold' : 'silver';
-        const newDate = d.datePurchased || '';
-        
-        // Set metal tab first
-        setMetalTab(extractedMetal);
-        
-        // Get the correct historical spot price for the extracted metal and date
-        let spotPrice = '';
-        if (newDate.length === 10) {
-          const historicalPrice = await fetchHistoricalSpot(newDate, extractedMetal);
-          if (historicalPrice) {
-            spotPrice = historicalPrice.toString();
-          }
-        }
-        
-        setForm({
-          productName: d.productName || '',
-          source: d.source || '',
-          datePurchased: newDate,
-          ozt: d.ozt?.toString() || '',
-          quantity: d.quantity?.toString() || '1',
-          unitPrice: d.unitPrice?.toString() || '',
-          taxes: d.taxes?.toString() || '0',
-          shipping: d.shipping?.toString() || '0',
-          spotPrice: spotPrice,
-          premium: '0',
-        });
-
-        setScanStatus('success');
-        setScanMessage('Receipt analyzed! Verify and save.');
-      } else {
-        setScanStatus('error');
-        setScanMessage('Could not analyze - enter manually.');
-      }
-    } catch (error) {
-      setScanStatus('error');
-      setScanMessage('Network error - enter manually.');
-    }
-
-    setTimeout(() => {
-      setScanStatus(null);
-      setScanMessage('');
-    }, 5000);
-  };
-
-  // Take photo with camera
-  const takePhoto = async () => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please allow camera access to scan receipts.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-      base64: true,
-    });
-
-    if (result.canceled) return;
-
-    setScanStatus('scanning');
-    setScanMessage('Analyzing photo...');
-
-    try {
-      const formData = new FormData();
-      formData.append('receipt', {
-        uri: result.assets[0].uri,
-        type: 'image/jpeg',
-        name: 'receipt.jpg',
-      });
-
-      const response = await fetch(`${API_BASE_URL}/api/scan-receipt`, {
-        method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       const data = await response.json();
@@ -354,26 +470,26 @@ export default function App() {
         let spotPrice = '';
         if (newDate.length === 10) {
           const historicalPrice = await fetchHistoricalSpot(newDate, extractedMetal);
-          if (historicalPrice) {
-            spotPrice = historicalPrice.toString();
-          }
+          if (historicalPrice) spotPrice = historicalPrice.toString();
+        }
+        
+        const unitPrice = parseFloat(d.unitPrice) || 0;
+        const ozt = parseFloat(d.ozt) || 0;
+        const spotNum = parseFloat(spotPrice) || 0;
+        let premium = '0';
+        if (unitPrice > 0 && spotNum > 0 && ozt > 0) {
+          premium = (unitPrice - (spotNum * ozt)).toFixed(2);
         }
         
         setForm({
-          productName: d.productName || '',
-          source: d.source || '',
-          datePurchased: newDate,
-          ozt: d.ozt?.toString() || '',
-          quantity: d.quantity?.toString() || '1',
-          unitPrice: d.unitPrice?.toString() || '',
-          taxes: d.taxes?.toString() || '0',
-          shipping: d.shipping?.toString() || '0',
-          spotPrice: spotPrice,
-          premium: '0',
+          productName: d.productName || '', source: d.source || '', datePurchased: newDate,
+          ozt: d.ozt?.toString() || '', quantity: d.quantity?.toString() || '1',
+          unitPrice: d.unitPrice?.toString() || '', taxes: d.taxes?.toString() || '0',
+          shipping: d.shipping?.toString() || '0', spotPrice: spotPrice, premium: premium,
         });
-        
+
         setScanStatus('success');
-        setScanMessage('Photo analyzed!');
+        setScanMessage('Receipt analyzed!');
       } else {
         setScanStatus('error');
         setScanMessage('Could not analyze.');
@@ -383,13 +499,13 @@ export default function App() {
       setScanMessage('Network error.');
     }
 
-    setTimeout(() => {
-      setScanStatus(null);
-      setScanMessage('');
-    }, 5000);
+    setTimeout(() => { setScanStatus(null); setScanMessage(''); }, 5000);
   };
 
-  // Save purchase
+  // ============================================
+  // CRUD OPERATIONS
+  // ============================================
+
   const savePurchase = () => {
     Keyboard.dismiss();
     
@@ -400,15 +516,10 @@ export default function App() {
 
     const item = {
       id: editingItem?.id || Date.now(),
-      productName: form.productName,
-      source: form.source,
-      datePurchased: form.datePurchased,
-      ozt: parseFloat(form.ozt) || 0,
-      quantity: parseInt(form.quantity) || 1,
-      unitPrice: parseFloat(form.unitPrice) || 0,
-      taxes: parseFloat(form.taxes) || 0,
-      shipping: parseFloat(form.shipping) || 0,
-      spotPrice: parseFloat(form.spotPrice) || 0,
+      productName: form.productName, source: form.source, datePurchased: form.datePurchased,
+      ozt: parseFloat(form.ozt) || 0, quantity: parseInt(form.quantity) || 1,
+      unitPrice: parseFloat(form.unitPrice) || 0, taxes: parseFloat(form.taxes) || 0,
+      shipping: parseFloat(form.shipping) || 0, spotPrice: parseFloat(form.spotPrice) || 0,
       premium: parseFloat(form.premium) || 0,
     };
 
@@ -432,104 +543,58 @@ export default function App() {
 
   const resetForm = () => {
     setForm({
-      productName: '',
-      source: '',
-      datePurchased: '',
-      ozt: '',
-      quantity: '1',
-      unitPrice: '',
-      taxes: '0',
-      shipping: '0',
-      spotPrice: '',
-      premium: '0',
+      productName: '', source: '', datePurchased: '', ozt: '',
+      quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
+      spotPrice: '', premium: '0',
     });
     setEditingItem(null);
   };
 
-  const deleteItem = (id) => {
-    Alert.alert(
-      'Delete Item',
-      'Are you sure you want to delete this item?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            if (metalTab === 'silver') {
-              setSilverItems(prev => prev.filter(i => i.id !== id));
-            } else {
-              setGoldItems(prev => prev.filter(i => i.id !== id));
-            }
-          },
+  const deleteItem = (id, metal) => {
+    Alert.alert('Delete Item', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: () => {
+          if (metal === 'silver') setSilverItems(prev => prev.filter(i => i.id !== id));
+          else setGoldItems(prev => prev.filter(i => i.id !== id));
         },
-      ]
-    );
+      },
+    ]);
   };
 
-  const editItem = (item) => {
+  const editItem = (item, metal) => {
+    setMetalTab(metal);
     setForm({
-      productName: item.productName,
-      source: item.source,
-      datePurchased: item.datePurchased,
-      ozt: item.ozt.toString(),
-      quantity: item.quantity.toString(),
-      unitPrice: item.unitPrice.toString(),
-      taxes: item.taxes.toString(),
-      shipping: item.shipping.toString(),
-      spotPrice: item.spotPrice.toString(),
+      productName: item.productName, source: item.source, datePurchased: item.datePurchased,
+      ozt: item.ozt.toString(), quantity: item.quantity.toString(), unitPrice: item.unitPrice.toString(),
+      taxes: item.taxes.toString(), shipping: item.shipping.toString(), spotPrice: item.spotPrice.toString(),
       premium: item.premium.toString(),
     });
     setEditingItem(item);
     setShowAddModal(true);
   };
 
-  // Export to CSV
   const exportCSV = async () => {
-    const allItems = [
+    const all = [
       ...silverItems.map(i => ({ ...i, metal: 'Silver' })),
       ...goldItems.map(i => ({ ...i, metal: 'Gold' })),
     ];
 
-    const headers = 'Metal,Product,Source,Date,OZT,Qty,Unit Price,Taxes,Shipping,Spot,Premium\n';
-    const rows = allItems.map(i => 
-      `${i.metal},${i.productName},${i.source},${i.datePurchased},${i.ozt},${i.quantity},${i.unitPrice},${i.taxes},${i.shipping},${i.spotPrice},${i.premium}`
+    const headers = 'Metal,Product,Source,Date,OZT,Qty,Unit Price,Taxes,Shipping,Spot,Premium,Total Premium\n';
+    const rows = all.map(i => 
+      `${i.metal},"${i.productName}","${i.source}",${i.datePurchased},${i.ozt},${i.quantity},${i.unitPrice},${i.taxes},${i.shipping},${i.spotPrice},${i.premium},${i.premium * i.quantity}`
     ).join('\n');
 
-    const csv = headers + rows;
-    const filename = `stack-tracker-${new Date().toISOString().split('T')[0]}.csv`;
-    const filepath = `${FileSystem.documentDirectory}${filename}`;
-
-    await FileSystem.writeAsStringAsync(filepath, csv);
+    const filepath = `${FileSystem.documentDirectory}stack-export-${Date.now()}.csv`;
+    await FileSystem.writeAsStringAsync(filepath, headers + rows);
     await Sharing.shareAsync(filepath);
   };
 
-  // Calculations
-  const items = metalTab === 'silver' ? silverItems : goldItems;
-  const spot = metalTab === 'silver' ? silverSpot : goldSpot;
-  const totalOzt = items.reduce((sum, i) => sum + (i.ozt * i.quantity), 0);
-  const totalCost = items.reduce((sum, i) => sum + (i.unitPrice * i.quantity) + i.taxes + i.shipping, 0);
-  const meltValue = totalOzt * spot;
-  const totalPremium = items.reduce((sum, i) => sum + (i.premium * i.quantity), 0);
-  const totalValue = meltValue + totalPremium;
-  const gainLoss = totalValue - totalCost;
-  const gainLossPct = totalCost > 0 ? ((gainLoss / totalCost) * 100).toFixed(1) : 0;
+  // ============================================
+  // LOADING & AUTH SCREENS
+  // ============================================
 
-  // Colors
-  const colors = {
-    silver: '#94a3b8',
-    gold: '#fbbf24',
-    bg: '#0f0f0f',
-    card: 'rgba(255,255,255,0.05)',
-    text: '#e4e4e7',
-    muted: '#71717a',
-    success: '#22c55e',
-    error: '#ef4444',
-  };
-
-  const currentColor = metalTab === 'silver' ? colors.silver : colors.gold;
-
-  // Loading screen
   if (isLoading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -539,7 +604,6 @@ export default function App() {
     );
   }
 
-  // Auth screen
   if (!isAuthenticated) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -553,6 +617,14 @@ export default function App() {
     );
   }
 
+  const currentColor = metalTab === 'silver' ? colors.silver : colors.gold;
+  const items = metalTab === 'silver' ? silverItems : goldItems;
+  const spot = metalTab === 'silver' ? silverSpot : goldSpot;
+
+  // ============================================
+  // MAIN RENDER
+  // ============================================
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -561,109 +633,161 @@ export default function App() {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.logo}>
-            <View style={[styles.logoIcon, { backgroundColor: currentColor }]}>
+            <View style={[styles.logoIcon, { backgroundColor: colors.gold }]}>
               <Text style={{ fontSize: 20 }}>🪙</Text>
             </View>
             <View>
               <Text style={styles.logoTitle}>Stack Tracker Pro</Text>
-              <Text style={styles.logoSubtitle}>Privacy-First Portfolio</Text>
+              <Text style={styles.logoSubtitle}>Make Stacking Great Again 🚀</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.privacyBadge} onPress={() => setShowPrivacyModal(true)}>
             <Text style={{ color: colors.success, fontSize: 11 }}>🔒 Private</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Tab Bar */}
-        <View style={styles.tabs}>
-          {['Portfolio', 'Alerts', 'Settings'].map(t => (
-            <TouchableOpacity
-              key={t}
-              style={[styles.tab, tab === t.toLowerCase() && styles.tabActive]}
-              onPress={() => setTab(t.toLowerCase())}
-            >
-              <Text style={[styles.tabText, tab === t.toLowerCase() && styles.tabTextActive]}>
-                {t === 'Portfolio' ? '📊' : t === 'Alerts' ? '🔔' : '⚙️'} {t}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </View>
 
       {/* Main Content */}
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
-        {tab === 'portfolio' && (
+        
+        {/* DASHBOARD TAB */}
+        {tab === 'dashboard' && (
           <>
-            {/* Metal Tabs */}
+            {/* Portfolio Value */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>💰 Portfolio Value</Text>
+              <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700', marginBottom: 4 }}>
+                ${totalMeltValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </Text>
+              <Text style={{ color: totalGainLoss >= 0 ? colors.success : colors.error, fontSize: 16 }}>
+                {totalGainLoss >= 0 ? '▲' : '▼'} ${Math.abs(totalGainLoss).toLocaleString(undefined, { minimumFractionDigits: 2 })} ({totalGainLossPct >= 0 ? '+' : ''}{totalGainLossPct.toFixed(1)}%)
+              </Text>
+            </View>
+
+            {/* Holdings Pie Chart */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>📊 Holdings Breakdown</Text>
+              <PieChart
+                data={[
+                  { label: 'Silver', value: silverMeltValue, color: colors.silver },
+                  { label: 'Gold', value: goldMeltValue, color: colors.gold },
+                ]}
+                size={140}
+              />
+            </View>
+
+            {/* Gold/Silver Ratio */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>⚖️ Gold/Silver Ratio</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>{goldSilverRatio.toFixed(1)}</Text>
+                <Text style={{ color: colors.muted, marginLeft: 8 }}>:1</Text>
+              </View>
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
+                {goldSilverRatio > 80 ? (
+                  <Text style={{ color: colors.silver }}>📈 HIGH - Silver may be undervalued</Text>
+                ) : goldSilverRatio < 60 ? (
+                  <Text style={{ color: colors.gold }}>📉 LOW - Gold may be undervalued</Text>
+                ) : (
+                  <Text style={{ color: colors.muted }}>⚖️ Normal range (60-80)</Text>
+                )}
+              </View>
+            </View>
+
+            {/* Quick Stats */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>📈 Quick Stats</Text>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Silver Holdings</Text>
+                <Text style={[styles.statRowValue, { color: colors.silver }]}>{totalSilverOzt.toFixed(2)} oz</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Gold Holdings</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold }]}>{totalGoldOzt.toFixed(3)} oz</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Cost Basis</Text>
+                <Text style={styles.statRowValue}>${totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Premiums Paid</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Avg Silver Cost</Text>
+                <Text style={styles.statRowValue}>${avgSilverCostPerOz.toFixed(2)}/oz</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Avg Gold Cost</Text>
+                <Text style={styles.statRowValue}>${avgGoldCostPerOz.toFixed(2)}/oz</Text>
+              </View>
+            </View>
+
+            {/* Milestones */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>🏆 Stack Milestones</Text>
+              <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${totalSilverOzt.toFixed(0)} / ${nextSilverMilestone} oz`} />
+              <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${totalGoldOzt.toFixed(2)} / ${nextGoldMilestone} oz`} />
+            </View>
+
+            {/* Live Spot Prices */}
+            <View style={styles.card}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={styles.cardTitle}>💹 Live Spot Prices</Text>
+                <TouchableOpacity onPress={fetchSpotPrices}>
+                  <Text style={{ color: colors.muted }}>🔄 Refresh</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1, backgroundColor: `${colors.silver}22`, padding: 16, borderRadius: 12 }}>
+                  <Text style={{ color: colors.silver, fontSize: 12 }}>🥈 Silver</Text>
+                  <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>${silverSpot.toFixed(2)}</Text>
+                </View>
+                <View style={{ flex: 1, backgroundColor: `${colors.gold}22`, padding: 16, borderRadius: 12 }}>
+                  <Text style={{ color: colors.gold, fontSize: 12 }}>🥇 Gold</Text>
+                  <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>${goldSpot.toFixed(2)}</Text>
+                </View>
+              </View>
+              <Text style={{ color: colors.muted, fontSize: 10, textAlign: 'center', marginTop: 8 }}>Source: {priceSource}</Text>
+            </View>
+          </>
+        )}
+
+        {/* HOLDINGS TAB */}
+        {tab === 'holdings' && (
+          <>
             <View style={styles.metalTabs}>
               <TouchableOpacity
                 style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]}
                 onPress={() => setMetalTab('silver')}
               >
-                <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted, fontWeight: '600' }}>🥈 Silver</Text>
+                <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted, fontWeight: '600' }}>🥈 Silver ({silverItems.length})</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]}
                 onPress={() => setMetalTab('gold')}
               >
-                <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted, fontWeight: '600' }}>🥇 Gold</Text>
+                <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted, fontWeight: '600' }}>🥇 Gold ({goldItems.length})</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Portfolio Summary */}
-            <View style={styles.card}>
-              <View style={styles.statsRow}>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: currentColor }]}>{totalOzt.toFixed(2)}</Text>
-                  <Text style={styles.statLabel}>Total OZT</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: colors.success }]}>${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
-                  <Text style={styles.statLabel}>Total Value</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: gainLoss >= 0 ? colors.success : colors.error }]}>
-                    {gainLoss >= 0 ? '+' : ''}{gainLossPct}%
-                  </Text>
-                  <Text style={styles.statLabel}>Gain/Loss</Text>
-                </View>
-              </View>
-              <View style={styles.divider} />
-              <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Spot Price</Text>
-                <Text style={styles.statRowValue}>${spot.toFixed(2)}/oz</Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Cost Basis</Text>
-                <Text style={styles.statRowValue}>${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
-              </View>
-            </View>
+            <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginBottom: 16 }]} onPress={() => { resetForm(); setShowAddModal(true); }}>
+              <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Purchase</Text>
+            </TouchableOpacity>
 
-            {/* Action Buttons */}
-            <View style={styles.actionButtons}>
-              <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, flex: 1 }]} onPress={() => { resetForm(); setShowAddModal(true); }}>
-                <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Purchase</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.buttonOutline, { flex: 0.5 }]} onPress={fetchSpotPrices}>
-                <Text style={{ color: colors.text }}>🔄</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.buttonOutline, { flex: 0.5 }]} onPress={exportCSV}>
-                <Text style={{ color: colors.text }}>📤</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Items List */}
             {items.map(item => (
-              <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item)} onLongPress={() => deleteItem(item.id)}>
+              <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, metalTab)} onLongPress={() => deleteItem(item.id, metalTab)}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemTitle}>{item.productName}</Text>
-                  <Text style={styles.itemSubtitle}>
-                    {item.quantity}x @ ${item.unitPrice.toFixed(2)} • {(item.ozt * item.quantity).toFixed(2)} oz • {item.source || 'Unknown'}
-                  </Text>
+                  <Text style={styles.itemSubtitle}>{item.quantity}x @ ${item.unitPrice.toLocaleString()} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                  <Text style={[styles.itemSubtitle, { color: colors.gold }]}>Premium: ${(item.premium * item.quantity).toFixed(2)}</Text>
                 </View>
-                <Text style={[styles.itemValue, { color: currentColor }]}>
-                  ${((item.ozt * item.quantity * spot) + (item.premium * item.quantity)).toFixed(2)}
-                </Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.itemValue, { color: currentColor }]}>${(item.ozt * item.quantity * spot).toFixed(2)}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>melt</Text>
+                </View>
               </TouchableOpacity>
             ))}
 
@@ -671,48 +795,101 @@ export default function App() {
               <View style={styles.emptyState}>
                 <Text style={{ fontSize: 48, marginBottom: 16 }}>🪙</Text>
                 <Text style={{ color: colors.muted }}>No {metalTab} holdings yet</Text>
-                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>Tap "+ Add Purchase" to start</Text>
               </View>
             )}
           </>
         )}
 
-        {tab === 'alerts' && (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>🔔 Price Alerts</Text>
-            <Text style={styles.cardText}>Set alerts to get notified when spot prices reach your target.</Text>
-            <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver }]}>
-              <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Alert</Text>
+        {/* TOOLS TAB */}
+        {tab === 'tools' && (
+          <>
+            <TouchableOpacity style={styles.card} onPress={() => setShowSpeculationModal(true)}>
+              <Text style={styles.cardTitle}>🔮 Speculation Tool</Text>
+              <Text style={{ color: colors.muted }}>What if silver hits $100? What if gold hits $10,000?</Text>
             </TouchableOpacity>
-          </View>
+
+            <TouchableOpacity style={styles.card} onPress={() => setShowJunkCalcModal(true)}>
+              <Text style={styles.cardTitle}>🧮 Junk Silver Calculator</Text>
+              <Text style={{ color: colors.muted }}>Calculate melt value of constitutional silver</Text>
+            </TouchableOpacity>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>📊 Break-Even Analysis</Text>
+              <View style={{ backgroundColor: `${colors.silver}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
+                <Text style={{ color: colors.silver }}>Silver: ${silverBreakeven.toFixed(2)}/oz needed</Text>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>{silverSpot >= silverBreakeven ? '✅ Profitable!' : `Need +$${(silverBreakeven - silverSpot).toFixed(2)}`}</Text>
+              </View>
+              <View style={{ backgroundColor: `${colors.gold}22`, padding: 12, borderRadius: 8 }}>
+                <Text style={{ color: colors.gold }}>Gold: ${goldBreakeven.toFixed(2)}/oz needed</Text>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>{goldSpot >= goldBreakeven ? '✅ Profitable!' : `Need +$${(goldBreakeven - goldSpot).toFixed(2)}`}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.card} onPress={exportCSV}>
+              <Text style={styles.cardTitle}>📤 Export CSV</Text>
+              <Text style={{ color: colors.muted }}>Download holdings spreadsheet</Text>
+            </TouchableOpacity>
+          </>
         )}
 
+        {/* SETTINGS TAB */}
         {tab === 'settings' && (
           <>
             <View style={styles.card}>
+              <Text style={styles.cardTitle}>☁️ Cloud Backup</Text>
+              <Text style={{ color: colors.muted, marginBottom: 16 }}>Save your data to iCloud, Google Drive, or any cloud storage</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.success }]} onPress={createBackup}>
+                  <Text style={{ color: '#000', fontWeight: '600' }}>📤 Backup</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.buttonOutline, { flex: 1 }]} onPress={restoreBackup}>
+                  <Text style={{ color: colors.text }}>📥 Restore</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.card}>
               <Text style={styles.cardTitle}>⚙️ Settings</Text>
               <TouchableOpacity style={styles.statRow} onPress={exportCSV}>
-                <Text style={{ color: colors.text }}>📤 Export Portfolio (CSV)</Text>
+                <Text style={{ color: colors.text }}>📤 Export CSV</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.statRow} onPress={() => setShowPrivacyModal(true)}>
                 <Text style={{ color: colors.text }}>🔒 Privacy Info</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={styles.statRow} onPress={fetchSpotPrices}>
+                <Text style={{ color: colors.text }}>🔄 Refresh Prices</Text>
+              </TouchableOpacity>
             </View>
+
             <View style={styles.card}>
               <Text style={styles.cardTitle}>About</Text>
-              <Text style={styles.cardText}>Stack Tracker Pro v1.0.0</Text>
-              <Text style={styles.cardText}>Privacy-first precious metals tracking. Your data stays on your device.</Text>
+              <Text style={{ color: colors.muted }}>Stack Tracker Pro v1.0.0</Text>
+              <Text style={{ color: colors.gold, fontStyle: 'italic', marginTop: 8 }}>"We CAN'T access your data."</Text>
             </View>
           </>
         )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Add/Edit Modal */}
+      {/* Bottom Tabs */}
+      <View style={styles.bottomTabs}>
+        {[
+          { key: 'dashboard', icon: '📊', label: 'Dashboard' },
+          { key: 'holdings', icon: '🪙', label: 'Holdings' },
+          { key: 'tools', icon: '🧮', label: 'Tools' },
+          { key: 'settings', icon: '⚙️', label: 'Settings' },
+        ].map(t => (
+          <TouchableOpacity key={t.key} style={styles.bottomTab} onPress={() => setTab(t.key)}>
+            <Text style={{ fontSize: 20 }}>{t.icon}</Text>
+            <Text style={{ color: tab === t.key ? colors.text : colors.muted, fontSize: 10 }}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ADD MODAL */}
       <Modal visible={showAddModal} animationType="slide" transparent>
-        <KeyboardAvoidingView 
-          style={styles.modalOverlay} 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -722,149 +899,59 @@ export default function App() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                {/* Scan Status */}
+              <ScrollView keyboardShouldPersistTaps="handled">
                 {scanStatus && (
-                  <View style={[styles.scanStatus, { 
-                    backgroundColor: scanStatus === 'success' ? `${colors.success}22` : scanStatus === 'error' ? `${colors.error}22` : `${colors.gold}22`,
-                    borderWidth: 1,
-                    borderColor: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold,
-                  }]}>
-                    <Text style={{ color: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold }}>
-                      {scanStatus === 'scanning' ? '⏳' : scanStatus === 'success' ? '✅' : '❌'} {scanMessage}
-                    </Text>
+                  <View style={[styles.scanStatus, { backgroundColor: scanStatus === 'success' ? `${colors.success}22` : scanStatus === 'error' ? `${colors.error}22` : `${colors.gold}22` }]}>
+                    <Text style={{ color: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold }}>{scanMessage}</Text>
                   </View>
                 )}
 
-                {/* AI Scanner */}
                 <View style={[styles.card, { backgroundColor: 'rgba(148,163,184,0.1)' }]}>
                   <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12 }}>📷 AI Receipt Scanner</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.silver }]} onPress={scanReceipt}>
-                      <Text style={{ color: '#000' }}>🖼 Gallery</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.buttonOutline, { flex: 1 }]} onPress={takePhoto}>
-                      <Text style={{ color: colors.text }}>📸 Camera</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={{ color: colors.muted, fontSize: 11, textAlign: 'center', marginTop: 8 }}>🔒 Images processed in memory only</Text>
+                  <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver }]} onPress={scanReceipt}>
+                    <Text style={{ color: '#000' }}>🖼 Scan from Gallery</Text>
+                  </TouchableOpacity>
                 </View>
 
-                {/* Metal Toggle */}
                 <View style={styles.metalTabs}>
-                  <TouchableOpacity
-                    style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]}
-                    onPress={() => setMetalTab('silver')}
-                  >
-                    <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted, fontWeight: '600' }}>🥈 Silver</Text>
+                  <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]} onPress={() => setMetalTab('silver')}>
+                    <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted }}>🥈 Silver</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]}
-                    onPress={() => setMetalTab('gold')}
-                  >
-                    <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted, fontWeight: '600' }}>🥇 Gold</Text>
+                  <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]} onPress={() => setMetalTab('gold')}>
+                    <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted }}>🥇 Gold</Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Form with Floating Labels */}
-                <FloatingInput
-                  label="Product Name *"
-                  value={form.productName}
-                  onChangeText={v => setForm(p => ({ ...p, productName: v }))}
-                  placeholder="e.g., American Gold Eagle 1 oz"
-                />
-
-                <FloatingInput
-                  label="Dealer"
-                  value={form.source}
-                  onChangeText={v => setForm(p => ({ ...p, source: v }))}
-                  placeholder="e.g., APMEX, JM Bullion"
-                />
-
-                <FloatingInput
-                  label="Purchase Date"
-                  value={form.datePurchased}
-                  onChangeText={handleDateChange}
-                  placeholder="YYYY-MM-DD"
-                />
+                <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" />
+                <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" />
+                <FloatingInput label="Date (YYYY-MM-DD)" value={form.datePurchased} onChangeText={handleDateChange} placeholder="2025-12-25" />
 
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <FloatingInput
-                      label="OZT per unit *"
-                      value={form.ozt}
-                      onChangeText={v => setForm(p => ({ ...p, ozt: v }))}
-                      placeholder="1"
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <FloatingInput
-                      label="Quantity"
-                      value={form.quantity}
-                      onChangeText={v => setForm(p => ({ ...p, quantity: v }))}
-                      placeholder="1"
-                      keyboardType="number-pad"
-                    />
-                  </View>
+                  <View style={{ flex: 1 }}><FloatingInput label="OZT per unit *" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" /></View>
+                  <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => setForm(p => ({ ...p, quantity: v }))} placeholder="1" keyboardType="number-pad" /></View>
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <FloatingInput
-                      label="Unit Price *"
-                      value={form.unitPrice}
-                      onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))}
-                      placeholder="0.00"
-                      keyboardType="decimal-pad"
-                      prefix="$"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <FloatingInput
-                      label="Spot at Purchase"
-                      value={form.spotPrice}
-                      onChangeText={v => setForm(p => ({ ...p, spotPrice: v }))}
-                      placeholder="Auto-filled"
-                      keyboardType="decimal-pad"
-                      prefix="$"
-                    />
-                  </View>
+                  <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
+                  <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => setForm(p => ({ ...p, spotPrice: v }))} placeholder="Auto" keyboardType="decimal-pad" prefix="$" /></View>
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <FloatingInput
-                      label="Taxes"
-                      value={form.taxes}
-                      onChangeText={v => setForm(p => ({ ...p, taxes: v }))}
-                      placeholder="0.00"
-                      keyboardType="decimal-pad"
-                      prefix="$"
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <FloatingInput
-                      label="Shipping"
-                      value={form.shipping}
-                      onChangeText={v => setForm(p => ({ ...p, shipping: v }))}
-                      placeholder="0.00"
-                      keyboardType="decimal-pad"
-                      prefix="$"
-                    />
+                  <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
+                  <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
+                </View>
+
+                <View style={[styles.card, { backgroundColor: `${colors.gold}15` }]}>
+                  <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8 }}>Premium (Auto-calculated)</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1 }}><FloatingInput label="Per Unit" value={form.premium} onChangeText={v => setForm(p => ({ ...p, premium: v }))} keyboardType="decimal-pad" prefix="$" /></View>
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>Total: ${(parseFloat(form.premium || 0) * parseInt(form.quantity || 1)).toFixed(2)}</Text>
+                    </View>
                   </View>
                 </View>
 
-                <FloatingInput
-                  label="Numismatic Premium (per piece)"
-                  value={form.premium}
-                  onChangeText={v => setForm(p => ({ ...p, premium: v }))}
-                  placeholder="0.00"
-                  keyboardType="decimal-pad"
-                  prefix="$"
-                />
-
-                <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginTop: 16, marginBottom: 40 }]} onPress={savePurchase}>
+                <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginTop: 8, marginBottom: 40 }]} onPress={savePurchase}>
                   <Text style={{ color: '#000', fontWeight: '600' }}>{editingItem ? 'Update' : 'Add'} Purchase</Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -873,41 +960,99 @@ export default function App() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Privacy Modal */}
+      {/* SPECULATION MODAL */}
+      <Modal visible={showSpeculationModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🔮 What If...</Text>
+              <TouchableOpacity onPress={() => setShowSpeculationModal(false)}>
+                <Text style={{ color: '#fff', fontSize: 24 }}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                <View style={{ flex: 1 }}><FloatingInput label="Silver Price" value={specSilverPrice} onChangeText={setSpecSilverPrice} keyboardType="decimal-pad" prefix="$" /></View>
+                <View style={{ flex: 1 }}><FloatingInput label="Gold Price" value={specGoldPrice} onChangeText={setSpecGoldPrice} keyboardType="decimal-pad" prefix="$" /></View>
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {[
+                  { s: 100, g: 5000, label: 'Bull' },
+                  { s: 150, g: 7500, label: 'Moon 🚀' },
+                  { s: 500, g: 15000, label: 'Hyperinflation' },
+                ].map((preset, i) => (
+                  <TouchableOpacity key={i} style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: 12, borderRadius: 12, marginRight: 8 }} onPress={() => { setSpecSilverPrice(preset.s.toString()); setSpecGoldPrice(preset.g.toString()); }}>
+                    <Text style={{ color: colors.text }}>{preset.label}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 10 }}>${preset.s} / ${preset.g}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={[styles.card, { backgroundColor: `${colors.success}22` }]}>
+                <Text style={{ color: colors.success, fontWeight: '600' }}>Projected Value</Text>
+                <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>${specTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                <Text style={{ color: specGainLoss >= 0 ? colors.success : colors.error }}>{specGainLoss >= 0 ? '+' : ''}{specGainLossPct.toFixed(1)}% from cost basis</Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* JUNK SILVER MODAL */}
+      <Modal visible={showJunkCalcModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🧮 Junk Silver</Text>
+              <TouchableOpacity onPress={() => setShowJunkCalcModal(false)}>
+                <Text style={{ color: '#fff', fontSize: 24 }}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {[{ k: '90', l: '90%' }, { k: '40', l: '40%' }, { k: '35', l: 'War Nickels' }].map(t => (
+                  <TouchableOpacity key={t.k} style={[styles.metalTab, { flex: 1, borderColor: junkType === t.k ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: junkType === t.k ? `${colors.silver}22` : 'transparent' }]} onPress={() => setJunkType(t.k)}>
+                    <Text style={{ color: junkType === t.k ? colors.silver : colors.muted, fontSize: 12 }}>{t.l}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <FloatingInput label={junkType === '35' ? '# of Nickels' : 'Face Value ($)'} value={junkFaceValue} onChangeText={setJunkFaceValue} keyboardType="decimal-pad" prefix={junkType === '35' ? '' : '$'} />
+              <View style={[styles.card, { backgroundColor: `${colors.silver}22` }]}>
+                <Text style={{ color: colors.silver }}>Silver Content: {junkOzt.toFixed(3)} oz</Text>
+                <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700' }}>Melt: ${junkMeltValue.toFixed(2)}</Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PRIVACY MODAL */}
       <Modal visible={showPrivacyModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>🔒 Privacy Architecture</Text>
+              <Text style={styles.modalTitle}>🔒 Privacy</Text>
               <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
                 <Text style={{ color: '#fff', fontSize: 24 }}>×</Text>
               </TouchableOpacity>
             </View>
-
             <ScrollView>
               <View style={styles.card}>
                 <Text style={[styles.cardTitle, { color: colors.success }]}>✅ What We Do</Text>
-                <Text style={styles.privacyItem}>• Store all data locally on YOUR device</Text>
-                <Text style={styles.privacyItem}>• Encrypt your portfolio with AES-256</Text>
-                <Text style={styles.privacyItem}>• Process receipt images in RAM only</Text>
-                <Text style={styles.privacyItem}>• Delete images immediately after scanning</Text>
-                <Text style={styles.privacyItem}>• Use HTTPS for all communications</Text>
+                <Text style={styles.privacyItem}>• Store data locally on YOUR device</Text>
+                <Text style={styles.privacyItem}>• Process receipts in memory only</Text>
+                <Text style={styles.privacyItem}>• Delete images immediately</Text>
               </View>
-
               <View style={styles.card}>
                 <Text style={[styles.cardTitle, { color: colors.error }]}>❌ What We DON'T Do</Text>
-                <Text style={styles.privacyItem}>• Store your receipt images</Text>
-                <Text style={styles.privacyItem}>• Track your total holdings</Text>
-                <Text style={styles.privacyItem}>• Create user profiles or accounts</Text>
-                <Text style={styles.privacyItem}>• Sell or share any data</Text>
-                <Text style={styles.privacyItem}>• Use analytics or tracking SDKs</Text>
+                <Text style={styles.privacyItem}>• Store your data on servers</Text>
+                <Text style={styles.privacyItem}>• Track your holdings</Text>
+                <Text style={styles.privacyItem}>• Share any information</Text>
               </View>
-
-              <View style={[styles.card, { backgroundColor: `${colors.success}22`, borderColor: `${colors.success}44` }]}>
-                <Text style={{ color: colors.success, fontWeight: '600', marginBottom: 8 }}>Our Promise</Text>
-                <Text style={{ color: colors.muted, fontStyle: 'italic' }}>
-                  "We architected the system so we CAN'T access your data, even if compelled. Your stack, your privacy."
-                </Text>
+              <View style={[styles.card, { backgroundColor: `${colors.success}22` }]}>
+                <Text style={{ color: colors.success, fontWeight: '600' }}>Our Promise</Text>
+                <Text style={{ color: colors.muted, fontStyle: 'italic' }}>"We architected the system so we CAN'T access your data."</Text>
               </View>
             </ScrollView>
           </View>
@@ -917,274 +1062,46 @@ export default function App() {
   );
 }
 
+// ============================================
+// STYLES
+// ============================================
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f0f',
-  },
-  header: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  logo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  logoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoTitle: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 18,
-  },
-  logoSubtitle: {
-    color: '#71717a',
-    fontSize: 11,
-  },
-  privacyBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(34,197,94,0.15)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.3)',
-  },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  tabActive: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  tabText: {
-    color: '#71717a',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  tabTextActive: {
-    color: '#fff',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  metalTabs: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  metalTab: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-  },
-  card: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  cardText: {
-    color: '#a1a1aa',
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#71717a',
-    marginTop: 4,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginVertical: 12,
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  statRowLabel: {
-    color: '#71717a',
-    fontSize: 13,
-  },
-  statRowValue: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  button: {
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonOutline: {
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  itemCard: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  itemTitle: {
-    color: '#fff',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  itemSubtitle: {
-    color: '#71717a',
-    fontSize: 12,
-  },
-  itemValue: {
-    fontWeight: '600',
-  },
-  emptyState: {
-    alignItems: 'center',
-    padding: 40,
-  },
-  // Floating Label Styles
-  floatingContainer: {
-    marginBottom: 12,
-  },
-  floatingLabel: {
-    color: '#a1a1aa',
-    fontSize: 12,
-    marginBottom: 6,
-    fontWeight: '500',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-  },
-  floatingInput: {
-    flex: 1,
-    padding: 12,
-    paddingLeft: 0,
-    color: '#fff',
-    fontSize: 14,
-  },
-  inputPrefix: {
-    color: '#71717a',
-    fontSize: 14,
-    marginRight: 2,
-  },
-  inputSuffix: {
-    color: '#71717a',
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  input: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10,
-    padding: 12,
-    color: '#fff',
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#1a1a2e',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  scanStatus: {
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 16,
-  },
-  privacyItem: {
-    color: '#a1a1aa',
-    fontSize: 13,
-    lineHeight: 24,
-  },
+  container: { flex: 1, backgroundColor: '#0f0f0f' },
+  header: { backgroundColor: 'rgba(0,0,0,0.4)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 20, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
+  headerContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 },
+  logo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  logoTitle: { color: '#fff', fontWeight: '700', fontSize: 18 },
+  logoSubtitle: { color: '#71717a', fontSize: 11 },
+  privacyBadge: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(34,197,94,0.15)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)' },
+  content: { flex: 1, padding: 20 },
+  bottomTabs: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.8)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingBottom: Platform.OS === 'ios' ? 20 : 10, paddingTop: 10 },
+  bottomTab: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  metalTabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  metalTab: { flex: 1, padding: 12, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
+  card: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: '#fff', marginBottom: 12 },
+  statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
+  statRowLabel: { color: '#71717a', fontSize: 13 },
+  statRowValue: { color: '#fff', fontWeight: '600' },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 12 },
+  button: { paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  buttonOutline: { paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  itemCard: { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', flexDirection: 'row', alignItems: 'center' },
+  itemTitle: { color: '#fff', fontWeight: '600', marginBottom: 4 },
+  itemSubtitle: { color: '#71717a', fontSize: 12 },
+  itemValue: { fontWeight: '600', fontSize: 16 },
+  emptyState: { alignItems: 'center', padding: 40 },
+  floatingContainer: { marginBottom: 12 },
+  floatingLabel: { color: '#a1a1aa', fontSize: 12, marginBottom: 6, fontWeight: '500' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 10, paddingHorizontal: 12 },
+  floatingInput: { flex: 1, padding: 12, paddingLeft: 0, color: '#fff', fontSize: 14 },
+  inputPrefix: { color: '#71717a', fontSize: 14, marginRight: 2 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#1a1a2e', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  scanStatus: { padding: 12, borderRadius: 10, marginBottom: 16 },
+  privacyItem: { color: '#a1a1aa', fontSize: 13, lineHeight: 24 },
 });
