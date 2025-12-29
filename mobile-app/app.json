@@ -41,7 +41,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0f0f0f"
+        "backgroundColor": "#1a1d2e"
       },
       "package": "com.stacktrackerpro.app",
       "versionCode": 1,

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases from 'react-native-purchases';
+import * as Haptics from 'expo-haptics';
 import { restorePurchases } from '../utils/entitlements';
 
 const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
@@ -78,10 +79,16 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
 
   const handlePurchase = async (packageToPurchase) => {
     try {
+      // Haptic feedback when starting purchase
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
       setPurchasing(packageToPurchase.identifier);
       const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
 
       if (customerInfo.entitlements.active['Gold']) {
+        // Success haptic
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
         Alert.alert(
           'Welcome to Gold!',
           'Your subscription is now active. Enjoy unlimited items!',
@@ -94,6 +101,7 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
     } catch (error) {
       if (!error.userCancelled) {
         console.error('Purchase error:', error);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert('Purchase Failed', error.message);
       }
     } finally {
@@ -284,8 +292,8 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
                 )}
                 {renderFallbackPackage(
                   'Lifetime',
-                  '$29.99',
-                  'One-time payment, stack forever'
+                  '$79.99',
+                  'Pay once, use forever - Best value!'
                 )}
 
                 {/* Notify Me Section */}

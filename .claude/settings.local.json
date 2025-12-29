@@ -3,7 +3,27 @@
     "allow": [
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(chmod:*)",
+      "Bash(git restore:*)",
+      "Bash(eas login --help:*)",
+      "Bash(eas:*)",
+      "Bash(npx expo config:*)",
+      "Bash(bash:*)",
+      "Bash(node:*)",
+      "Bash(npx --version)",
+      "Bash(npm install:*)",
+      "Bash(npx eslint:*)",
+      "Bash(git log:*)",
+      "Bash(ls:*)",
+      "Bash(timeout 10 node:*)",
+      "Bash(npm start)",
+      "Bash(npm uninstall:*)",
+      "Bash(del generate-ring-icons.js)",
+      "Bash(dir:*)"
     ]
   }
 }

@@ -17,9 +17,12 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import * as Haptics from 'expo-haptics';
 import Purchases from 'react-native-purchases';
+import * as XLSX from 'xlsx';
 import { initializePurchases, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
 import GoldPaywall from './src/components/GoldPaywall';
+import Tutorial from './src/components/Tutorial';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'https://stack-tracker-pro-production.up.railway.app';
@@ -173,7 +176,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [tab, setTab] = useState('dashboard');
-  const [metalTab, setMetalTab] = useState('silver');
+  const [metalTab, setMetalTab] = useState('both'); // Changed from 'silver' to 'both'
 
   // Spot Prices - Updated defaults for Dec 2025
   const [silverSpot, setSilverSpot] = useState(77);
@@ -191,9 +194,14 @@ export default function App() {
   const [showSpeculationModal, setShowSpeculationModal] = useState(false);
   const [showJunkCalcModal, setShowJunkCalcModal] = useState(false);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importData, setImportData] = useState([]);
 
   // Entitlements
   const [hasGold, setHasGold] = useState(false);
+  const [scanCount, setScanCount] = useState(0);
+  const FREE_SCAN_LIMIT = 5;
 
   // Scan State
   const [scanStatus, setScanStatus] = useState(null);
@@ -230,6 +238,12 @@ export default function App() {
     return value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
+  // Helper function to calculate premium percentage
+  const calculatePremiumPercent = (premium, unitPrice) => {
+    if (unitPrice <= 0) return 0;
+    return (premium / unitPrice) * 100;
+  };
+
   // ============================================
   // CALCULATIONS
   // ============================================
@@ -248,6 +262,7 @@ export default function App() {
   const silverPremiumsPaid = silverItems.reduce((sum, i) => sum + (i.premium * i.quantity), 0);
   const goldPremiumsPaid = goldItems.reduce((sum, i) => sum + (i.premium * i.quantity), 0);
   const totalPremiumsPaid = silverPremiumsPaid + goldPremiumsPaid;
+  const totalPremiumsPct = totalCostBasis > 0 ? ((totalPremiumsPaid / totalCostBasis) * 100) : 0;
 
   const totalGainLoss = totalMeltValue - totalCostBasis;
   const totalGainLossPct = totalCostBasis > 0 ? ((totalGainLoss / totalCostBasis) * 100) : 0;
@@ -327,12 +342,14 @@ export default function App() {
 
   const loadData = async () => {
     try {
-      const [silver, gold, silverS, goldS, timestamp] = await Promise.all([
+      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedScanCount] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
         AsyncStorage.getItem('stack_silver_spot'),
         AsyncStorage.getItem('stack_gold_spot'),
         AsyncStorage.getItem('stack_price_timestamp'),
+        AsyncStorage.getItem('stack_has_seen_tutorial'),
+        AsyncStorage.getItem('stack_scan_count'),
       ]);
 
       if (silver) setSilverItems(JSON.parse(silver));
@@ -340,6 +357,12 @@ export default function App() {
       if (silverS) setSilverSpot(parseFloat(silverS));
       if (goldS) setGoldSpot(parseFloat(goldS));
       if (timestamp) setPriceTimestamp(timestamp);
+      if (storedScanCount) setScanCount(parseInt(storedScanCount));
+
+      // Show tutorial if user hasn't seen it
+      if (!hasSeenTutorial) {
+        setShowTutorial(true);
+      }
 
       fetchSpotPrices(); // Auto-update prices on app open
     } catch (error) {
@@ -396,6 +419,9 @@ export default function App() {
 
     if (!hasGold && totalItems >= FREE_TIER_LIMIT) {
       // User has reached free tier limit, show paywall
+      // Haptic feedback on hitting limit
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
       Alert.alert(
         'Upgrade to Gold',
         `You've reached the free tier limit of ${FREE_TIER_LIMIT} items. Upgrade to Gold for unlimited items!`,
@@ -409,6 +435,47 @@ export default function App() {
       resetForm();
       setShowAddModal(true);
     }
+  };
+
+  // Tutorial completion handler
+  const handleTutorialComplete = async () => {
+    try {
+      await AsyncStorage.setItem('stack_has_seen_tutorial', 'true');
+      setShowTutorial(false);
+    } catch (error) {
+      console.error('Error saving tutorial status:', error);
+      setShowTutorial(false);
+    }
+  };
+
+  // Scan limit check and increment
+  const incrementScanCount = async () => {
+    const newCount = scanCount + 1;
+    setScanCount(newCount);
+    await AsyncStorage.setItem('stack_scan_count', newCount.toString());
+  };
+
+  const canScan = () => {
+    if (hasGold) return true; // Gold tier has unlimited scans
+    return scanCount < FREE_SCAN_LIMIT;
+  };
+
+  const checkScanLimit = () => {
+    if (hasGold) return true; // Gold tier bypass
+
+    if (scanCount >= FREE_SCAN_LIMIT) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        'Scan Limit Reached',
+        `Free tier includes ${FREE_SCAN_LIMIT} scans (photos or spreadsheets).\n\nUpgrade to Gold for unlimited scans!`,
+        [
+          { text: 'Maybe Later', style: 'cancel' },
+          { text: 'Upgrade to Gold', onPress: () => setShowPaywallModal(true) }
+        ]
+      );
+      return false;
+    }
+    return true;
   };
 
   // ============================================
@@ -552,6 +619,9 @@ export default function App() {
   // ============================================
 
   const scanReceipt = async () => {
+    // Check scan limit first
+    if (!checkScanLimit()) return;
+
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
       Alert.alert('Permission Required', 'Please allow access to your photos.');
@@ -560,6 +630,9 @@ export default function App() {
 
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
     if (result.canceled) return;
+
+    // Increment scan count
+    await incrementScanCount();
 
     setScanStatus('scanning');
     setScanMessage('Analyzing receipt...');
@@ -581,51 +654,98 @@ export default function App() {
       const data = await response.json();
       if (__DEV__) console.log('📄 Full server response:', JSON.stringify(data, null, 2));
 
-      // Server returns data directly in the response (not wrapped in data.data)
-      if (data.success) {
-        const d = data;
-        const extractedMetal = d.metal === 'gold' ? 'gold' : 'silver';
-        // Server returns 'purchaseDate', not 'datePurchased'
-        const newDate = d.purchaseDate || '';
+      // Handle multi-item receipt response
+      if (data.success && data.items && data.items.length > 0) {
+        const items = data.items;
+        const purchaseDate = data.purchaseDate || '';
+        const dealer = data.dealer || '';
 
-        setMetalTab(extractedMetal);
+        if (__DEV__) console.log(`✅ Found ${items.length} item(s) on receipt`);
 
-        let spotPrice = '';
-        if (newDate.length === 10) {
-          const historicalPrice = await fetchHistoricalSpot(newDate, extractedMetal);
-          if (historicalPrice) spotPrice = historicalPrice.toString();
+        // Count items by metal type
+        const silverCount = items.filter(item => item.metal === 'silver').length;
+        const goldCount = items.filter(item => item.metal === 'gold').length;
+        const otherCount = items.length - silverCount - goldCount;
+
+        // Build summary message
+        let summary = `Found ${items.length} item${items.length > 1 ? 's' : ''}`;
+        if (silverCount > 0 || goldCount > 0) {
+          const parts = [];
+          if (silverCount > 0) parts.push(`${silverCount} Silver`);
+          if (goldCount > 0) parts.push(`${goldCount} Gold`);
+          if (otherCount > 0) parts.push(`${otherCount} Other`);
+          summary += `: ${parts.join(', ')}`;
         }
 
-        const unitPrice = parseFloat(d.unitPrice) || 0;
-        const ozt = parseFloat(d.ozt) || 0;
-        const spotNum = parseFloat(spotPrice) || 0;
-        let premium = '0';
-        if (unitPrice > 0 && spotNum > 0 && ozt > 0) {
-          premium = (unitPrice - (spotNum * ozt)).toFixed(2);
+        // Process each item and add to holdings
+        let addedCount = 0;
+        for (const item of items) {
+          const extractedMetal = item.metal === 'gold' ? 'gold' : 'silver';
+
+          // Get historical spot price for this item
+          let spotPrice = '';
+          if (purchaseDate.length === 10) {
+            const historicalPrice = await fetchHistoricalSpot(purchaseDate, extractedMetal);
+            if (historicalPrice) spotPrice = historicalPrice.toString();
+          }
+
+          const unitPrice = parseFloat(item.unitPrice) || 0;
+          const ozt = parseFloat(item.ozt) || 0;
+          const spotNum = parseFloat(spotPrice) || 0;
+          let premium = '0';
+          if (unitPrice > 0 && spotNum > 0 && ozt > 0) {
+            premium = (unitPrice - (spotNum * ozt)).toFixed(2);
+          }
+
+          // Create holding for this item
+          const newItem = {
+            id: Date.now() + addedCount, // Unique ID for each item
+            productName: item.description || '',
+            source: dealer,
+            datePurchased: purchaseDate,
+            ozt: parseFloat(item.ozt) || 0,
+            quantity: parseInt(item.quantity) || 1,
+            unitPrice: parseFloat(item.unitPrice) || 0,
+            taxes: 0,
+            shipping: 0,
+            spotPrice: parseFloat(spotPrice) || 0,
+            premium: parseFloat(premium) || 0,
+          };
+
+          // Add to appropriate holdings array
+          if (extractedMetal === 'silver') {
+            setSilverItems(prev => [...prev, newItem]);
+          } else {
+            setGoldItems(prev => [...prev, newItem]);
+          }
+
+          addedCount++;
         }
 
-        setForm({
-          // Map server fields to app fields:
-          // description -> productName, dealer -> source, purchaseDate -> datePurchased
-          productName: d.description || '',
-          source: d.dealer || '',
-          datePurchased: newDate,
-          ozt: d.ozt?.toString() || '',
-          quantity: d.quantity?.toString() || '1',
-          unitPrice: d.unitPrice?.toString() || '',
-          taxes: '0',  // Server doesn't extract taxes
-          shipping: '0',  // Server doesn't extract shipping
-          spotPrice: spotPrice,
-          premium: premium,
-        });
-
+        // Show success with summary
         setScanStatus('success');
-        setScanMessage('Receipt analyzed!');
-        if (__DEV__) console.log('✅ Receipt scan successful');
+        setScanMessage(summary);
+
+        // Set metal tab to the most common metal, or 'both' if mixed
+        if (silverCount > 0 && goldCount > 0) {
+          setMetalTab('both');
+        } else if (goldCount > 0) {
+          setMetalTab('gold');
+        } else {
+          setMetalTab('silver');
+        }
+
+        // Close the add modal since we've already added the items
+        setTimeout(() => {
+          setShowAddModal(false);
+          resetForm();
+        }, 2000);
+
+        if (__DEV__) console.log(`✅ Added ${addedCount} items to holdings`);
       } else {
-        if (__DEV__) console.log('⚠️ Server returned success=false or missing data');
+        if (__DEV__) console.log('⚠️ Server returned success=false or no items found');
         setScanStatus('error');
-        setScanMessage('Could not analyze.');
+        setScanMessage('Could not analyze receipt.');
       }
     } catch (error) {
       console.error('❌ Scan receipt error:', error);
@@ -636,6 +756,168 @@ export default function App() {
     }
 
     setTimeout(() => { setScanStatus(null); setScanMessage(''); }, 5000);
+  };
+
+  // ============================================
+  // SPREADSHEET IMPORT
+  // ============================================
+
+  const importSpreadsheet = async () => {
+    // Check scan limit first
+    if (!checkScanLimit()) return;
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      // Increment scan count
+      await incrementScanCount();
+
+      const file = result.assets[0];
+      if (__DEV__) console.log('📊 Spreadsheet selected:', file.name);
+
+      // Read file content
+      const fileContent = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Convert base64 to binary
+      const binaryString = atob(fileContent);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Parse with XLSX
+      const workbook = XLSX.read(bytes, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+      if (rows.length < 2) {
+        Alert.alert('Invalid Spreadsheet', 'Spreadsheet must have at least a header row and one data row.');
+        return;
+      }
+
+      // Auto-map column names (flexible matching)
+      const headers = rows[0].map(h => String(h || '').toLowerCase().trim());
+      const findColumn = (possibleNames) => {
+        for (const name of possibleNames) {
+          const index = headers.findIndex(h => h.includes(name));
+          if (index !== -1) return index;
+        }
+        return -1;
+      };
+
+      const colMap = {
+        productName: findColumn(['product', 'name', 'item', 'description']),
+        metal: findColumn(['metal', 'type']),
+        quantity: findColumn(['quantity', 'qty', 'count', 'amount']),
+        unitPrice: findColumn(['price', 'unit price', 'cost', 'unit cost']),
+        date: findColumn(['date', 'purchased', 'purchase date', 'order date']),
+        dealer: findColumn(['dealer', 'source', 'vendor', 'seller']),
+        ozt: findColumn(['oz', 'ozt', 'ounces', 'troy oz', 'weight']),
+      };
+
+      // Check if essential columns exist
+      if (colMap.productName === -1 || colMap.metal === -1) {
+        Alert.alert(
+          'Missing Columns',
+          'Spreadsheet must have at least "Product Name" and "Metal Type" columns.\n\nAccepted column names:\n- Product: product, name, item, description\n- Metal: metal, type'
+        );
+        return;
+      }
+
+      // Parse data rows
+      const parsedData = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+
+        const productName = row[colMap.productName];
+        const metalRaw = String(row[colMap.metal] || '').toLowerCase().trim();
+
+        // Skip if essential data is missing
+        if (!productName || !metalRaw) continue;
+
+        const metal = metalRaw.includes('gold') ? 'gold' : metalRaw.includes('silver') ? 'silver' : null;
+        if (!metal) continue; // Skip non-gold/silver items
+
+        parsedData.push({
+          productName: String(productName || ''),
+          metal,
+          quantity: parseInt(row[colMap.quantity]) || 1,
+          unitPrice: parseFloat(row[colMap.unitPrice]) || 0,
+          datePurchased: row[colMap.date] ? String(row[colMap.date]) : '',
+          source: row[colMap.dealer] ? String(row[colMap.dealer]) : '',
+          ozt: parseFloat(row[colMap.ozt]) || 1,
+        });
+      }
+
+      if (parsedData.length === 0) {
+        Alert.alert('No Data Found', 'No valid items found in spreadsheet. Make sure you have Product Name and Metal Type columns.');
+        return;
+      }
+
+      // Show preview
+      setImportData(parsedData);
+      setShowImportPreview(true);
+
+      if (__DEV__) console.log(`📊 Parsed ${parsedData.length} items from spreadsheet`);
+    } catch (error) {
+      console.error('❌ Import error:', error);
+      Alert.alert('Import Failed', `Could not import spreadsheet: ${error.message}`);
+    }
+  };
+
+  const confirmImport = () => {
+    try {
+      let silverCount = 0;
+      let goldCount = 0;
+
+      importData.forEach((item, index) => {
+        const newItem = {
+          id: Date.now() + index,
+          productName: item.productName,
+          source: item.source,
+          datePurchased: item.datePurchased,
+          ozt: item.ozt,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          taxes: 0,
+          shipping: 0,
+          spotPrice: 0,
+          premium: 0,
+        };
+
+        if (item.metal === 'silver') {
+          setSilverItems(prev => [...prev, newItem]);
+          silverCount++;
+        } else {
+          setGoldItems(prev => [...prev, newItem]);
+          goldCount++;
+        }
+      });
+
+      // Haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      Alert.alert(
+        'Import Successful',
+        `Imported ${importData.length} items:\n${silverCount} Silver, ${goldCount} Gold`,
+        [{ text: 'Great!', onPress: () => {
+          setShowImportPreview(false);
+          setImportData([]);
+          setMetalTab(silverCount > 0 && goldCount > 0 ? 'both' : silverCount > 0 ? 'silver' : 'gold');
+        }}]
+      );
+    } catch (error) {
+      console.error('❌ Confirm import error:', error);
+      Alert.alert('Import Failed', error.message);
+    }
   };
 
   // ============================================
@@ -673,6 +955,9 @@ export default function App() {
       }
     }
 
+    // Haptic feedback on successful add
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
     resetForm();
     setShowAddModal(false);
   };
@@ -692,6 +977,9 @@ export default function App() {
       {
         text: 'Delete', style: 'destructive',
         onPress: () => {
+          // Haptic feedback on delete
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
           if (metal === 'silver') setSilverItems(prev => prev.filter(i => i.id !== id));
           else setGoldItems(prev => prev.filter(i => i.id !== id));
         },
@@ -753,8 +1041,8 @@ export default function App() {
     );
   }
 
-  const currentColor = metalTab === 'silver' ? colors.silver : colors.gold;
-  const items = metalTab === 'silver' ? silverItems : goldItems;
+  const currentColor = metalTab === 'silver' ? colors.silver : metalTab === 'gold' ? colors.gold : colors.gold;
+  const items = metalTab === 'silver' ? silverItems : metalTab === 'gold' ? goldItems : [];
   const spot = metalTab === 'silver' ? silverSpot : goldSpot;
 
   // ============================================
@@ -848,7 +1136,12 @@ export default function App() {
               </View>
               <View style={styles.statRow}>
                 <Text style={styles.statRowLabel}>Premiums Paid</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.statRowValue, { color: colors.gold }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                  {totalPremiumsPct > 0 && (
+                    <Text style={{ color: colors.gold, fontSize: 11, marginTop: 2 }}>+{totalPremiumsPct.toFixed(1)}%</Text>
+                  )}
+                </View>
               </View>
               <View style={styles.divider} />
               <View style={styles.statRow}>
@@ -911,41 +1204,141 @@ export default function App() {
             <View style={styles.metalTabs}>
               <TouchableOpacity
                 style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]}
-                onPress={() => setMetalTab('silver')}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setMetalTab('silver');
+                }}
               >
                 <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted, fontWeight: '600' }}>🥈 Silver ({silverItems.length})</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]}
-                onPress={() => setMetalTab('gold')}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setMetalTab('gold');
+                }}
               >
                 <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted, fontWeight: '600' }}>🥇 Gold ({goldItems.length})</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.metalTab, { borderColor: metalTab === 'both' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'both' ? `${colors.gold}22` : 'transparent' }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setMetalTab('both');
+                }}
+              >
+                <Text style={{ color: metalTab === 'both' ? colors.gold : colors.muted, fontWeight: '600' }}>💰 Both ({silverItems.length + goldItems.length})</Text>
+              </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginBottom: 16 }]} onPress={handleAddPurchase}>
+            <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginBottom: 12 }]} onPress={handleAddPurchase}>
               <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Purchase</Text>
             </TouchableOpacity>
 
-            {items.map(item => (
-              <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, metalTab)} onLongPress={() => deleteItem(item.id, metalTab)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.itemTitle}>{item.productName}</Text>
-                  <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
-                  <Text style={[styles.itemSubtitle, { color: colors.gold }]}>Premium: ${formatCurrency(item.premium * item.quantity)}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.itemValue, { color: currentColor }]}>${formatCurrency(item.ozt * item.quantity * spot)}</Text>
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>melt</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity style={[styles.buttonOutline, { marginBottom: 16 }]} onPress={importSpreadsheet}>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>📊 Import from Spreadsheet</Text>
+            </TouchableOpacity>
 
-            {items.length === 0 && (
-              <View style={styles.emptyState}>
-                <Text style={{ fontSize: 48, marginBottom: 16 }}>🪙</Text>
-                <Text style={{ color: colors.muted }}>No {metalTab} holdings yet</Text>
-              </View>
+            {/* Show filtered items or both with grouping */}
+            {metalTab !== 'both' ? (
+              <>
+                {items.map(item => {
+                  const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
+                  return (
+                    <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, metalTab)} onLongPress={() => deleteItem(item.id, metalTab)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.itemTitle}>{item.productName}</Text>
+                        <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                        <Text style={[styles.itemSubtitle, { color: colors.gold }]}>
+                          Premium: ${formatCurrency(item.premium * item.quantity)}
+                          {itemPremiumPct > 0 && <Text style={{ fontSize: 11 }}> (+{itemPremiumPct.toFixed(1)}%)</Text>}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[styles.itemValue, { color: currentColor }]}>${formatCurrency(item.ozt * item.quantity * spot)}</Text>
+                        <Text style={{ color: colors.muted, fontSize: 11 }}>melt</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {items.length === 0 && (
+                  <View style={styles.emptyState}>
+                    <Text style={{ fontSize: 48, marginBottom: 16 }}>🪙</Text>
+                    <Text style={{ color: colors.muted }}>No {metalTab} holdings yet</Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Silver Items Group */}
+                {silverItems.length > 0 && (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 }}>
+                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                      <Text style={{ color: colors.silver, fontWeight: '600', marginHorizontal: 12 }}>🥈 SILVER ({silverItems.length})</Text>
+                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                    </View>
+                    {silverItems.map(item => {
+                      const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
+                      return (
+                        <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, 'silver')} onLongPress={() => deleteItem(item.id, 'silver')}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.itemTitle}>{item.productName}</Text>
+                            <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                            <Text style={[styles.itemSubtitle, { color: colors.gold }]}>
+                              Premium: ${formatCurrency(item.premium * item.quantity)}
+                              {itemPremiumPct > 0 && <Text style={{ fontSize: 11 }}> (+{itemPremiumPct.toFixed(1)}%)</Text>}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.itemValue, { color: colors.silver }]}>${formatCurrency(item.ozt * item.quantity * silverSpot)}</Text>
+                            <Text style={{ color: colors.muted, fontSize: 11 }}>melt</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Gold Items Group */}
+                {goldItems.length > 0 && (
+                  <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: silverItems.length > 0 ? 24 : 8 }}>
+                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                      <Text style={{ color: colors.gold, fontWeight: '600', marginHorizontal: 12 }}>🥇 GOLD ({goldItems.length})</Text>
+                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                    </View>
+                    {goldItems.map(item => {
+                      const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
+                      return (
+                        <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, 'gold')} onLongPress={() => deleteItem(item.id, 'gold')}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.itemTitle}>{item.productName}</Text>
+                            <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                            <Text style={[styles.itemSubtitle, { color: colors.gold }]}>
+                              Premium: ${formatCurrency(item.premium * item.quantity)}
+                              {itemPremiumPct > 0 && <Text style={{ fontSize: 11 }}> (+{itemPremiumPct.toFixed(1)}%)</Text>}
+                            </Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.itemValue, { color: colors.gold }]}>${formatCurrency(item.ozt * item.quantity * goldSpot)}</Text>
+                            <Text style={{ color: colors.muted, fontSize: 11 }}>melt</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Empty state */}
+                {silverItems.length === 0 && goldItems.length === 0 && (
+                  <View style={styles.emptyState}>
+                    <Text style={{ fontSize: 48, marginBottom: 16 }}>🪙</Text>
+                    <Text style={{ color: colors.muted }}>No holdings yet</Text>
+                  </View>
+                )}
+              </>
             )}
           </>
         )}
@@ -1037,67 +1430,127 @@ export default function App() {
         ))}
       </View>
 
-      {/* ADD/EDIT MODAL */}
-      <ModalWrapper
-        visible={showAddModal}
-        onClose={() => { resetForm(); setShowAddModal(false); }}
-        title={`${editingItem ? 'Edit' : 'Add'} Purchase`}
-      >
-        {scanStatus && (
-          <View style={[styles.scanStatus, { backgroundColor: scanStatus === 'success' ? `${colors.success}22` : scanStatus === 'error' ? `${colors.error}22` : `${colors.gold}22` }]}>
-            <Text style={{ color: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold }}>{scanMessage}</Text>
+      {/* ADD/EDIT MODAL - Custom with sticky save button */}
+      <Modal visible={showAddModal} animationType="slide" transparent>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalKeyboardView}
+            >
+              <View style={styles.modalContent}>
+                {/* Header */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{editingItem ? 'Edit' : 'Add'} Purchase</Text>
+                  <TouchableOpacity
+                    onPress={() => { resetForm(); setShowAddModal(false); }}
+                    style={styles.closeButton}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                  >
+                    <Text style={styles.closeButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Tap to dismiss hint */}
+                <TouchableOpacity onPress={Keyboard.dismiss} style={styles.dismissHint}>
+                  <Text style={{ color: '#52525b', fontSize: 11 }}>Tap here to hide keyboard</Text>
+                </TouchableOpacity>
+
+                {/* Scrollable Content */}
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 20 }}
+                >
+                  {scanStatus && (
+                    <View style={[styles.scanStatus, { backgroundColor: scanStatus === 'success' ? `${colors.success}22` : scanStatus === 'error' ? `${colors.error}22` : `${colors.gold}22` }]}>
+                      <Text style={{ color: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold }}>{scanMessage}</Text>
+                    </View>
+                  )}
+
+                  <View style={[styles.card, { backgroundColor: 'rgba(148,163,184,0.1)' }]}>
+                    <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12 }}>📷 AI Receipt Scanner</Text>
+                    <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver }]} onPress={scanReceipt}>
+                      <Text style={{ color: '#000' }}>🖼 Scan from Gallery</Text>
+                    </TouchableOpacity>
+                    {!hasGold && (
+                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                        {scanCount >= FREE_SCAN_LIMIT ? (
+                          <Text style={{ color: colors.error }}>Scan limit reached. Upgrade to Gold for unlimited!</Text>
+                        ) : (
+                          <Text>Scans used: {scanCount}/{FREE_SCAN_LIMIT}</Text>
+                        )}
+                      </Text>
+                    )}
+                    {hasGold && (
+                      <Text style={{ color: colors.gold, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                        ✓ Unlimited scans with Gold
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.metalTabs}>
+                    <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]} onPress={() => setMetalTab('silver')}>
+                      <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted }}>🥈 Silver</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]} onPress={() => setMetalTab('gold')}>
+                      <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted }}>🥇 Gold</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" />
+                  <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" />
+                  <FloatingInput label="Date (YYYY-MM-DD)" value={form.datePurchased} onChangeText={handleDateChange} placeholder="2025-12-25" />
+
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit *" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => setForm(p => ({ ...p, quantity: v }))} placeholder="1" keyboardType="number-pad" /></View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => setForm(p => ({ ...p, spotPrice: v }))} placeholder="Auto" keyboardType="decimal-pad" prefix="$" /></View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
+                  </View>
+
+                  <View style={[styles.card, { backgroundColor: `${colors.gold}15` }]}>
+                    <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8 }}>Premium (Auto-calculated)</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ flex: 1 }}><FloatingInput label="Per Unit" value={form.premium} onChangeText={v => setForm(p => ({ ...p, premium: v }))} keyboardType="decimal-pad" prefix="$" /></View>
+                      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        {(() => {
+                          const totalPremium = parseFloat(form.premium || 0) * parseInt(form.quantity || 1);
+                          const unitPrice = parseFloat(form.unitPrice || 0);
+                          const premiumPct = calculatePremiumPercent(parseFloat(form.premium || 0), unitPrice);
+                          return (
+                            <>
+                              <Text style={{ color: colors.muted, fontSize: 12 }}>Total: ${formatCurrency(totalPremium)}</Text>
+                              {premiumPct > 0 && (
+                                <Text style={{ color: colors.gold, fontSize: 11, marginTop: 2 }}>+{premiumPct.toFixed(1)}%</Text>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </View>
+                    </View>
+                  </View>
+                </ScrollView>
+
+                {/* Sticky Save Button */}
+                <View style={styles.stickyButtonContainer}>
+                  <TouchableOpacity style={[styles.button, { backgroundColor: currentColor }]} onPress={savePurchase}>
+                    <Text style={{ color: '#000', fontWeight: '600' }}>{editingItem ? 'Update' : 'Add'} Purchase</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        )}
-
-        <View style={[styles.card, { backgroundColor: 'rgba(148,163,184,0.1)' }]}>
-          <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12 }}>📷 AI Receipt Scanner</Text>
-          <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver }]} onPress={scanReceipt}>
-            <Text style={{ color: '#000' }}>🖼 Scan from Gallery</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.metalTabs}>
-          <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]} onPress={() => setMetalTab('silver')}>
-            <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted }}>🥈 Silver</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]} onPress={() => setMetalTab('gold')}>
-            <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted }}>🥇 Gold</Text>
-          </TouchableOpacity>
-        </View>
-
-        <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" />
-        <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" />
-        <FloatingInput label="Date (YYYY-MM-DD)" value={form.datePurchased} onChangeText={handleDateChange} placeholder="2025-12-25" />
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><FloatingInput label="OZT per unit *" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" /></View>
-          <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => setForm(p => ({ ...p, quantity: v }))} placeholder="1" keyboardType="number-pad" /></View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
-          <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => setForm(p => ({ ...p, spotPrice: v }))} placeholder="Auto" keyboardType="decimal-pad" prefix="$" /></View>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
-          <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: `${colors.gold}15` }]}>
-          <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8 }}>Premium (Auto-calculated)</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <View style={{ flex: 1 }}><FloatingInput label="Per Unit" value={form.premium} onChangeText={v => setForm(p => ({ ...p, premium: v }))} keyboardType="decimal-pad" prefix="$" /></View>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>Total: ${formatCurrency(parseFloat(form.premium || 0) * parseInt(form.quantity || 1))}</Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginTop: 8 }]} onPress={savePurchase}>
-          <Text style={{ color: '#000', fontWeight: '600' }}>{editingItem ? 'Update' : 'Add'} Purchase</Text>
-        </TouchableOpacity>
-      </ModalWrapper>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* SPECULATION MODAL */}
       <ModalWrapper
@@ -1212,6 +1665,67 @@ export default function App() {
         onClose={() => setShowPaywallModal(false)}
         onPurchaseSuccess={checkEntitlements}
       />
+
+      {/* Import Preview Modal */}
+      <ModalWrapper
+        visible={showImportPreview}
+        onClose={() => {
+          setShowImportPreview(false);
+          setImportData([]);
+        }}
+        title="Import Preview"
+      >
+        <Text style={{ color: colors.text, marginBottom: 16 }}>
+          Found {importData.length} items. Review and confirm import:
+        </Text>
+
+        {importData.slice(0, 10).map((item, index) => (
+          <View key={index} style={[styles.card, { marginBottom: 8, padding: 12 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+              <Text style={{ color: colors.text, fontWeight: '600' }}>{item.productName}</Text>
+              <Text style={{ color: item.metal === 'silver' ? colors.silver : colors.gold }}>
+                {item.metal.toUpperCase()}
+              </Text>
+            </View>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>
+              {item.quantity}x @ ${item.unitPrice} • {item.ozt} oz
+            </Text>
+            {item.source && (
+              <Text style={{ color: colors.muted, fontSize: 11 }}>From: {item.source}</Text>
+            )}
+          </View>
+        ))}
+
+        {importData.length > 10 && (
+          <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 8, marginBottom: 16 }}>
+            ...and {importData.length - 10} more items
+          </Text>
+        )}
+
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
+          <TouchableOpacity
+            style={[styles.buttonOutline, { flex: 1 }]}
+            onPress={() => {
+              setShowImportPreview(false);
+              setImportData([]);
+            }}
+          >
+            <Text style={{ color: colors.text }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, { flex: 1, backgroundColor: colors.success }]}
+            onPress={confirmImport}
+          >
+            <Text style={{ color: '#000', fontWeight: '600' }}>Import {importData.length} Items</Text>
+          </TouchableOpacity>
+        </View>
+      </ModalWrapper>
+
+      {/* First Launch Tutorial */}
+      <Tutorial
+        visible={showTutorial}
+        onComplete={handleTutorialComplete}
+      />
     </SafeAreaView>
   );
 }
@@ -1272,4 +1786,13 @@ const styles = StyleSheet.create({
 
   scanStatus: { padding: 12, borderRadius: 10, marginBottom: 16 },
   privacyItem: { color: '#a1a1aa', fontSize: 13, lineHeight: 24 },
+
+  // Sticky button container for Add/Edit modal
+  stickyButtonContainer: {
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: '#1a1a2e',
+  },
 });

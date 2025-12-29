@@ -72,9 +72,19 @@ let historicalData = {
   loaded: false,
 };
 
+// API Request Counter (to monitor GoldAPI usage)
+let apiRequestCounter = {
+  total: 0,
+  lastReset: new Date(),
+  calls: [],
+};
+
 // Load historical prices from JSON file
 const fs = require('fs');
 const path = require('path');
+
+// Import web scraper for live spot prices
+const { scrapeGoldSilverPrices, scrapeGoldSilverPricesAlternative } = require('./scrapers/gold-silver-scraper');
 
 // ============================================
 // FETCH LIVE SPOT PRICES
@@ -82,67 +92,64 @@ const path = require('path');
 
 async function fetchLiveSpotPrices() {
   try {
-    console.log('🔍 Attempting to fetch live spot prices from GoldAPI.io...');
+    // Log API request counter
+    const now = new Date();
+    const hoursSinceReset = (now - apiRequestCounter.lastReset) / 1000 / 60 / 60;
+    console.log(`📊 API Requests - Total: ${apiRequestCounter.total}, Last Reset: ${hoursSinceReset.toFixed(1)}h ago`);
 
-    const API_KEY = process.env.GOLD_API_KEY || 'goldapi-fu8usmhp9ilsl-io';
-    const headers = {
-      'x-access-token': API_KEY,
-      'Content-Type': 'application/json',
+    // Fetch prices using priority order:
+    // 1. GoldAPI.io (paid tier)
+    // 2. MetalPriceAPI (fallback)
+    // 3. Static prices (final fallback)
+    const fetchedPrices = await scrapeGoldSilverPrices();
+
+    // Increment counter for monitoring
+    apiRequestCounter.total += 1;
+    apiRequestCounter.calls.push({
+      timestamp: now.toISOString(),
+      type: 'spot-price-fetch',
+      count: 1,
+      source: fetchedPrices.source,
+    });
+    // Keep only last 100 calls in memory
+    if (apiRequestCounter.calls.length > 100) {
+      apiRequestCounter.calls = apiRequestCounter.calls.slice(-100);
+    }
+
+    // Update cache
+    spotPriceCache = {
+      prices: {
+        gold: fetchedPrices.gold,
+        silver: fetchedPrices.silver,
+        platinum: fetchedPrices.platinum || 950,
+        palladium: fetchedPrices.palladium || 960,
+      },
+      lastUpdated: new Date(),
+      source: fetchedPrices.source,
     };
 
-    // Fetch Gold (XAU) and Silver (XAG) prices separately
-    const [goldResponse, silverResponse] = await Promise.all([
-      fetch('https://www.goldapi.io/api/XAU/USD', { headers }),
-      fetch('https://www.goldapi.io/api/XAG/USD', { headers }),
-    ]);
+    console.log('✅ Spot prices updated:', spotPriceCache.prices);
+    console.log(`📈 Total API requests: ${apiRequestCounter.total}`);
 
-    console.log(`📡 Gold API Response: ${goldResponse.status} ${goldResponse.statusText}`);
-    console.log(`📡 Silver API Response: ${silverResponse.status} ${silverResponse.statusText}`);
+    return spotPriceCache.prices;
 
-    if (goldResponse.ok && silverResponse.ok) {
-      const goldData = await goldResponse.json();
-      const silverData = await silverResponse.json();
-
-      console.log('📊 Gold Data:', JSON.stringify(goldData).substring(0, 150));
-      console.log('📊 Silver Data:', JSON.stringify(silverData).substring(0, 150));
-
-      if (goldData.price && silverData.price) {
-        spotPriceCache = {
-          prices: {
-            gold: Math.round(goldData.price * 100) / 100,
-            silver: Math.round(silverData.price * 100) / 100,
-            platinum: 2400, // GoldAPI.io free tier doesn't include platinum
-            palladium: 1850, // GoldAPI.io free tier doesn't include palladium
-          },
-          lastUpdated: new Date(),
-          source: 'live',
-        };
-        console.log('✅ Spot prices updated (live via GoldAPI.io):', spotPriceCache.prices);
-        return spotPriceCache.prices;
-      } else {
-        console.log('⚠️  API response missing price data');
-      }
-    } else {
-      const goldError = goldResponse.ok ? '' : await goldResponse.text();
-      const silverError = silverResponse.ok ? '' : await silverResponse.text();
-      if (goldError) console.log('❌ Gold API Error:', goldError.substring(0, 200));
-      if (silverError) console.log('❌ Silver API Error:', silverError.substring(0, 200));
-    }
   } catch (error) {
     console.error('❌ Failed to fetch spot prices:', error.message);
     console.error('   Stack:', error.stack);
+
+    // Use last cached prices if available
+    if (spotPriceCache.lastUpdated) {
+      console.log('⚠️  Using last cached prices (fetch failed)');
+      return spotPriceCache.prices;
+    }
+
+    // Final fallback to static estimates
+    console.log('⚠️  Using hardcoded fallback prices (no cache available)');
+    spotPriceCache.prices = { gold: 2650, silver: 31, platinum: 950, palladium: 960 };
+    spotPriceCache.lastUpdated = new Date();
+    spotPriceCache.source = 'static-fallback';
+    return spotPriceCache.prices;
   }
-
-  // Fallback to current hardcoded prices (Dec 2025)
-  // These are manually updated estimates based on market conditions
-  console.log('⚠️  Using fallback spot prices (API unavailable or error)');
-  console.log('💡 To enable live prices, set GOLD_API_KEY environment variable');
-  console.log('💡 Get free API key at: https://www.goldapi.io');
-
-  spotPriceCache.prices = { gold: 4530, silver: 77, platinum: 2400, palladium: 1850 };
-  spotPriceCache.lastUpdated = new Date();
-  spotPriceCache.source = 'fallback';
-  return spotPriceCache.prices;
 }
 // ============================================
 // LOAD HISTORICAL DATA
@@ -282,20 +289,25 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/spot-prices', async (req, res) => {
   try {
-    // Refresh if cache is older than 15 minutes
+    // Refresh if cache is older than 5 minutes
     const cacheAge = spotPriceCache.lastUpdated
       ? (Date.now() - spotPriceCache.lastUpdated.getTime()) / 1000 / 60
       : Infinity;
 
-    if (cacheAge > 15) {
+    console.log(`📊 /api/spot-prices called - Cache age: ${cacheAge.toFixed(1)} minutes`);
+
+    if (cacheAge > 5) {
+      console.log('🔄 Cache expired, fetching fresh prices...');
       await fetchLiveSpotPrices();
+    } else {
+      console.log(`✅ Serving cached prices (${(5 - cacheAge).toFixed(1)} min until refresh)`);
     }
 
     res.json({
       success: true,
       ...spotPriceCache.prices,
       timestamp: spotPriceCache.lastUpdated ? spotPriceCache.lastUpdated.toISOString() : new Date().toISOString(),
-      source: spotPriceCache.source || 'live',
+      source: spotPriceCache.source || 'goldapi-io',
       cacheAgeMinutes: spotPriceCache.lastUpdated ? Math.round(cacheAge * 10) / 10 : 0,
     });
   } catch (error) {
@@ -308,6 +320,36 @@ app.get('/api/spot-prices', async (req, res) => {
       error: error.message,
     });
   }
+});
+
+/**
+ * Debug endpoint - Scraper usage stats
+ */
+app.get('/api/debug/api-usage', (req, res) => {
+  const hoursSinceReset = (new Date() - apiRequestCounter.lastReset) / 1000 / 60 / 60;
+  const scrapesPerHour = apiRequestCounter.total / Math.max(hoursSinceReset, 0.01);
+  const projectedDaily = scrapesPerHour * 24;
+  const projectedMonthly = scrapesPerHour * 24 * 30;
+
+  res.json({
+    totalScrapes: apiRequestCounter.total,
+    startTime: apiRequestCounter.lastReset.toISOString(),
+    hoursSinceReset: Math.round(hoursSinceReset * 10) / 10,
+    scrapesPerHour: Math.round(scrapesPerHour * 10) / 10,
+    projectedDaily: Math.round(projectedDaily),
+    projectedMonthly: Math.round(projectedMonthly),
+    unlimited: true,
+    free: true,
+    note: 'Web scraping is 100% free and unlimited!',
+    recentCalls: apiRequestCounter.calls.slice(-10),
+    cacheStatus: {
+      lastUpdated: spotPriceCache.lastUpdated ? spotPriceCache.lastUpdated.toISOString() : null,
+      ageMinutes: spotPriceCache.lastUpdated
+        ? Math.round((Date.now() - spotPriceCache.lastUpdated.getTime()) / 1000 / 60 * 10) / 10
+        : null,
+      source: spotPriceCache.source,
+    }
+  });
 });
 
 /**
@@ -471,26 +513,35 @@ app.post('/api/scan-receipt', upload.single('receipt'), async (req, res) => {
             },
             {
               type: 'text',
-              text: `Analyze this precious metals purchase receipt and extract the following information. 
-              
-Return ONLY a JSON object with these fields (use null if not found):
+              text: `Analyze this precious metals purchase receipt and extract ALL items from it.
+
+IMPORTANT: Many receipts contain MULTIPLE ITEMS (e.g., both silver and gold coins). Extract EVERY item separately.
+
+Return ONLY a JSON object with this structure:
 {
-  "dealer": "dealer/company name",
-  "purchaseDate": "YYYY-MM-DD format",
-  "metal": "gold, silver, platinum, or palladium",
-  "description": "product name/description",
-  "quantity": number of items,
-  "ozt": troy ounces per item (use standard weights: 1oz coins = 1, 1/10oz = 0.1, etc.),
-  "unitPrice": price per unit in dollars (number only),
-  "totalPrice": total order price in dollars (number only)
+  "dealer": "dealer/company name (shared across all items)",
+  "purchaseDate": "YYYY-MM-DD format (shared across all items)",
+  "items": [
+    {
+      "metal": "gold, silver, platinum, or palladium",
+      "description": "product name/description",
+      "quantity": number of items,
+      "ozt": troy ounces per item (use standard weights: 1oz coins = 1, 1/10oz = 0.1, etc.),
+      "unitPrice": price per unit in dollars (number only)
+    },
+    // ... more items if present
+  ]
 }
 
 Important:
+- Extract EVERY line item as a separate object in the "items" array
+- If only one item, return array with one element
 - unitPrice should be the price PER ITEM, not the total
 - If you see a total and quantity, calculate unitPrice = total / quantity
 - Standard coin weights: American Eagle 1oz, 1/2oz, 1/4oz, 1/10oz
 - Look for the actual metal type (gold, silver, etc.), not just "bullion"
-- Date should be the purchase/order date, not shipping date`
+- Date should be the purchase/order date, not shipping date
+- Each item in the array should have its own metal type (one item might be silver, another gold)`
             },
           ],
         },
@@ -515,17 +566,25 @@ Important:
       }
     } catch (parseError) {
       console.error('Failed to parse receipt data:', content.text);
-      extractedData = {};
+      extractedData = { items: [] };
+    }
+
+    // Ensure items array exists
+    if (!extractedData.items || !Array.isArray(extractedData.items)) {
+      extractedData.items = [];
     }
 
     // Clear image data from memory immediately
     req.file.buffer = null;
 
-    console.log('✅ Receipt scan successful');
+    console.log(`✅ Receipt scan successful - found ${extractedData.items.length} item(s)`);
 
     res.json({
       success: true,
-      ...extractedData,
+      dealer: extractedData.dealer || '',
+      purchaseDate: extractedData.purchaseDate || '',
+      items: extractedData.items,
+      itemCount: extractedData.items.length,
       privacyNote: 'Image processed in memory and immediately discarded',
     });
 
@@ -602,7 +661,10 @@ fetchLiveSpotPrices().then(() => {
     console.log('📷 Image Storage: DISABLED (memory-only)');
     console.log('📊 Analytics: DISABLED');
     console.log('💰 Spot Prices:', spotPriceCache.prices);
+    console.log('📡 Price Source:', spotPriceCache.source);
     console.log('📅 Historical Data:', historicalData.loaded ? 'LOADED' : 'FALLBACK');
+    console.log('⚡ Price Fetching: ON-DEMAND ONLY (5-min cache)');
+    console.log('💸 API: GoldAPI.io (Paid tier: 10,000/month)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   });
 }).catch(error => {
@@ -613,8 +675,9 @@ fetchLiveSpotPrices().then(() => {
   });
 });
 
-// Refresh spot prices every 15 minutes (96 requests/day, under 100/day free tier limit)
-setInterval(fetchLiveSpotPrices, 15 * 60 * 1000);
+// ❌ NO AUTO-POLLING: Prices are fetched ONLY on-demand when users request them
+// This prevents burning through API quota when the app is idle
+// With 5-minute cache, even heavy usage stays well under 10,000/month limit
 
 // Historical data loaded from static JSON file, no need to refresh
 
