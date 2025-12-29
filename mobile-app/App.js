@@ -763,71 +763,59 @@ export default function App() {
           summary += `: ${parts.join(', ')}`;
         }
 
-        // Process each item and add to holdings
-        let addedCount = 0;
-        for (const item of items) {
-          const extractedMetal = item.metal === 'gold' ? 'gold' : 'silver';
+        // Take the first item and pre-fill the form
+        const firstItem = items[0];
+        const extractedMetal = firstItem.metal === 'gold' ? 'gold' : 'silver';
 
-          // Get historical spot price for this item
-          let spotPrice = '';
-          if (purchaseDate.length === 10) {
-            const historicalPrice = await fetchHistoricalSpot(purchaseDate, extractedMetal);
-            if (historicalPrice) spotPrice = historicalPrice.toString();
-          }
-
-          const unitPrice = parseFloat(item.unitPrice) || 0;
-          const ozt = parseFloat(item.ozt) || 0;
-          const spotNum = parseFloat(spotPrice) || 0;
-          let premium = '0';
-          if (unitPrice > 0 && spotNum > 0 && ozt > 0) {
-            premium = (unitPrice - (spotNum * ozt)).toFixed(2);
-          }
-
-          // Create holding for this item
-          const newItem = {
-            id: Date.now() + addedCount, // Unique ID for each item
-            productName: item.description || '',
-            source: dealer,
-            datePurchased: purchaseDate,
-            ozt: parseFloat(item.ozt) || 0,
-            quantity: parseInt(item.quantity) || 1,
-            unitPrice: parseFloat(item.unitPrice) || 0,
-            taxes: 0,
-            shipping: 0,
-            spotPrice: parseFloat(spotPrice) || 0,
-            premium: parseFloat(premium) || 0,
-          };
-
-          // Add to appropriate holdings array
-          if (extractedMetal === 'silver') {
-            setSilverItems(prev => [...prev, newItem]);
-          } else {
-            setGoldItems(prev => [...prev, newItem]);
-          }
-
-          addedCount++;
+        // Get historical spot price for this item
+        let spotPrice = '';
+        if (purchaseDate.length === 10) {
+          const historicalPrice = await fetchHistoricalSpot(purchaseDate, extractedMetal);
+          if (historicalPrice) spotPrice = historicalPrice.toString();
         }
 
-        // Show success with summary
+        const unitPrice = parseFloat(firstItem.unitPrice) || 0;
+        const ozt = parseFloat(firstItem.ozt) || 0;
+        const spotNum = parseFloat(spotPrice) || 0;
+        let premium = '0';
+        if (unitPrice > 0 && spotNum > 0 && ozt > 0) {
+          premium = (unitPrice - (spotNum * ozt)).toFixed(2);
+        }
+
+        // Pre-fill the form with scanned data
+        setForm({
+          productName: firstItem.description || '',
+          source: dealer,
+          datePurchased: purchaseDate,
+          ozt: firstItem.ozt ? firstItem.ozt.toString() : '',
+          quantity: firstItem.quantity ? firstItem.quantity.toString() : '1',
+          unitPrice: firstItem.unitPrice ? firstItem.unitPrice.toString() : '',
+          taxes: '0',
+          shipping: '0',
+          spotPrice: spotPrice,
+          premium: premium,
+        });
+
+        // Set metal tab to match the scanned item
+        setMetalTab(extractedMetal);
+
+        // Show success message
         setScanStatus('success');
-        setScanMessage(summary);
+        setScanMessage(`${summary}. Review and tap "Add Purchase" to save.`);
 
-        // Set metal tab to the most common metal, or 'both' if mixed
-        if (silverCount > 0 && goldCount > 0) {
-          setMetalTab('both');
-        } else if (goldCount > 0) {
-          setMetalTab('gold');
-        } else {
-          setMetalTab('silver');
+        // Keep the modal open for user review
+        if (__DEV__) console.log(`✅ Pre-filled form with scanned data`);
+
+        // If multiple items, warn the user
+        if (items.length > 1) {
+          setTimeout(() => {
+            Alert.alert(
+              'Multiple Items Found',
+              `Found ${items.length} items on receipt. The first item has been pre-filled. You'll need to add the others manually.`,
+              [{ text: 'OK' }]
+            );
+          }, 500);
         }
-
-        // Close the add modal since we've already added the items
-        setTimeout(() => {
-          setShowAddModal(false);
-          resetForm();
-        }, 2000);
-
-        if (__DEV__) console.log(`✅ Added ${addedCount} items to holdings`);
       } else {
         if (__DEV__) console.log('⚠️ Server returned success=false or no items found');
         setScanStatus('error');
@@ -1211,7 +1199,11 @@ export default function App() {
       </View>
 
       {/* Main Content */}
-      <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
 
         {/* DASHBOARD TAB */}
         {tab === 'dashboard' && (
@@ -1632,6 +1624,9 @@ export default function App() {
                       onChangeText={setPromoCode}
                       autoCapitalize="characters"
                       autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={() => validatePromoCode(promoCode)}
+                      blurOnSubmit={true}
                     />
                     <TouchableOpacity
                       style={{
@@ -1652,7 +1647,7 @@ export default function App() {
           </>
         )}
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: tab === 'settings' ? 300 : 100 }} />
       </ScrollView>
 
       {/* Bottom Tabs */}
