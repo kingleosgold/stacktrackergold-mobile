@@ -289,18 +289,18 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/spot-prices', async (req, res) => {
   try {
-    // Refresh if cache is older than 5 minutes
+    // Refresh if cache is older than 10 minutes
     const cacheAge = spotPriceCache.lastUpdated
       ? (Date.now() - spotPriceCache.lastUpdated.getTime()) / 1000 / 60
       : Infinity;
 
     console.log(`📊 /api/spot-prices called - Cache age: ${cacheAge.toFixed(1)} minutes`);
 
-    if (cacheAge > 5) {
+    if (cacheAge > 10) {
       console.log('🔄 Cache expired, fetching fresh prices...');
       await fetchLiveSpotPrices();
     } else {
-      console.log(`✅ Serving cached prices (${(5 - cacheAge).toFixed(1)} min until refresh)`);
+      console.log(`✅ Serving cached prices (${(10 - cacheAge).toFixed(1)} min until refresh)`);
     }
 
     res.json({
@@ -663,8 +663,8 @@ fetchLiveSpotPrices().then(() => {
     console.log('💰 Spot Prices:', spotPriceCache.prices);
     console.log('📡 Price Source:', spotPriceCache.source);
     console.log('📅 Historical Data:', historicalData.loaded ? 'LOADED' : 'FALLBACK');
-    console.log('⚡ Price Fetching: ON-DEMAND ONLY (5-min cache)');
-    console.log('💸 API: GoldAPI.io (Paid tier: 10,000/month)');
+    console.log('⚡ Price Fetching: ON-DEMAND ONLY (10-min cache)');
+    console.log('💸 API: MetalPriceAPI Primary, GoldAPI Fallback (10,000/month each)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   });
 }).catch(error => {
@@ -677,7 +677,7 @@ fetchLiveSpotPrices().then(() => {
 
 // ❌ NO AUTO-POLLING: Prices are fetched ONLY on-demand when users request them
 // This prevents burning through API quota when the app is idle
-// With 5-minute cache, even heavy usage stays well under 10,000/month limit
+// With 10-minute cache, even heavy usage stays well under 10,000/month limit
 
 // Historical data loaded from static JSON file, no need to refresh
 

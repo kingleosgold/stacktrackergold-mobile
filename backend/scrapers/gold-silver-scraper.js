@@ -2,8 +2,8 @@
  * Stack Tracker Pro - Gold & Silver Price Fetcher
  *
  * Priority order:
- * 1. GoldAPI.io (Paid tier: 10,000 requests/month)
- * 2. MetalPriceAPI (Fallback if GoldAPI fails)
+ * 1. MetalPriceAPI (Basic plan: 10,000 requests/month)
+ * 2. GoldAPI.io (Fallback if MetalPriceAPI fails)
  * 3. Static prices (Final fallback)
  */
 
@@ -16,56 +16,7 @@ const axios = require('axios');
 async function scrapeGoldSilverPrices() {
   console.log('🔍 Fetching live spot prices...');
 
-  // PRIORITY 1: Try GoldAPI.io (Paid tier - 10,000/month)
-  try {
-    const API_KEY = process.env.GOLD_API_KEY;
-
-    if (!API_KEY) {
-      console.log('⚠️  No GOLD_API_KEY found, skipping GoldAPI.io');
-      throw new Error('No GoldAPI key configured');
-    }
-
-    console.log('📡 Attempting GoldAPI.io (paid tier)...');
-
-    const [goldRes, silverRes] = await Promise.all([
-      axios.get('https://www.goldapi.io/api/XAU/USD', {
-        headers: {
-          'x-access-token': API_KEY,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000,
-      }),
-      axios.get('https://www.goldapi.io/api/XAG/USD', {
-        headers: {
-          'x-access-token': API_KEY,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000,
-      }),
-    ]);
-
-    if (goldRes.data && silverRes.data && goldRes.data.price && silverRes.data.price) {
-      const result = {
-        gold: Math.round(goldRes.data.price * 100) / 100,
-        silver: Math.round(silverRes.data.price * 100) / 100,
-        platinum: 950, // Not available in free/paid tier
-        palladium: 960, // Not available in free/paid tier
-        timestamp: new Date().toISOString(),
-        source: 'goldapi-io',
-      };
-
-      console.log(`💰 Gold Spot: $${result.gold}/oz (GoldAPI.io)`);
-      console.log(`🥈 Silver Spot: $${result.silver}/oz (GoldAPI.io)`);
-      console.log('✅ Successfully fetched prices via GoldAPI.io (primary source)');
-
-      return result;
-    }
-  } catch (goldapiError) {
-    console.warn('⚠️  GoldAPI.io failed:', goldapiError.message);
-    console.log('   Falling back to MetalPriceAPI...');
-  }
-
-  // PRIORITY 2: Try MetalPriceAPI (Fallback)
+  // PRIORITY 1: Try MetalPriceAPI (Basic plan - 10,000/month)
   try {
     const METAL_API_KEY = process.env.METAL_PRICE_API_KEY;
 
@@ -74,7 +25,7 @@ async function scrapeGoldSilverPrices() {
       throw new Error('No MetalPriceAPI key configured');
     }
 
-    console.log('📡 Attempting MetalPriceAPI (fallback)...');
+    console.log('📡 Attempting MetalPriceAPI (primary source)...');
 
     const response = await axios.get(`https://api.metalpriceapi.com/v1/latest?api_key=${METAL_API_KEY}&base=USD&currencies=XAU,XAG,XPT,XPD`, {
       headers: {
@@ -118,12 +69,61 @@ async function scrapeGoldSilverPrices() {
 
       console.log(`💰 Gold Spot: $${result.gold}/oz (MetalPriceAPI)`);
       console.log(`🥈 Silver Spot: $${result.silver}/oz (MetalPriceAPI)`);
-      console.log('✅ Successfully fetched prices via MetalPriceAPI (fallback)');
+      console.log('✅ Successfully fetched prices via MetalPriceAPI (primary source)');
 
       return result;
     }
   } catch (metalError) {
     console.warn('⚠️  MetalPriceAPI failed:', metalError.message);
+    console.log('   Falling back to GoldAPI.io...');
+  }
+
+  // PRIORITY 2: Try GoldAPI.io (Fallback)
+  try {
+    const API_KEY = process.env.GOLD_API_KEY;
+
+    if (!API_KEY) {
+      console.log('⚠️  No GOLD_API_KEY found, skipping GoldAPI.io');
+      throw new Error('No GoldAPI key configured');
+    }
+
+    console.log('📡 Attempting GoldAPI.io (fallback)...');
+
+    const [goldRes, silverRes] = await Promise.all([
+      axios.get('https://www.goldapi.io/api/XAU/USD', {
+        headers: {
+          'x-access-token': API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000,
+      }),
+      axios.get('https://www.goldapi.io/api/XAG/USD', {
+        headers: {
+          'x-access-token': API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000,
+      }),
+    ]);
+
+    if (goldRes.data && silverRes.data && goldRes.data.price && silverRes.data.price) {
+      const result = {
+        gold: Math.round(goldRes.data.price * 100) / 100,
+        silver: Math.round(silverRes.data.price * 100) / 100,
+        platinum: 950, // Not available in free/paid tier
+        palladium: 960, // Not available in free/paid tier
+        timestamp: new Date().toISOString(),
+        source: 'goldapi-io',
+      };
+
+      console.log(`💰 Gold Spot: $${result.gold}/oz (GoldAPI.io)`);
+      console.log(`🥈 Silver Spot: $${result.silver}/oz (GoldAPI.io)`);
+      console.log('✅ Successfully fetched prices via GoldAPI.io (fallback)');
+
+      return result;
+    }
+  } catch (goldapiError) {
+    console.warn('⚠️  GoldAPI.io failed:', goldapiError.message);
     console.log('   Falling back to static prices...');
   }
 
