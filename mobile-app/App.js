@@ -197,6 +197,13 @@ export default function App() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState([]);
+  const [showDetailView, setShowDetailView] = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [detailMetal, setDetailMetal] = useState(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
+  // Sort State
+  const [sortBy, setSortBy] = useState('date-newest'); // date-newest, date-oldest, value-high, value-low, metal, name
 
   // Entitlements
   const [hasGold, setHasGold] = useState(false);
@@ -972,19 +979,72 @@ export default function App() {
   };
 
   const deleteItem = (id, metal) => {
-    Alert.alert('Delete Item', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: () => {
-          // Haptic feedback on delete
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    // Haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-          if (metal === 'silver') setSilverItems(prev => prev.filter(i => i.id !== id));
-          else setGoldItems(prev => prev.filter(i => i.id !== id));
+    Alert.alert(
+      'Delete Item',
+      'Are you sure you want to delete this item? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            // Haptic feedback on delete
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+            if (metal === 'silver') setSilverItems(prev => prev.filter(i => i.id !== id));
+            else setGoldItems(prev => prev.filter(i => i.id !== id));
+
+            // Close detail view if open
+            if (showDetailView) {
+              setShowDetailView(false);
+              setDetailItem(null);
+              setDetailMetal(null);
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
+  };
+
+  const viewItemDetail = (item, metal) => {
+    setDetailItem(item);
+    setDetailMetal(metal);
+    setShowDetailView(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const sortItems = (items, metal) => {
+    const itemsWithMetal = items.map(item => ({ ...item, metal }));
+    const spot = metal === 'silver' ? silverSpot : goldSpot;
+
+    switch (sortBy) {
+      case 'date-newest':
+        return [...itemsWithMetal].sort((a, b) => {
+          if (!a.datePurchased) return 1;
+          if (!b.datePurchased) return -1;
+          return new Date(b.datePurchased) - new Date(a.datePurchased);
+        });
+      case 'date-oldest':
+        return [...itemsWithMetal].sort((a, b) => {
+          if (!a.datePurchased) return 1;
+          if (!b.datePurchased) return -1;
+          return new Date(a.datePurchased) - new Date(b.datePurchased);
+        });
+      case 'value-high':
+        return [...itemsWithMetal].sort((a, b) => (b.ozt * b.quantity * spot) - (a.ozt * a.quantity * spot));
+      case 'value-low':
+        return [...itemsWithMetal].sort((a, b) => (a.ozt * a.quantity * spot) - (b.ozt * b.quantity * spot));
+      case 'name':
+        return [...itemsWithMetal].sort((a, b) => a.productName.localeCompare(b.productName));
+      case 'metal':
+        // Already filtered by metal in most cases
+        return itemsWithMetal;
+      default:
+        return itemsWithMetal;
+    }
   };
 
   const editItem = (item, metal) => {
@@ -1231,9 +1291,20 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={[styles.button, { backgroundColor: currentColor, marginBottom: 12 }]} onPress={handleAddPurchase}>
-              <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Purchase</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: currentColor }]} onPress={handleAddPurchase}>
+                <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Purchase</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.buttonOutline, { paddingHorizontal: 16 }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowSortMenu(true);
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: 18 }}>⬍⬍</Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity style={[styles.buttonOutline, { marginBottom: 16 }]} onPress={importSpreadsheet}>
               <Text style={{ color: colors.text, fontWeight: '600' }}>📊 Import from Spreadsheet</Text>
@@ -1242,12 +1313,15 @@ export default function App() {
             {/* Show filtered items or both with grouping */}
             {metalTab !== 'both' ? (
               <>
-                {items.map(item => {
+                {sortItems(items, metalTab).map(item => {
                   const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
                   return (
-                    <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, metalTab)} onLongPress={() => deleteItem(item.id, metalTab)}>
+                    <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => viewItemDetail(item, metalTab)} onLongPress={() => deleteItem(item.id, metalTab)}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.itemTitle}>{item.productName}</Text>
+                        {item.datePurchased && (
+                          <Text style={[styles.itemSubtitle, { fontSize: 11, marginBottom: 2 }]}>📅 {item.datePurchased}</Text>
+                        )}
                         <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
                         <Text style={[styles.itemSubtitle, { color: colors.gold }]}>
                           Premium: ${formatCurrency(item.premium * item.quantity)}
@@ -1279,12 +1353,15 @@ export default function App() {
                       <Text style={{ color: colors.silver, fontWeight: '600', marginHorizontal: 12 }}>🥈 SILVER ({silverItems.length})</Text>
                       <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
                     </View>
-                    {silverItems.map(item => {
+                    {sortItems(silverItems, 'silver').map(item => {
                       const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
                       return (
-                        <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, 'silver')} onLongPress={() => deleteItem(item.id, 'silver')}>
+                        <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => viewItemDetail(item, 'silver')} onLongPress={() => deleteItem(item.id, 'silver')}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.itemTitle}>{item.productName}</Text>
+                            {item.datePurchased && (
+                              <Text style={[styles.itemSubtitle, { fontSize: 11, marginBottom: 2 }]}>📅 {item.datePurchased}</Text>
+                            )}
                             <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
                             <Text style={[styles.itemSubtitle, { color: colors.gold }]}>
                               Premium: ${formatCurrency(item.premium * item.quantity)}
@@ -1309,12 +1386,15 @@ export default function App() {
                       <Text style={{ color: colors.gold, fontWeight: '600', marginHorizontal: 12 }}>🥇 GOLD ({goldItems.length})</Text>
                       <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
                     </View>
-                    {goldItems.map(item => {
+                    {sortItems(goldItems, 'gold').map(item => {
                       const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
                       return (
-                        <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => editItem(item, 'gold')} onLongPress={() => deleteItem(item.id, 'gold')}>
+                        <TouchableOpacity key={item.id} style={styles.itemCard} onPress={() => viewItemDetail(item, 'gold')} onLongPress={() => deleteItem(item.id, 'gold')}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.itemTitle}>{item.productName}</Text>
+                            {item.datePurchased && (
+                              <Text style={[styles.itemSubtitle, { fontSize: 11, marginBottom: 2 }]}>📅 {item.datePurchased}</Text>
+                            )}
                             <Text style={styles.itemSubtitle}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
                             <Text style={[styles.itemSubtitle, { color: colors.gold }]}>
                               Premium: ${formatCurrency(item.premium * item.quantity)}
@@ -1719,6 +1799,175 @@ export default function App() {
             <Text style={{ color: '#000', fontWeight: '600' }}>Import {importData.length} Items</Text>
           </TouchableOpacity>
         </View>
+      </ModalWrapper>
+
+      {/* Detail View Modal */}
+      <ModalWrapper
+        visible={showDetailView}
+        onClose={() => {
+          setShowDetailView(false);
+          setDetailItem(null);
+          setDetailMetal(null);
+        }}
+        title="Item Details"
+      >
+        {detailItem && (
+          <>
+            <View style={styles.card}>
+              <Text style={[styles.cardTitle, { fontSize: 20 }]}>{detailItem.productName}</Text>
+              {detailItem.datePurchased && (
+                <View style={styles.statRow}>
+                  <Text style={styles.statRowLabel}>📅 Purchase Date</Text>
+                  <Text style={styles.statRowValue}>{detailItem.datePurchased}</Text>
+                </View>
+              )}
+              {detailItem.source && (
+                <View style={styles.statRow}>
+                  <Text style={styles.statRowLabel}>🏪 Source</Text>
+                  <Text style={styles.statRowValue}>{detailItem.source}</Text>
+                </View>
+              )}
+              <View style={styles.divider} />
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Quantity</Text>
+                <Text style={styles.statRowValue}>{detailItem.quantity}x</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Unit Price</Text>
+                <Text style={styles.statRowValue}>${formatCurrency(detailItem.unitPrice)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Troy Ounces (each)</Text>
+                <Text style={styles.statRowValue}>{detailItem.ozt} oz</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Total Weight</Text>
+                <Text style={styles.statRowValue}>{(detailItem.ozt * detailItem.quantity).toFixed(2)} oz</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Premium (per unit)</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold }]}>${formatCurrency(detailItem.premium)}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={styles.statRowLabel}>Total Premium</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold }]}>
+                  ${formatCurrency(detailItem.premium * detailItem.quantity)}
+                </Text>
+              </View>
+              {detailItem.taxes > 0 && (
+                <View style={styles.statRow}>
+                  <Text style={styles.statRowLabel}>Taxes</Text>
+                  <Text style={styles.statRowValue}>${formatCurrency(detailItem.taxes)}</Text>
+                </View>
+              )}
+              {detailItem.shipping > 0 && (
+                <View style={styles.statRow}>
+                  <Text style={styles.statRowLabel}>Shipping</Text>
+                  <Text style={styles.statRowValue}>${formatCurrency(detailItem.shipping)}</Text>
+                </View>
+              )}
+              <View style={styles.divider} />
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: 14, fontWeight: '600' }]}>Total Cost Basis</Text>
+                <Text style={[styles.statRowValue, { fontSize: 16 }]}>
+                  ${formatCurrency((detailItem.unitPrice * detailItem.quantity) + detailItem.taxes + detailItem.shipping)}
+                </Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: 14, fontWeight: '600' }]}>Current Melt Value</Text>
+                <Text style={[styles.statRowValue, { fontSize: 16, color: detailMetal === 'silver' ? colors.silver : colors.gold }]}>
+                  ${formatCurrency(detailItem.ozt * detailItem.quantity * (detailMetal === 'silver' ? silverSpot : goldSpot))}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.button, { flex: 1, backgroundColor: detailMetal === 'silver' ? colors.silver : colors.gold }]}
+                onPress={() => {
+                  setShowDetailView(false);
+                  editItem(detailItem, detailMetal);
+                }}
+              >
+                <Text style={{ color: '#000', fontWeight: '600' }}>✏️ Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.buttonOutline, { flex: 1, borderColor: colors.error }]}
+                onPress={() => deleteItem(detailItem.id, detailMetal)}
+              >
+                <Text style={{ color: colors.error, fontWeight: '600' }}>🗑 Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </ModalWrapper>
+
+      {/* Sort Menu Modal */}
+      <ModalWrapper
+        visible={showSortMenu}
+        onClose={() => setShowSortMenu(false)}
+        title="Sort Holdings"
+      >
+        <TouchableOpacity
+          style={[styles.card, sortBy === 'date-newest' && { backgroundColor: 'rgba(251,191,36,0.15)', borderColor: colors.gold }]}
+          onPress={() => {
+            setSortBy('date-newest');
+            setShowSortMenu(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <Text style={[styles.cardTitle, { marginBottom: 0 }]}>📅 Date (Newest First)</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Most recent purchases first</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, sortBy === 'date-oldest' && { backgroundColor: 'rgba(251,191,36,0.15)', borderColor: colors.gold }]}
+          onPress={() => {
+            setSortBy('date-oldest');
+            setShowSortMenu(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <Text style={[styles.cardTitle, { marginBottom: 0 }]}>📅 Date (Oldest First)</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Earliest purchases first</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, sortBy === 'value-high' && { backgroundColor: 'rgba(251,191,36,0.15)', borderColor: colors.gold }]}
+          onPress={() => {
+            setSortBy('value-high');
+            setShowSortMenu(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <Text style={[styles.cardTitle, { marginBottom: 0 }]}>💰 Value (High to Low)</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Highest melt value first</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, sortBy === 'value-low' && { backgroundColor: 'rgba(251,191,36,0.15)', borderColor: colors.gold }]}
+          onPress={() => {
+            setSortBy('value-low');
+            setShowSortMenu(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <Text style={[styles.cardTitle, { marginBottom: 0 }]}>💰 Value (Low to High)</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Lowest melt value first</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, sortBy === 'name' && { backgroundColor: 'rgba(251,191,36,0.15)', borderColor: colors.gold }]}
+          onPress={() => {
+            setSortBy('name');
+            setShowSortMenu(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <Text style={[styles.cardTitle, { marginBottom: 0 }]}>🔤 Name (A-Z)</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Alphabetical by product name</Text>
+        </TouchableOpacity>
       </ModalWrapper>
 
       {/* First Launch Tutorial */}
