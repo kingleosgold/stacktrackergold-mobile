@@ -292,6 +292,12 @@ export default function App() {
   const avgSilverCostPerOz = totalSilverOzt > 0 ? (silverCostBasis / totalSilverOzt) : 0;
   const avgGoldCostPerOz = totalGoldOzt > 0 ? (goldCostBasis / totalGoldOzt) : 0;
 
+  // Daily change calculation (updates with spot price changes)
+  const dailyChange = midnightValue !== null ? (totalMeltValue - midnightValue) : 0;
+  const dailyChangePct = (midnightValue !== null && midnightValue > 0) ? ((dailyChange / midnightValue) * 100) : 0;
+  const isDailyChangePositive = dailyChange >= 0;
+  const showDailyChange = midnightValue !== null && midnightDate === new Date().toDateString();
+
   // Speculation
   const specSilverNum = parseFloat(specSilverPrice) || silverSpot;
   const specGoldNum = parseFloat(specGoldPrice) || goldSpot;
@@ -1359,27 +1365,17 @@ export default function App() {
             {/* Today's Change */}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>📅 Today's Change</Text>
-              {midnightValue !== null && midnightDate === new Date().toDateString() ? (
+              {showDailyChange ? (
                 <>
-                  {(() => {
-                    const dailyChange = totalMeltValue - midnightValue;
-                    const dailyChangePct = midnightValue > 0 ? ((dailyChange / midnightValue) * 100) : 0;
-                    const isPositive = dailyChange >= 0;
-
-                    return (
-                      <>
-                        <Text style={{ color: isPositive ? colors.success : colors.error, fontSize: 32, fontWeight: '700', marginBottom: 4 }}>
-                          {isPositive ? '+' : ''}{dailyChange >= 0 ? '' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </Text>
-                        <Text style={{ color: isPositive ? colors.success : colors.error, fontSize: 16 }}>
-                          {isPositive ? '▲' : '▼'} {isPositive ? '+' : ''}{dailyChangePct.toFixed(2)}%
-                        </Text>
-                        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
-                          Since midnight (${midnightValue.toLocaleString(undefined, { minimumFractionDigits: 2 })})
-                        </Text>
-                      </>
-                    );
-                  })()}
+                  <Text style={{ color: isDailyChangePositive ? colors.success : colors.error, fontSize: 32, fontWeight: '700', marginBottom: 4 }}>
+                    {isDailyChangePositive ? '+' : ''}{dailyChange >= 0 ? '' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </Text>
+                  <Text style={{ color: isDailyChangePositive ? colors.success : colors.error, fontSize: 16 }}>
+                    {isDailyChangePositive ? '▲' : '▼'} {isDailyChangePositive ? '+' : ''}{dailyChangePct.toFixed(2)}%
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
+                    Since midnight (${midnightValue.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                  </Text>
                 </>
               ) : (
                 <View style={{ paddingVertical: 12 }}>
