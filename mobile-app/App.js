@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   Alert, Modal, Platform, SafeAreaView, StatusBar, ActivityIndicator,
-  Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions, AppState,
+  Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions, AppState, FlatList,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -1171,6 +1171,35 @@ export default function App() {
     setShowAddModal(true);
   };
 
+  // Edit an imported item before confirming import
+  const editImportedItem = (index) => {
+    const item = importData[index];
+
+    // Pre-fill form with imported item data
+    setForm({
+      productName: item.productName || '',
+      source: item.source || '',
+      datePurchased: item.datePurchased || '',
+      ozt: item.ozt ? item.ozt.toString() : '',
+      quantity: item.quantity ? item.quantity.toString() : '1',
+      unitPrice: item.unitPrice ? item.unitPrice.toString() : '',
+      taxes: '0',
+      shipping: '0',
+      spotPrice: '0',
+      premium: '0',
+    });
+
+    // Set metal tab
+    setMetalTab(item.metal || 'silver');
+
+    // Store the index so we can update it after editing
+    setEditingItem({ ...item, importIndex: index });
+
+    // Close preview modal and open edit modal
+    setShowImportPreview(false);
+    setShowAddModal(true);
+  };
+
   // ============================================
   // CRUD OPERATIONS
   // ============================================
@@ -1208,6 +1237,30 @@ export default function App() {
       resetForm();
       setShowAddModal(false);
       setShowScannedItemsPreview(true);
+      return;
+    }
+
+    // Check if editing an imported item
+    if (editingItem && editingItem.importIndex !== undefined) {
+      // Update the imported item and return to preview
+      const updatedItem = {
+        productName: form.productName,
+        source: form.source,
+        datePurchased: form.datePurchased,
+        ozt: parseFloat(form.ozt) || 0,
+        quantity: parseInt(form.quantity) || 1,
+        unitPrice: parseFloat(form.unitPrice) || 0,
+        metal: metalTab,
+      };
+
+      const updatedImportData = [...importData];
+      updatedImportData[editingItem.importIndex] = updatedItem;
+      setImportData(updatedImportData);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      resetForm();
+      setShowAddModal(false);
+      setShowImportPreview(true);
       return;
     }
 
@@ -2224,59 +2277,108 @@ export default function App() {
       </ModalWrapper>
 
       {/* Import Preview Modal */}
-      <ModalWrapper
-        visible={showImportPreview}
-        onClose={() => {
-          setShowImportPreview(false);
-          setImportData([]);
-        }}
-        title="Import Preview"
-      >
-        <Text style={{ color: colors.text, marginBottom: 16 }}>
-          Found {importData.length} items. Review and confirm import:
-        </Text>
-
-        {importData.slice(0, 10).map((item, index) => (
-          <View key={index} style={[styles.card, { marginBottom: 8, padding: 12 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ color: colors.text, fontWeight: '600' }}>{item.productName}</Text>
-              <Text style={{ color: item.metal === 'silver' ? colors.silver : colors.gold }}>
-                {item.metal.toUpperCase()}
-              </Text>
+      {/* Import Preview Modal - Custom structure for FlatList */}
+      <Modal visible={showImportPreview} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Import Preview</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowImportPreview(false);
+                  setImportData([]);
+                }}
+                style={styles.closeButton}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              >
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>
-              {item.quantity}x @ ${item.unitPrice} • {item.ozt} oz
-            </Text>
-            {item.source && (
-              <Text style={{ color: colors.muted, fontSize: 11 }}>From: {item.source}</Text>
-            )}
+
+            {/* FlatList with header and footer */}
+            <FlatList
+              data={importData}
+              keyExtractor={(item, index) => index.toString()}
+              ListHeaderComponent={
+                <Text style={{ color: colors.text, marginBottom: 16, fontWeight: '600', paddingHorizontal: 20 }}>
+                  Found {importData.length} item{importData.length > 1 ? 's' : ''}. Tap any item to edit before importing:
+                </Text>
+              }
+              contentContainerStyle={{ paddingBottom: 20 }}
+              renderItem={({ item, index }) => {
+                const itemColor = item.metal === 'silver' ? colors.silver : colors.gold;
+
+                return (
+                  <View style={[styles.card, { marginBottom: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: itemColor, marginHorizontal: 20 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{item.productName}</Text>
+                        <Text style={{ color: itemColor, fontSize: 12, marginTop: 2 }}>
+                          {item.metal.toUpperCase()} • {item.ozt} oz{item.quantity > 1 ? ` • Qty: ${item.quantity}` : ''}
+                        </Text>
+                      </View>
+                      <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>
+                        ${(item.unitPrice * item.quantity).toFixed(2)}
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                      <Text style={{ color: colors.muted, fontSize: 11 }}>
+                        ${item.unitPrice.toFixed(2)} per item
+                      </Text>
+                      {item.datePurchased && (
+                        <Text style={{ color: colors.muted, fontSize: 11 }}>
+                          {item.datePurchased}
+                        </Text>
+                      )}
+                    </View>
+
+                    {item.source && (
+                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                        From: {item.source}
+                      </Text>
+                    )}
+
+                    <TouchableOpacity
+                      style={{
+                        marginTop: 8,
+                        paddingVertical: 6,
+                        paddingHorizontal: 12,
+                        backgroundColor: 'rgba(251,191,36,0.2)',
+                        borderRadius: 6,
+                        alignSelf: 'flex-start',
+                      }}
+                      onPress={() => editImportedItem(index)}
+                    >
+                      <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '600' }}>✏️ Edit</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            />
+
+            {/* Footer buttons */}
+            <View style={{ flexDirection: 'row', gap: 8, padding: 20, paddingTop: 0 }}>
+              <TouchableOpacity
+                style={[styles.buttonOutline, { flex: 1 }]}
+                onPress={() => {
+                  setShowImportPreview(false);
+                  setImportData([]);
+                }}
+              >
+                <Text style={{ color: colors.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, { flex: 1, backgroundColor: colors.success }]}
+                onPress={confirmImport}
+              >
+                <Text style={{ color: '#000', fontWeight: '600' }}>Import {importData.length} Items</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        ))}
-
-        {importData.length > 10 && (
-          <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 8, marginBottom: 16 }}>
-            ...and {importData.length - 10} more items
-          </Text>
-        )}
-
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          <TouchableOpacity
-            style={[styles.buttonOutline, { flex: 1 }]}
-            onPress={() => {
-              setShowImportPreview(false);
-              setImportData([]);
-            }}
-          >
-            <Text style={{ color: colors.text }}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, { flex: 1, backgroundColor: colors.success }]}
-            onPress={confirmImport}
-          >
-            <Text style={{ color: '#000', fontWeight: '600' }}>Import {importData.length} Items</Text>
-          </TouchableOpacity>
         </View>
-      </ModalWrapper>
+      </Modal>
 
       {/* Detail View Modal */}
       <ModalWrapper

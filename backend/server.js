@@ -644,6 +644,207 @@ app.get('/api/privacy', (req, res) => {
   });
 });
 
+// Human-readable privacy policy (HTML)
+app.get('/privacy', (req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Stack Tracker Pro</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+    }
+    h1 {
+      font-size: 2.5em;
+      color: #111827;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    .tagline {
+      font-size: 1.2em;
+      color: #6b7280;
+      margin-bottom: 30px;
+      font-weight: 500;
+    }
+    .last-updated {
+      color: #9ca3af;
+      font-size: 0.9em;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    h2 {
+      font-size: 1.8em;
+      color: #374151;
+      margin-top: 30px;
+      margin-bottom: 15px;
+      font-weight: 600;
+    }
+    .principle {
+      background: #f9fafb;
+      border-left: 4px solid #fbbf24;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 6px;
+    }
+    .principle h3 {
+      color: #111827;
+      font-size: 1.3em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .principle p {
+      color: #4b5563;
+      line-height: 1.7;
+      font-size: 1.05em;
+    }
+    .icon {
+      font-size: 1.5em;
+    }
+    .summary {
+      background: #fef3c7;
+      border: 2px solid #fbbf24;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      font-size: 1.1em;
+      color: #78350f;
+      font-weight: 500;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 2px solid #e5e7eb;
+      color: #6b7280;
+      text-align: center;
+      font-size: 0.95em;
+    }
+    a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🪙 Privacy Policy</h1>
+    <p class="tagline">Stack Tracker Pro - Privacy-First Precious Metals Portfolio</p>
+    <p class="last-updated">Last Updated: December 26, 2024</p>
+
+    <div class="summary">
+      <strong>TL;DR:</strong> Stack Tracker Pro is built with privacy as the foundation. All your portfolio data is stored locally on your device only. We do NOT collect, store, or transmit your personal data to our servers.
+    </div>
+
+    <h2>Our Privacy Principles</h2>
+
+    <div class="principle">
+      <h3><span class="icon">📱</span> Local-First Data Storage</h3>
+      <p>
+        All your portfolio data—your precious metals holdings, purchase history, and preferences—is stored exclusively on your device using encrypted local storage. We have <strong>zero access</strong> to your portfolio data because it never leaves your device.
+      </p>
+    </div>
+
+    <div class="principle">
+      <h3><span class="icon">📷</span> Memory-Only Image Processing</h3>
+      <p>
+        When you use our AI receipt scanning feature, images are processed entirely in RAM and <strong>never written to disk</strong>. The image is sent to our server, processed in memory, analyzed by AI, and immediately discarded. No receipts, photos, or scanned data are ever stored on our servers.
+      </p>
+    </div>
+
+    <div class="principle">
+      <h3><span class="icon">🚫</span> No Analytics or Tracking</h3>
+      <p>
+        We do not use Google Analytics, Facebook SDK, advertising networks, or any third-party tracking tools. We don't collect usage data, device fingerprints, or behavioral analytics. Your activity in the app is completely private.
+      </p>
+    </div>
+
+    <div class="principle">
+      <h3><span class="icon">🔑</span> No Account Required</h3>
+      <p>
+        You can use Stack Tracker Pro fully without creating an account. No email, no password, no personal information required. Your data stays on your device, under your control.
+      </p>
+    </div>
+
+    <div class="principle">
+      <h3><span class="icon">💰</span> Third-Party Price Data</h3>
+      <p>
+        We use <strong>MetalPriceAPI</strong> and <strong>GoldAPI.io</strong> to fetch live precious metals spot prices. These API requests do not include any personal information or portfolio data—only anonymous requests for current market prices. Your holdings are never shared with these services.
+      </p>
+    </div>
+
+    <div class="principle">
+      <h3><span class="icon">☁️</span> Optional Cloud Backup (Future Feature)</h3>
+      <p>
+        If we implement cloud backup in the future, it will be entirely optional and use end-to-end encryption with user-held keys. Your data would be encrypted on your device before transmission, and we would only store encrypted ciphertext that we cannot decrypt.
+      </p>
+    </div>
+
+    <h2>Data We Do NOT Collect</h2>
+    <div class="principle">
+      <h3><span class="icon">✅</span> We Do Not Collect</h3>
+      <p>
+        ❌ Your precious metals holdings or portfolio data<br>
+        ❌ Receipt images or scanned documents<br>
+        ❌ Personal information (name, email, address)<br>
+        ❌ Location data or device identifiers<br>
+        ❌ Usage analytics or behavioral tracking<br>
+        ❌ Financial information or payment details
+      </p>
+    </div>
+
+    <h2>Your Rights</h2>
+    <div class="principle">
+      <h3><span class="icon">🛡️</span> Complete Control</h3>
+      <p>
+        Since all data is stored locally on your device, you have complete control. You can export your data anytime as CSV or JSON, and delete all data with one tap in the app settings. There's nothing for us to delete from our servers because we don't store your data.
+      </p>
+    </div>
+
+    <h2>Changes to This Policy</h2>
+    <p style="margin-top: 20px; color: #4b5563; line-height: 1.7;">
+      If we make changes to this privacy policy, we'll update the "Last Updated" date at the top. Significant changes will be communicated through the app.
+    </p>
+
+    <div class="footer">
+      <p>Questions about privacy? Contact us at <a href="mailto:privacy@stacktrackerpro.com">privacy@stacktrackerpro.com</a></p>
+      <p style="margin-top: 10px;">Built with privacy in mind. Your data, your control. 🔒</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // ============================================
 // STARTUP
 // ============================================
