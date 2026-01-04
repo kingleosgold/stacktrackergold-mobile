@@ -26,8 +26,6 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(null);
   const [restoring, setRestoring] = useState(false);
-  const [notifyEmail, setNotifyEmail] = useState('');
-  const [notifySaved, setNotifySaved] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -52,28 +50,6 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
       setOfferings(null);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleNotifyMe = async () => {
-    if (!notifyEmail || !notifyEmail.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      return;
-    }
-
-    try {
-      // Save email to AsyncStorage
-      await AsyncStorage.setItem('gold_notify_email', notifyEmail);
-      setNotifySaved(true);
-
-      Alert.alert(
-        'Thanks!',
-        "We'll notify you when Gold memberships are available.",
-        [{ text: 'Got it', onPress: onClose }]
-      );
-    } catch (error) {
-      console.error('Error saving email:', error);
-      Alert.alert('Error', 'Could not save email. Please try again.');
     }
   };
 
@@ -173,37 +149,6 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
     );
   };
 
-  // Fallback UI when offerings aren't available yet
-  const renderFallbackPackage = (title, price, description, isPopular = false) => {
-    return (
-      <View
-        key={title}
-        style={[
-          styles.packageCard,
-          isPopular && styles.popularPackage,
-          { opacity: 0.7 },
-        ]}
-      >
-        {isPopular && (
-          <View style={styles.popularBadge}>
-            <Text style={styles.popularText}>MOST POPULAR</Text>
-          </View>
-        )}
-
-        <View style={styles.packageHeader}>
-          <Text style={styles.packageTitle}>{title}</Text>
-          <Text style={styles.packagePrice}>{price}</Text>
-        </View>
-
-        <Text style={styles.packageDescription}>{description}</Text>
-
-        <View style={[styles.subscribeButton, { backgroundColor: '#52525b' }]}>
-          <Text style={styles.subscribeButtonText}>Coming Soon</Text>
-        </View>
-      </View>
-    );
-  };
-
   return (
     <Modal
       visible={visible}
@@ -266,63 +211,19 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
                 )}
               </>
             ) : (
-              <>
-                {/* Coming Soon Message */}
-                <View style={styles.comingSoonContainer}>
-                  <Text style={styles.comingSoonTitle}>🚀 Coming Soon!</Text>
-                  <Text style={styles.comingSoonMessage}>
-                    Gold memberships are being activated. Your developer account is being set up with Apple and Google.
-                  </Text>
-                  <Text style={[styles.comingSoonMessage, { marginTop: 8, fontSize: 14 }]}>
-                    Try again in 24 hours, or leave your email to be notified when it's ready!
-                  </Text>
-                </View>
-
-                {/* Static Pricing Preview */}
-                {renderFallbackPackage(
-                  'Monthly',
-                  '$4.99/mo',
-                  'Perfect for trying out Gold tier'
-                )}
-                {renderFallbackPackage(
-                  'Yearly',
-                  '$39.99/yr',
-                  'Save 33% compared to monthly',
-                  true
-                )}
-                {renderFallbackPackage(
-                  'Lifetime',
-                  '$79.99',
-                  'Pay once, use forever - Best value!'
-                )}
-
-                {/* Notify Me Section */}
-                <View style={styles.notifyContainer}>
-                  <Text style={styles.notifyLabel}>Get notified when Gold launches:</Text>
-                  <TextInput
-                    style={styles.notifyInput}
-                    placeholder="your@email.com"
-                    placeholderTextColor="#52525b"
-                    value={notifyEmail}
-                    onChangeText={setNotifyEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.notifyButton,
-                      notifySaved && { backgroundColor: '#22c55e' }
-                    ]}
-                    onPress={handleNotifyMe}
-                    disabled={notifySaved}
-                  >
-                    <Text style={styles.notifyButtonText}>
-                      {notifySaved ? '✓ You\'ll be notified!' : 'Notify Me'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorIcon}>⚠️</Text>
+                <Text style={styles.errorTitle}>Unable to Load Subscriptions</Text>
+                <Text style={styles.errorMessage}>
+                  Could not connect to the subscription service. Please check your internet connection and try again.
+                </Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={loadOfferings}
+                >
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </ScrollView>
 
@@ -518,57 +419,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginTop: 8,
   },
-  comingSoonContainer: {
-    backgroundColor: 'rgba(251, 191, 36, 0.1)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(251, 191, 36, 0.3)',
+  errorContainer: {
+    alignItems: 'center',
+    padding: 32,
+    marginTop: 20,
   },
-  comingSoonTitle: {
+  errorIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  errorTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fbbf24',
-    marginBottom: 8,
+    color: '#fff',
+    marginBottom: 12,
     textAlign: 'center',
   },
-  comingSoonMessage: {
+  errorMessage: {
     fontSize: 15,
-    color: '#d4d4d8',
+    color: '#a1a1aa',
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: 24,
   },
-  notifyContainer: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: '#27293d',
-    borderRadius: 12,
-  },
-  notifyLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  notifyInput: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 8,
-    padding: 14,
-    fontSize: 16,
-    color: '#fff',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  notifyButton: {
+  retryButton: {
     backgroundColor: '#fbbf24',
+    paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
-    alignItems: 'center',
   },
-  notifyButtonText: {
+  retryButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1a1a2e',

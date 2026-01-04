@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   Alert, Modal, Platform, SafeAreaView, StatusBar, ActivityIndicator,
-  Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions, AppState, FlatList,
+  Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions, AppState, FlatList, Clipboard,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -217,11 +217,9 @@ export default function App() {
   const [scanCount, setScanCount] = useState(0);
   const FREE_SCAN_LIMIT = 5;
 
-  // Promo Code / Lifetime Access
-  const [versionTapCount, setVersionTapCount] = useState(0);
-  const [showPromoInput, setShowPromoInput] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
+  // Lifetime Access (granted via RevenueCat)
   const [hasLifetimeAccess, setHasLifetimeAccess] = useState(false);
+  const [revenueCatUserId, setRevenueCatUserId] = useState(null);
 
   // Scan State
   const [scanStatus, setScanStatus] = useState(null);
@@ -368,7 +366,7 @@ export default function App() {
 
   const loadData = async () => {
     try {
-      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedScanCount, storedMidnightValue, storedMidnightDate, lifetimeAccess] = await Promise.all([
+      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedScanCount, storedMidnightValue, storedMidnightDate] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
         AsyncStorage.getItem('stack_silver_spot'),
@@ -378,7 +376,6 @@ export default function App() {
         AsyncStorage.getItem('stack_scan_count'),
         AsyncStorage.getItem('stack_midnight_value'),
         AsyncStorage.getItem('stack_midnight_date'),
-        AsyncStorage.getItem('stack_lifetime_access'),
       ]);
 
       if (silver) setSilverItems(JSON.parse(silver));
@@ -389,7 +386,6 @@ export default function App() {
       if (storedScanCount) setScanCount(parseInt(storedScanCount));
       if (storedMidnightValue) setMidnightValue(parseFloat(storedMidnightValue));
       if (storedMidnightDate) setMidnightDate(storedMidnightDate);
-      if (lifetimeAccess === 'true') setHasLifetimeAccess(true);
 
       // Show tutorial if user hasn't seen it
       if (!hasSeenTutorial) {
@@ -519,45 +515,19 @@ export default function App() {
 
   // Check entitlements function (can be called after purchase)
   const checkEntitlements = async () => {
-    const isGold = await hasGoldEntitlement();
-    setHasGold(isGold);
-    return isGold;
-  };
+    try {
+      const customerInfo = await Purchases.getCustomerInfo();
+      const isGold = customerInfo.entitlements.active['Gold'] !== undefined;
+      const isLifetime = customerInfo.entitlements.active['Lifetime'] !== undefined;
 
-  // Promo code validation
-  const validatePromoCode = async (code) => {
-    const validCodes = ['FOUNDER2025', 'EARLYBIRD', 'STACKERLIFE'];
+      setHasGold(isGold);
+      setHasLifetimeAccess(isLifetime);
+      setRevenueCatUserId(customerInfo.originalAppUserId);
 
-    if (validCodes.includes(code.toUpperCase())) {
-      await AsyncStorage.setItem('stack_lifetime_access', 'true');
-      setHasLifetimeAccess(true);
-      setPromoCode('');
-      setShowPromoInput(false);
-      setVersionTapCount(0);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        '🎉 Lifetime Access Granted!',
-        'You now have unlimited access to all Stack Tracker Pro features forever. Thank you for being an early supporter!',
-        [{ text: 'Awesome!', style: 'default' }]
-      );
-      return true;
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Invalid Code', 'This promo code is not valid. Please check and try again.');
+      return isGold || isLifetime;
+    } catch (error) {
+      if (__DEV__) console.log('Error checking entitlements:', error);
       return false;
-    }
-  };
-
-  // Handle version tap for promo code reveal
-  const handleVersionTap = () => {
-    const newCount = versionTapCount + 1;
-    setVersionTapCount(newCount);
-
-    if (newCount === 5) {
-      setShowPromoInput(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else if (newCount < 5) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
@@ -1861,9 +1831,7 @@ export default function App() {
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>About</Text>
-              <TouchableOpacity onPress={handleVersionTap} activeOpacity={0.7}>
-                <Text style={{ color: colors.muted }}>Stack Tracker Pro v1.0.0</Text>
-              </TouchableOpacity>
+              <Text style={{ color: colors.muted }}>Stack Tracker Pro v1.0.0</Text>
               <Text style={{ color: colors.gold, fontStyle: 'italic', marginTop: 8 }}>"We CAN'T access your data."</Text>
 
               {hasLifetimeAccess && (
@@ -1874,40 +1842,22 @@ export default function App() {
                 </View>
               )}
 
-              {showPromoInput && !hasLifetimeAccess && (
-                <View style={{ marginTop: 12 }}>
-                  <Text style={{ color: colors.text, fontSize: 12, marginBottom: 8 }}>Enter Promo Code:</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput
-                      style={{
-                        flex: 1,
-                        backgroundColor: '#27272a',
-                        color: colors.text,
-                        padding: 12,
-                        borderRadius: 8,
-                        fontSize: 14,
-                      }}
-                      placeholder="FOUNDER2025"
-                      placeholderTextColor="#52525b"
-                      value={promoCode}
-                      onChangeText={setPromoCode}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      returnKeyType="done"
-                      onSubmitEditing={() => validatePromoCode(promoCode)}
-                      blurOnSubmit={true}
-                    />
+              {revenueCatUserId && (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 6 }}>RevenueCat User ID (for support):</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ color: colors.text, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', flex: 1 }} numberOfLines={1}>
+                      {revenueCatUserId}
+                    </Text>
                     <TouchableOpacity
-                      style={{
-                        backgroundColor: colors.gold,
-                        paddingHorizontal: 16,
-                        paddingVertical: 12,
-                        borderRadius: 8,
-                        justifyContent: 'center',
+                      onPress={() => {
+                        Clipboard.setString(revenueCatUserId);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        Alert.alert('Copied', 'User ID copied to clipboard');
                       }}
-                      onPress={() => validatePromoCode(promoCode)}
+                      style={{ backgroundColor: '#27272a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
                     >
-                      <Text style={{ color: '#000', fontWeight: '600' }}>Apply</Text>
+                      <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '600' }}>Copy</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
