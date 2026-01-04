@@ -221,6 +221,9 @@ export default function App() {
   const [hasLifetimeAccess, setHasLifetimeAccess] = useState(false);
   const [revenueCatUserId, setRevenueCatUserId] = useState(null);
 
+  // Upgrade Banner (session-only dismissal)
+  const [upgradeBannerDismissed, setUpgradeBannerDismissed] = useState(false);
+
   // Scan State
   const [scanStatus, setScanStatus] = useState(null);
   const [scanMessage, setScanMessage] = useState('');
@@ -1893,6 +1896,35 @@ export default function App() {
         <View style={{ height: tab === 'settings' ? 300 : 100 }} />
       </ScrollView>
 
+      {/* Upgrade to Gold Banner */}
+      {!hasGold && !hasLifetimeAccess && !upgradeBannerDismissed && (
+        <View style={styles.upgradeBanner}>
+          <TouchableOpacity
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingLeft: 16 }}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setShowPaywallModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 16, marginRight: 8 }}>👑</Text>
+            <Text style={{ color: '#1a1a2e', fontSize: 14, fontWeight: '600', flex: 1 }}>
+              Unlock unlimited features - Upgrade to Gold
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ paddingHorizontal: 16, paddingVertical: 12 }}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setUpgradeBannerDismissed(true);
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={{ color: '#1a1a2e', fontSize: 18, fontWeight: '700' }}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Bottom Tabs */}
       <View style={styles.bottomTabs}>
         {[
@@ -2546,6 +2578,18 @@ const styles = StyleSheet.create({
   logoSubtitle: { color: '#71717a', fontSize: 11 },
   privacyBadge: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(34,197,94,0.15)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)' },
   content: { flex: 1, padding: 20 },
+  upgradeBanner: {
+    flexDirection: 'row',
+    backgroundColor: '#fbbf24',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(251, 191, 36, 0.3)',
+    shadowColor: '#fbbf24',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 8,
+  },
   bottomTabs: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.8)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingBottom: Platform.OS === 'ios' ? 20 : 10, paddingTop: 10 },
   bottomTab: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   metalTabs: { flexDirection: 'row', gap: 8, marginBottom: 16 },
