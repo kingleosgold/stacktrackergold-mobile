@@ -140,21 +140,77 @@ async function scrapeGoldSilverPrices() {
 }
 
 /**
- * Alternative scraper - currently not used but kept for future
+ * Fetch historical spot prices for a specific date
+ * Uses MetalPriceAPI historical endpoint
+ * @param {string} date - Date in YYYY-MM-DD format
+ * @returns {Promise<{gold: number, silver: number, date: string, source: string} | null>}
  */
-async function scrapeGoldSilverPricesAlternative() {
-  console.warn('⚠️  Alternative scraper called - returning static prices');
-  return {
-    gold: 2650,
-    silver: 31,
-    platinum: 950,
-    palladium: 960,
-    timestamp: new Date().toISOString(),
-    source: 'static-fallback',
-  };
+async function fetchHistoricalPrices(date) {
+  const METAL_API_KEY = process.env.METAL_PRICE_API_KEY;
+
+  if (!METAL_API_KEY) {
+    console.log('⚠️  No METAL_PRICE_API_KEY found, cannot fetch historical prices');
+    return null;
+  }
+
+  // Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    console.log(`❌ Invalid date format: ${date} (expected YYYY-MM-DD)`);
+    return null;
+  }
+
+  try {
+    console.log(`📅 Fetching historical prices for ${date} from MetalPriceAPI...`);
+
+    const response = await axios.get(
+      `https://api.metalpriceapi.com/v1/${date}?api_key=${METAL_API_KEY}&base=USD&currencies=XAU,XAG`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; StackTrackerBot/1.0)',
+          'Accept': 'application/json',
+        },
+        timeout: 10000,
+      }
+    );
+
+    const data = response.data;
+
+    console.log(`📊 MetalPriceAPI Historical Response for ${date}:`, JSON.stringify(data).substring(0, 300));
+
+    if (!data.success) {
+      console.log(`❌ MetalPriceAPI returned success=false for ${date}:`, data.error || 'Unknown error');
+      return null;
+    }
+
+    if (!data.rates || !data.rates.XAU || !data.rates.XAG) {
+      console.log(`❌ Missing rate data in response for ${date}`);
+      return null;
+    }
+
+    // MetalPriceAPI returns inverse rates (USD per 1 unit of metal)
+    // XAU and XAG are per troy ounce, so we invert to get price per oz
+    const goldPrice = Math.round((1 / data.rates.XAU) * 100) / 100;
+    const silverPrice = Math.round((1 / data.rates.XAG) * 100) / 100;
+
+    console.log(`✅ Historical prices for ${date}: Gold $${goldPrice}, Silver $${silverPrice}`);
+
+    return {
+      gold: goldPrice,
+      silver: silverPrice,
+      date: date,
+      source: 'metalpriceapi-historical',
+    };
+  } catch (error) {
+    if (error.response) {
+      console.error(`❌ MetalPriceAPI historical request failed for ${date}:`, error.response.status, error.response.data);
+    } else {
+      console.error(`❌ MetalPriceAPI historical request error for ${date}:`, error.message);
+    }
+    return null;
+  }
 }
 
 module.exports = {
   scrapeGoldSilverPrices,
-  scrapeGoldSilverPricesAlternative,
+  fetchHistoricalPrices,
 };

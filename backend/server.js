@@ -83,8 +83,15 @@ let apiRequestCounter = {
 const fs = require('fs');
 const path = require('path');
 
-// Import web scraper for live spot prices
-const { scrapeGoldSilverPrices, scrapeGoldSilverPricesAlternative } = require(path.join(__dirname, 'scrapers', 'gold-silver-scraper.js'));
+// Import web scraper for live spot prices and historical prices
+const { scrapeGoldSilverPrices, fetchHistoricalPrices } = require(path.join(__dirname, 'scrapers', 'gold-silver-scraper.js'));
+
+// Cache for historical prices (to avoid repeated API calls for the same date)
+// Historical prices don't change, so we can cache them indefinitely
+const historicalPriceCache = {
+  gold: {},   // { 'YYYY-MM-DD': price }
+  silver: {}, // { 'YYYY-MM-DD': price }
+};
 
 // ============================================
 // FETCH LIVE SPOT PRICES
@@ -384,8 +391,9 @@ app.get('/api/historical-debug', (req, res) => {
 
 /**
  * Get historical spot price for a specific date
+ * Priority: 1) In-memory cache, 2) MetalPriceAPI, 3) Static JSON fallback
  */
-app.get('/api/historical-spot', (req, res) => {
+app.get('/api/historical-spot', async (req, res) => {
   try {
     const { date, metal = 'gold' } = req.query;
 
@@ -404,20 +412,76 @@ app.get('/api/historical-spot', (req, res) => {
       return res.status(400).json({ error: 'Date must be in YYYY-MM-DD format' });
     }
 
-    // Try exact date first
+    // Validate metal type
+    if (metal !== 'gold' && metal !== 'silver') {
+      return res.status(400).json({ error: 'Metal must be "gold" or "silver"' });
+    }
+
+    // Don't allow future dates
+    const requestedDate = new Date(normalizedDate + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (requestedDate > today) {
+      console.log(`   Future date requested: ${normalizedDate}, using current spot`);
+      return res.json({
+        date: normalizedDate,
+        metal,
+        price: spotPriceCache.prices[metal] || 0,
+        source: 'current-spot',
+        note: 'Future date requested, using current spot price',
+        success: true
+      });
+    }
+
+    // PRIORITY 1: Check in-memory cache first
+    if (historicalPriceCache[metal][normalizedDate]) {
+      const cachedPrice = historicalPriceCache[metal][normalizedDate];
+      console.log(`   ✅ Cache hit for ${normalizedDate}: $${cachedPrice}`);
+      return res.json({
+        date: normalizedDate,
+        usedDate: normalizedDate,
+        metal,
+        price: cachedPrice,
+        source: 'cache',
+        success: true
+      });
+    }
+
+    // PRIORITY 2: Fetch from MetalPriceAPI
+    console.log(`   Cache miss, fetching from MetalPriceAPI...`);
+    const apiResult = await fetchHistoricalPrices(normalizedDate);
+
+    if (apiResult && apiResult[metal]) {
+      const price = apiResult[metal];
+
+      // Cache both gold and silver from the API response
+      if (apiResult.gold) historicalPriceCache.gold[normalizedDate] = apiResult.gold;
+      if (apiResult.silver) historicalPriceCache.silver[normalizedDate] = apiResult.silver;
+
+      console.log(`   ✅ API success for ${normalizedDate}: $${price} (cached for future)`);
+      return res.json({
+        date: normalizedDate,
+        usedDate: normalizedDate,
+        metal,
+        price: Math.round(price * 100) / 100,
+        source: 'metalpriceapi',
+        success: true
+      });
+    }
+
+    // PRIORITY 3: Fall back to static JSON data (monthly averages)
+    console.log(`   API unavailable, falling back to static JSON data...`);
     let price = historicalData[metal]?.[normalizedDate];
     let usedDate = normalizedDate;
-    let source = 'exact';
+    let source = 'static-json';
 
-    console.log(`   Exact match for ${normalizedDate}: ${price ? '$' + price : 'not found'}`);
-
-    // If not found, try to find nearest date
-    if (!price) {
+    if (price) {
+      console.log(`   Found in static data: $${price} (monthly average)`);
+    } else {
+      // Try to find nearest date in static data
       const targetDate = new Date(normalizedDate + 'T00:00:00');
       const dates = Object.keys(historicalData[metal] || {}).sort();
-      console.log(`   Searching ${dates.length} dates for nearest match...`);
 
-      // Find closest date
       let closestDate = null;
       let minDiff = Infinity;
 
@@ -429,39 +493,37 @@ app.get('/api/historical-spot', (req, res) => {
         }
       }
 
-      const daysAway = Math.floor(minDiff / (24 * 60 * 60 * 1000));
-
-      if (closestDate && minDiff < 30 * 24 * 60 * 60 * 1000) { // Within 30 days
+      if (closestDate && minDiff < 30 * 24 * 60 * 60 * 1000) {
         price = historicalData[metal][closestDate];
         usedDate = closestDate;
-        source = 'nearest';
-        console.log(`   Using nearest date ${closestDate}: $${price} (${daysAway} days away)`);
-      } else {
-        console.log(`   No nearby dates found. Closest was ${daysAway} days away.`);
+        source = 'static-json-nearest';
+        const daysAway = Math.floor(minDiff / (24 * 60 * 60 * 1000));
+        console.log(`   Using nearest static date ${closestDate}: $${price} (${daysAway} days away, monthly average)`);
       }
     }
 
     if (price) {
-      res.json({
+      return res.json({
         date: normalizedDate,
         usedDate,
         metal,
         price: Math.round(price * 100) / 100,
         source,
-        success: true
-      });
-    } else {
-      // Return current spot as fallback
-      console.log(`   No historical data found, using current spot: $${spotPriceCache.prices[metal]}`);
-      res.json({
-        date: normalizedDate,
-        metal,
-        price: spotPriceCache.prices[metal] || 0,
-        source: 'current-fallback',
-        note: 'Historical price not available, using current spot',
+        note: source.includes('static') ? 'Monthly average (API unavailable)' : undefined,
         success: true
       });
     }
+
+    // Final fallback: current spot price
+    console.log(`   No historical data found, using current spot: $${spotPriceCache.prices[metal]}`);
+    res.json({
+      date: normalizedDate,
+      metal,
+      price: spotPriceCache.prices[metal] || 0,
+      source: 'current-fallback',
+      note: 'Historical price not available, using current spot',
+      success: true
+    });
   } catch (error) {
     console.error('❌ Historical spot error:', error);
     console.error('Stack trace:', error.stack);

@@ -294,6 +294,7 @@ function AppContent() {
     quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
     spotPrice: '', premium: '0',
   });
+  const [spotPriceSource, setSpotPriceSource] = useState(null); // Tracks data source for spot price warnings
 
   // Speculation State
   const [specSilverPrice, setSpecSilverPrice] = useState('100');
@@ -840,23 +841,39 @@ function AppContent() {
   };
 
   const fetchHistoricalSpot = async (date, metal) => {
-    if (!date || date.length < 10) return null;
+    if (!date || date.length < 10) return { price: null, source: null };
     try {
-      const response = await fetch(`${API_BASE_URL}/api/historical-spot?date=${date}&metal=${metal || metalTab}`);
+      const url = `${API_BASE_URL}/api/historical-spot?date=${date}&metal=${metal || metalTab}`;
+      if (__DEV__) console.log(`📅 Fetching historical spot: ${url}`);
+      const response = await fetch(url);
       const data = await response.json();
-      if (data.success && data.price) return data.price;
+      if (__DEV__) {
+        console.log('📅 Historical spot API response:', JSON.stringify(data, null, 2));
+        if (data.source === 'static-json' || data.source === 'static-json-nearest') {
+          console.log('⚠️ WARNING: Using monthly average from static data');
+        }
+        if (data.source === 'current-fallback') {
+          console.log('⚠️ WARNING: No historical data found, using current spot price as fallback');
+        }
+      }
+      if (data.success && data.price) {
+        return { price: data.price, source: data.source };
+      }
     } catch (error) {
-      if (__DEV__) console.log('Could not fetch historical spot');
+      if (__DEV__) console.log('❌ Could not fetch historical spot:', error.message);
     }
-    return metal === 'gold' ? goldSpot : silverSpot;
+    // Return current spot as fallback with source indicator
+    return { price: metal === 'gold' ? goldSpot : silverSpot, source: 'client-fallback' };
   };
 
   const handleDateChange = async (date) => {
     setForm(prev => ({ ...prev, datePurchased: date }));
+    setSpotPriceSource(null); // Clear previous source while loading
     if (date.length === 10) {
-      const historicalPrice = await fetchHistoricalSpot(date, metalTab);
-      if (historicalPrice) {
-        setForm(prev => ({ ...prev, spotPrice: historicalPrice.toString() }));
+      const result = await fetchHistoricalSpot(date, metalTab);
+      if (result.price) {
+        setForm(prev => ({ ...prev, spotPrice: result.price.toString() }));
+        setSpotPriceSource(result.source);
       }
     }
   };
@@ -1270,6 +1287,7 @@ function AppContent() {
       spotPrice: item.spotPrice.toString(),
       premium: item.premium.toString(),
     });
+    setSpotPriceSource(null); // Clear source warning when editing
 
     // Set metal tab
     setMetalTab(item.metal);
@@ -1299,6 +1317,7 @@ function AppContent() {
       spotPrice: '0',
       premium: '0',
     });
+    setSpotPriceSource(null); // Clear source warning when editing
 
     // Set metal tab
     setMetalTab(item.metal || 'silver');
@@ -1404,6 +1423,7 @@ function AppContent() {
       spotPrice: '', premium: '0',
     });
     setEditingItem(null);
+    setSpotPriceSource(null);
   };
 
   const deleteItem = (id, metal) => {
@@ -1484,6 +1504,7 @@ function AppContent() {
       premium: item.premium.toString(),
     });
     setEditingItem(item);
+    setSpotPriceSource(null); // Clear source warning when editing existing item
     setShowAddModal(true);
   };
 
@@ -2169,8 +2190,20 @@ function AppContent() {
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => setForm(p => ({ ...p, spotPrice: v }))} placeholder="Auto" keyboardType="decimal-pad" prefix="$" /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => { setForm(p => ({ ...p, spotPrice: v })); setSpotPriceSource(null); }} placeholder="Auto" keyboardType="decimal-pad" prefix="$" /></View>
                   </View>
+
+                  {/* Warning for inaccurate historical spot prices */}
+                  {(spotPriceSource === 'static-json' || spotPriceSource === 'static-json-nearest') && (
+                    <Text style={{ color: '#E69500', fontSize: 12, marginTop: -4, marginBottom: 4 }}>
+                      ⚠️ Daily price unavailable - using monthly average. You can edit this manually.
+                    </Text>
+                  )}
+                  {(spotPriceSource === 'current-fallback' || spotPriceSource === 'client-fallback') && (
+                    <Text style={{ color: '#E69500', fontSize: 12, marginTop: -4, marginBottom: 4 }}>
+                      ⚠️ Historical price unavailable - using today's spot. You can edit this manually.
+                    </Text>
+                  )}
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" /></View>
