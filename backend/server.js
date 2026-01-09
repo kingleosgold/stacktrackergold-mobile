@@ -761,61 +761,29 @@ app.post('/api/scan-receipt', upload.single('receipt'), async (req, res) => {
             },
             {
               type: 'text',
-              text: (() => {
-                // Get current spot prices from cache
-                const silverSpot = spotPriceCache.prices?.silver || 31;
-                const goldSpot = spotPriceCache.prices?.gold || 2650;
+              text: `Analyze this precious metals purchase receipt and extract ALL items.
 
-                // Calculate expected price ranges (spot + typical dealer premiums)
-                const silverMin = Math.round(silverSpot + 5);
-                const silverMax = Math.round(silverSpot + 25);
-                const goldMin = Math.round(goldSpot + 50);
-                const goldMax = Math.round(goldSpot + 200);
-
-                return `Analyze this precious metals purchase receipt and extract ALL items from it.
-
-IMPORTANT: Many receipts contain MULTIPLE ITEMS (e.g., both silver and gold coins). Extract EVERY item separately.
-
-Return ONLY a JSON object with this structure:
+Return ONLY a JSON object:
 {
-  "dealer": "dealer/company name (shared across all items)",
-  "purchaseDate": "YYYY-MM-DD format (shared across all items)",
+  "dealer": "dealer/company name",
+  "purchaseDate": "YYYY-MM-DD",
   "items": [
     {
       "metal": "gold, silver, platinum, or palladium",
       "description": "product name/description",
-      "quantity": number of items,
-      "ozt": troy ounces per item (use standard weights: 1oz coins = 1, 1/10oz = 0.1, etc.),
-      "unitPrice": price per unit in dollars (number only)
+      "quantity": number,
+      "ozt": troy ounces per item (1oz coins = 1, 1/10oz = 0.1, etc.),
+      "unitPrice": price per unit in dollars (number only, e.g. 80.01)
     }
   ]
 }
 
-⚠️ CRITICAL - PRICE VALIDATION:
-Current spot prices RIGHT NOW:
-- Silver spot: $${silverSpot}/oz
-- Gold spot: $${goldSpot}/oz
-
-Dealers ALWAYS charge a premium ABOVE spot. Expected retail prices:
-- 1oz Silver coins: $${silverMin}-$${silverMax} each (NOT $30-40!)
-- 1oz Gold coins: $${goldMin}-$${goldMax} each
-
-COMMON OCR ERRORS - WATCH FOR THESE:
-- "8" misread as "3" → $80 becomes $30, $38 becomes $33
-- "7" misread as "1" → $79 becomes $19, $47 becomes $41
-- "9" misread as "4" → $39 becomes $34
-- If you read a silver price under $${silverMin}, you likely misread a digit
-- If you read a gold price under $${goldMin}, you likely misread a digit
-
-READ EACH PRICE DIGIT BY DIGIT. Verify the first digit especially.
-
-Important:
-- Extract EVERY line item as a separate object in the "items" array
-- unitPrice should be the price PER ITEM, not the total
-- If you see a total and quantity, calculate unitPrice = total / quantity
+Instructions:
+- Extract EVERY line item separately
+- unitPrice = price PER ITEM (if you see total and quantity, divide)
+- Read the prices exactly as shown on the receipt
 - Standard coin weights: American Eagle 1oz, 1/2oz, 1/4oz, 1/10oz
-- Date should be the purchase/order date, not shipping date`;
-              })()
+- Date = purchase/order date, not shipping date`
             },
           ],
         },
@@ -940,30 +908,18 @@ Important:
                 },
                 {
                   type: 'text',
-                  text: `I need you to CAREFULLY re-read the prices for these specific items on this receipt. The previous reading got prices that are TOO LOW to be real.
+                  text: `Please read the prices for these items again:
 
-ITEMS TO RE-READ:
-${suspiciousItems.map((s, idx) => `${idx + 1}. "${s.item.description}" - Previously read as $${s.item.unitPrice} (THIS IS LIKELY WRONG)`).join('\n')}
+${suspiciousItems.map((s, idx) => `${idx + 1}. "${s.item.description}"`).join('\n')}
 
-PRICE REALITY CHECK:
-- Silver spot price RIGHT NOW: $${silverSpot}/oz
-- Gold spot price RIGHT NOW: $${goldSpot}/oz
-- Minimum realistic silver coin price: $${silverSpot + 5}/oz (spot + dealer premium)
-- Minimum realistic gold coin price: $${goldSpot + 50}/oz (spot + dealer premium)
+Just tell me the dollar amounts shown on the receipt for each item. Read the numbers exactly as they appear.
 
-The prices you read before are BELOW what's physically possible. No dealer sells below spot.
+Give your best reading even if you're not 100% certain. A good guess is better than no answer.
 
-COMMON MISREADS:
-- "8" looks like "3" → $80 becomes $30
-- "7" looks like "1" → $79 becomes $19
-- "9" looks like "4" → $89 becomes $34
-
-Look at EACH DIGIT carefully. What are the ACTUAL prices on this receipt?
-
-Return JSON only:
+Return JSON:
 {
   "correctedPrices": [
-    {"description": "item description", "unitPrice": corrected_price_number}
+    {"description": "item description", "unitPrice": price_number}
   ]
 }`
                 },
