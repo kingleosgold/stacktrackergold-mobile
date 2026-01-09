@@ -757,6 +757,13 @@ Return ONLY a JSON object with this structure:
   ]
 }
 
+CRITICAL - READ PRICES CAREFULLY:
+- Double-check ALL digits when reading prices - receipt OCR is error-prone
+- Pay special attention to digits that look similar: 3 vs 8, 1 vs 7, 5 vs 6, 0 vs O
+- If a price seems unusually low for precious metals (e.g., $30 for a 1oz silver coin when typical prices are $25-40), verify the digits
+- Cross-reference prices with quantities and totals when visible to ensure accuracy
+- American Silver Eagles typically cost $25-50 each, Gold Eagles $1800-2500+ depending on size
+
 Important:
 - Extract EVERY line item as a separate object in the "items" array
 - If only one item, return array with one element

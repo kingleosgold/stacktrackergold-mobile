@@ -2234,7 +2234,22 @@ function AppContent() {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>{editingItem ? 'Edit' : 'Add'} Purchase</Text>
                   <TouchableOpacity
-                    onPress={() => { resetForm(); setShowAddModal(false); }}
+                    onPress={() => {
+                      // If editing a scanned item, return to scan results without losing data
+                      if (editingItem?.scannedIndex !== undefined) {
+                        resetForm();
+                        setShowAddModal(false);
+                        setShowScannedItemsPreview(true);
+                      } else if (editingItem?.importIndex !== undefined) {
+                        // If editing an imported item, return to import preview
+                        resetForm();
+                        setShowAddModal(false);
+                        setShowImportPreview(true);
+                      } else {
+                        resetForm();
+                        setShowAddModal(false);
+                      }
+                    }}
                     style={styles.closeButton}
                     hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                   >
@@ -2501,59 +2516,57 @@ function AppContent() {
           )}
         </View>
 
-        <ScrollView style={{ maxHeight: 400 }}>
-          {scannedItems.map((item, index) => {
-            const itemColor = item.metal === 'silver' ? colors.silver : colors.gold;
-            const totalValue = item.unitPrice * item.quantity;
+        {scannedItems.map((item, index) => {
+          const itemColor = item.metal === 'silver' ? colors.silver : colors.gold;
+          const totalValue = item.unitPrice * item.quantity;
 
-            return (
-              <View key={index} style={[styles.card, { marginBottom: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: itemColor }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{item.productName}</Text>
-                    <Text style={{ color: itemColor, fontSize: 12, marginTop: 2 }}>
-                      {item.metal.toUpperCase()} • {item.ozt} oz{item.quantity > 1 ? ` • Qty: ${item.quantity}` : ''}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.success, fontWeight: '600', fontSize: 16 }}>
-                    ${totalValue.toFixed(2)}
+          return (
+            <View key={index} style={[styles.card, { marginBottom: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: itemColor }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>{item.productName}</Text>
+                  <Text style={{ color: itemColor, fontSize: 12, marginTop: 2 }}>
+                    {item.metal.toUpperCase()} • {item.ozt} oz{item.quantity > 1 ? ` • Qty: ${item.quantity}` : ''}
                   </Text>
                 </View>
+                <Text style={{ color: colors.success, fontWeight: '600', fontSize: 16 }}>
+                  ${totalValue.toFixed(2)}
+                </Text>
+              </View>
 
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  ${item.unitPrice.toFixed(2)} per item
+                </Text>
+                {item.spotPrice > 0 && (
                   <Text style={{ color: colors.muted, fontSize: 11 }}>
-                    ${item.unitPrice.toFixed(2)} per item
-                  </Text>
-                  {item.spotPrice > 0 && (
-                    <Text style={{ color: colors.muted, fontSize: 11 }}>
-                      Spot: ${item.spotPrice.toFixed(2)}
-                    </Text>
-                  )}
-                </View>
-
-                {item.premium !== 0 && (
-                  <Text style={{ color: item.premium > 0 ? colors.gold : colors.error, fontSize: 11, marginTop: 2 }}>
-                    Premium: ${item.premium.toFixed(2)}
+                    Spot: ${item.spotPrice.toFixed(2)}
                   </Text>
                 )}
-
-                <TouchableOpacity
-                  style={{
-                    marginTop: 8,
-                    paddingVertical: 6,
-                    paddingHorizontal: 12,
-                    backgroundColor: 'rgba(251,191,36,0.2)',
-                    borderRadius: 6,
-                    alignSelf: 'flex-start',
-                  }}
-                  onPress={() => editScannedItem(index)}
-                >
-                  <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '600' }}>✏️ Edit</Text>
-                </TouchableOpacity>
               </View>
-            );
-          })}
-        </ScrollView>
+
+              {item.premium !== 0 && (
+                <Text style={{ color: item.premium > 0 ? colors.gold : colors.error, fontSize: 11, marginTop: 2 }}>
+                  Premium: ${item.premium.toFixed(2)}
+                </Text>
+              )}
+
+              <TouchableOpacity
+                style={{
+                  marginTop: 8,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  backgroundColor: 'rgba(251,191,36,0.2)',
+                  borderRadius: 6,
+                  alignSelf: 'flex-start',
+                }}
+                onPress={() => editScannedItem(index)}
+              >
+                <Text style={{ color: colors.gold, fontSize: 12, fontWeight: '600' }}>✏️ Edit</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
 
         <View style={{ marginTop: 16 }}>
           <TouchableOpacity
