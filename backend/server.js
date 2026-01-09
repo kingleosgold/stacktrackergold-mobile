@@ -11,6 +11,7 @@ const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
+const Redis = require('ioredis');
 
 const app = express();
 
@@ -532,44 +533,72 @@ app.get('/api/historical-spot', async (req, res) => {
 });
 
 // ============================================
-// SCAN USAGE TRACKING (Server-Side)
+// SCAN USAGE TRACKING (Server-Side with Redis)
 // ============================================
 
-// In-memory scan usage storage (persisted to JSON file)
-let scanUsageData = {};
-const SCAN_USAGE_FILE = path.join(__dirname, 'data', 'scan-usage.json');
 const FREE_SCAN_LIMIT = 5;
 const SCAN_PERIOD_DAYS = 30;
 
-// Load scan usage data from file on startup
-function loadScanUsageData() {
-  try {
-    if (fs.existsSync(SCAN_USAGE_FILE)) {
-      const data = fs.readFileSync(SCAN_USAGE_FILE, 'utf8');
-      scanUsageData = JSON.parse(data);
-      console.log(`📊 Loaded scan usage data for ${Object.keys(scanUsageData).length} users`);
-    } else {
-      console.log('📊 No scan usage file found, starting fresh');
-      scanUsageData = {};
+// Redis client for persistent storage (works with Railway Redis add-on)
+let redis = null;
+let scanUsageData = {}; // In-memory fallback
+
+// Initialize Redis connection
+async function initializeRedis() {
+  const redisUrl = process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL;
+
+  if (redisUrl) {
+    try {
+      redis = new Redis(redisUrl, {
+        maxRetriesPerRequest: 3,
+        retryDelayOnFailover: 100,
+        lazyConnect: true,
+      });
+
+      await redis.connect();
+      console.log('✅ Connected to Redis for scan usage persistence');
+
+      // Load existing data from Redis into memory cache
+      const keys = await redis.keys('scan_usage:*');
+      for (const key of keys) {
+        const userId = key.replace('scan_usage:', '');
+        const data = await redis.get(key);
+        if (data) {
+          scanUsageData[userId] = JSON.parse(data);
+        }
+      }
+      console.log(`📊 Loaded scan usage data for ${Object.keys(scanUsageData).length} users from Redis`);
+
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to connect to Redis:', error.message);
+      console.log('⚠️ Falling back to in-memory storage (scan counts will not persist between deploys)');
+      redis = null;
+      return false;
     }
-  } catch (error) {
-    console.error('❌ Failed to load scan usage data:', error.message);
-    scanUsageData = {};
+  } else {
+    console.log('⚠️ No REDIS_URL found - using in-memory storage (scan counts will not persist between deploys)');
+    console.log('   To enable persistence, add a Redis add-on in Railway dashboard');
+    return false;
   }
 }
 
-// Save scan usage data to file
-function saveScanUsageData() {
-  try {
-    // Ensure data directory exists
-    const dataDir = path.join(__dirname, 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+// Save user scan data to Redis (or in-memory fallback)
+async function saveScanUsageForUser(userId, userRecord) {
+  scanUsageData[userId] = userRecord;
+
+  if (redis) {
+    try {
+      await redis.set(`scan_usage:${userId}`, JSON.stringify(userRecord));
+    } catch (error) {
+      console.error('❌ Failed to save to Redis:', error.message);
     }
-    fs.writeFileSync(SCAN_USAGE_FILE, JSON.stringify(scanUsageData, null, 2));
-  } catch (error) {
-    console.error('❌ Failed to save scan usage data:', error.message);
   }
+}
+
+// Legacy function for compatibility (no-op now, saving happens per-user)
+function saveScanUsageData() {
+  // No-op - saving now happens in saveScanUsageForUser
 }
 
 // Check if period needs reset (older than 30 days)
@@ -597,7 +626,7 @@ function getResetDate(periodStart) {
  * Get scan status for a user
  * GET /api/scan-status?rcUserId={revenueCatUserId}
  */
-app.get('/api/scan-status', (req, res) => {
+app.get('/api/scan-status', async (req, res) => {
   try {
     const { rcUserId } = req.query;
 
@@ -613,7 +642,7 @@ app.get('/api/scan-status', (req, res) => {
         scansUsed: 0,
         periodStart: new Date().toISOString()
       };
-      saveScanUsageData();
+      await saveScanUsageForUser(rcUserId, scanUsageData[rcUserId]);
     }
 
     const userRecord = scanUsageData[rcUserId];
@@ -622,7 +651,7 @@ app.get('/api/scan-status', (req, res) => {
     const wasReset = checkAndResetPeriod(userRecord);
     if (wasReset) {
       console.log(`   Period reset for user ${rcUserId.substring(0, 8)}...`);
-      saveScanUsageData();
+      await saveScanUsageForUser(rcUserId, userRecord);
     }
 
     const response = {
@@ -647,7 +676,7 @@ app.get('/api/scan-status', (req, res) => {
  * POST /api/increment-scan
  * Body: { rcUserId }
  */
-app.post('/api/increment-scan', (req, res) => {
+app.post('/api/increment-scan', async (req, res) => {
   try {
     const { rcUserId } = req.body;
 
@@ -673,8 +702,8 @@ app.post('/api/increment-scan', (req, res) => {
     // Increment scan count
     userRecord.scansUsed += 1;
 
-    // Save to file
-    saveScanUsageData();
+    // Save to Redis (or in-memory)
+    await saveScanUsageForUser(rcUserId, userRecord);
 
     const response = {
       success: true,
@@ -785,6 +814,15 @@ Important:
       throw new Error('Unexpected response type');
     }
 
+    // ============================================
+    // DEBUG: Log raw Claude Vision response
+    // ============================================
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 DEBUG: Raw Claude Vision Response:');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(content.text);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     // Extract JSON from response
     let extractedData;
     try {
@@ -799,6 +837,27 @@ Important:
       console.error('Failed to parse receipt data:', content.text);
       extractedData = { items: [] };
     }
+
+    // ============================================
+    // DEBUG: Log parsed items with all fields
+    // ============================================
+    console.log('🔍 DEBUG: Parsed Items Array:');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    if (extractedData.items && extractedData.items.length > 0) {
+      extractedData.items.forEach((item, index) => {
+        console.log(`  Item ${index + 1}:`);
+        console.log(`    - metal: ${item.metal}`);
+        console.log(`    - description: ${item.description}`);
+        console.log(`    - quantity: ${item.quantity}`);
+        console.log(`    - ozt: ${item.ozt}`);
+        console.log(`    - unitPrice: ${item.unitPrice} <-- CHECK THIS VALUE`);
+      });
+    } else {
+      console.log('  (No items found)');
+    }
+    console.log(`  dealer: ${extractedData.dealer}`);
+    console.log(`  purchaseDate: ${extractedData.purchaseDate}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     // Ensure items array exists
     if (!extractedData.items || !Array.isArray(extractedData.items)) {
@@ -1279,11 +1338,18 @@ app.get('/terms', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Load data on startup
-loadHistoricalData(); // Synchronous JSON load
-loadScanUsageData(); // Load scan usage tracking data
+// Async startup function
+async function startServer() {
+  // Load data on startup
+  loadHistoricalData(); // Synchronous JSON load
+  await initializeRedis(); // Initialize Redis for scan usage persistence
 
-fetchLiveSpotPrices().then(() => {
+  try {
+    await fetchLiveSpotPrices();
+  } catch (error) {
+    console.error('Startup error fetching prices:', error);
+  }
+
   app.listen(PORT, () => {
     console.log(`\n🪙 Stack Tracker API running on port ${PORT}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1295,14 +1361,14 @@ fetchLiveSpotPrices().then(() => {
     console.log('📅 Historical Data:', historicalData.loaded ? 'LOADED' : 'FALLBACK');
     console.log('⚡ Price Fetching: ON-DEMAND ONLY (10-min cache)');
     console.log('💸 API: MetalPriceAPI Primary, GoldAPI Fallback (10,000/month each)');
+    console.log('🗄️ Scan Storage:', redis ? 'REDIS (persistent)' : 'IN-MEMORY (temporary)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   });
-}).catch(error => {
-  console.error('Startup error:', error);
-  // Start anyway with fallback data
-  app.listen(PORT, () => {
-    console.log(`Stack Tracker API running on port ${PORT} (with fallback data)`);
-  });
+}
+
+startServer().catch(error => {
+  console.error('Fatal startup error:', error);
+  process.exit(1);
 });
 
 // ❌ NO AUTO-POLLING: Prices are fetched ONLY on-demand when users request them
