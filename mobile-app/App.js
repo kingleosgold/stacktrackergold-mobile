@@ -273,8 +273,14 @@ function AppContent() {
 
   // Entitlements
   const [hasGold, setHasGold] = useState(false);
-  const [scanCount, setScanCount] = useState(0);
-  const FREE_SCAN_LIMIT = 5;
+
+  // Server-side scan tracking
+  const [scanUsage, setScanUsage] = useState({
+    scansUsed: 0,
+    scansLimit: 5,
+    resetsAt: null,
+    loading: true
+  });
 
   // Lifetime Access (granted via RevenueCat)
   const [hasLifetimeAccess, setHasLifetimeAccess] = useState(false);
@@ -448,14 +454,13 @@ function AppContent() {
 
   const loadData = async () => {
     try {
-      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedScanCount, storedMidnightValue, storedMidnightDate] = await Promise.all([
+      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedMidnightValue, storedMidnightDate] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
         AsyncStorage.getItem('stack_silver_spot'),
         AsyncStorage.getItem('stack_gold_spot'),
         AsyncStorage.getItem('stack_price_timestamp'),
         AsyncStorage.getItem('stack_has_seen_tutorial'),
-        AsyncStorage.getItem('stack_scan_count'),
         AsyncStorage.getItem('stack_midnight_value'),
         AsyncStorage.getItem('stack_midnight_date'),
       ]);
@@ -470,7 +475,6 @@ function AppContent() {
       if (silverS) setSilverSpot(parseFloat(silverS) || 30);
       if (goldS) setGoldSpot(parseFloat(goldS) || 2600);
       if (timestamp) setPriceTimestamp(timestamp);
-      if (storedScanCount) setScanCount(parseInt(storedScanCount) || 0);
       if (storedMidnightValue) setMidnightValue(parseFloat(storedMidnightValue) || 0);
       if (storedMidnightDate) setMidnightDate(storedMidnightDate);
 
@@ -573,6 +577,13 @@ function AppContent() {
 
     return () => clearTimeout(timeoutId);
   }, [isAuthenticated]); // Run when isAuthenticated changes
+
+  // Fetch scan status when RevenueCat user ID is available
+  useEffect(() => {
+    if (revenueCatUserId && !hasGold && !hasLifetimeAccess) {
+      fetchScanStatus();
+    }
+  }, [revenueCatUserId, hasGold, hasLifetimeAccess]);
 
   // Daily Snapshot: Check if it's a new day and update midnight value
   useEffect(() => {
@@ -690,46 +701,94 @@ function AppContent() {
     }
   };
 
-  // Scan limit check and increment
-  const incrementScanCount = async () => {
-    const newCount = scanCount + 1;
-    setScanCount(newCount);
-    await AsyncStorage.setItem('stack_scan_count', newCount.toString());
+  // Server-side scan tracking functions
+  const fetchScanStatus = async () => {
+    if (!revenueCatUserId) {
+      if (__DEV__) console.log('⚠️ No RevenueCat user ID yet, skipping scan status fetch');
+      return;
+    }
+
+    // Skip for premium users - they have unlimited scans
+    if (hasGold || hasLifetimeAccess) {
+      setScanUsage(prev => ({ ...prev, loading: false }));
+      return;
+    }
+
+    try {
+      if (__DEV__) console.log(`📊 Fetching scan status for user: ${revenueCatUserId.substring(0, 8)}...`);
+      const response = await fetch(`${API_BASE_URL}/api/scan-status?rcUserId=${encodeURIComponent(revenueCatUserId)}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setScanUsage({
+          scansUsed: data.scansUsed,
+          scansLimit: data.scansLimit,
+          resetsAt: data.resetsAt,
+          loading: false
+        });
+        if (__DEV__) console.log(`📊 Scan status: ${data.scansUsed}/${data.scansLimit}, resets at ${data.resetsAt}`);
+      } else {
+        if (__DEV__) console.log('⚠️ Failed to fetch scan status:', data.error);
+        setScanUsage(prev => ({ ...prev, loading: false }));
+      }
+    } catch (error) {
+      if (__DEV__) console.log('❌ Error fetching scan status:', error.message);
+      // Fail open - allow scanning if server is unreachable
+      setScanUsage(prev => ({ ...prev, loading: false }));
+    }
   };
 
-  const resetScanCount = async () => {
-    Alert.alert(
-      'Reset Scan Count',
-      'Are you sure you want to reset your scan count to 0? This is intended for testing purposes.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            setScanCount(0);
-            await AsyncStorage.setItem('stack_scan_count', '0');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert('Reset Complete', 'Scan count has been reset to 0.');
-          }
-        }
-      ]
-    );
+  const incrementScanCount = async () => {
+    if (!revenueCatUserId) {
+      if (__DEV__) console.log('⚠️ No RevenueCat user ID, cannot increment scan count');
+      return;
+    }
+
+    try {
+      if (__DEV__) console.log(`📊 Incrementing scan count for user: ${revenueCatUserId.substring(0, 8)}...`);
+      const response = await fetch(`${API_BASE_URL}/api/increment-scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rcUserId: revenueCatUserId })
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setScanUsage({
+          scansUsed: data.scansUsed,
+          scansLimit: data.scansLimit,
+          resetsAt: data.resetsAt,
+          loading: false
+        });
+        if (__DEV__) console.log(`📊 New scan count: ${data.scansUsed}/${data.scansLimit}`);
+      }
+    } catch (error) {
+      if (__DEV__) console.log('❌ Error incrementing scan count:', error.message);
+      // Still update local state optimistically
+      setScanUsage(prev => ({ ...prev, scansUsed: prev.scansUsed + 1 }));
+    }
   };
 
   const canScan = () => {
     if (hasGold || hasLifetimeAccess) return true; // Gold tier or lifetime access has unlimited scans
-    return scanCount < FREE_SCAN_LIMIT;
+    return scanUsage.scansUsed < scanUsage.scansLimit;
   };
 
   const checkScanLimit = () => {
     if (hasGold || hasLifetimeAccess) return true; // Gold tier or lifetime access bypass
 
-    if (scanCount >= FREE_SCAN_LIMIT) {
+    if (scanUsage.scansUsed >= scanUsage.scansLimit) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+      // Format reset date
+      let resetDateStr = '';
+      if (scanUsage.resetsAt) {
+        resetDateStr = new Date(scanUsage.resetsAt).toLocaleDateString();
+      }
+
       Alert.alert(
         'Scan Limit Reached',
-        `Free tier includes ${FREE_SCAN_LIMIT} scans (photos or spreadsheets).\n\nUpgrade to Gold for unlimited scans!`,
+        `You've used all ${scanUsage.scansLimit} free scans this month.${resetDateStr ? ` Resets on ${resetDateStr}.` : ''}\n\nUpgrade to Gold for unlimited scans!`,
         [
           { text: 'Maybe Later', style: 'cancel' },
           { text: 'Upgrade to Gold', onPress: () => setShowPaywallModal(true) }
@@ -2045,22 +2104,19 @@ function AppContent() {
                 <Text style={{ color: colors.text }}>🔄 Refresh Prices</Text>
               </TouchableOpacity>
 
-              {/* Scan Count - only show for free users */}
+              {/* Scan Usage - only show for free users */}
               {!hasGold && !hasLifetimeAccess && (
                 <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View>
-                      <Text style={{ color: colors.text, fontSize: 14 }}>📷 Scan Usage</Text>
-                      <Text style={{ color: scanCount >= FREE_SCAN_LIMIT ? colors.error : colors.muted, fontSize: 12, marginTop: 2 }}>
-                        {scanCount}/{FREE_SCAN_LIMIT} scans used
+                  <View>
+                    <Text style={{ color: colors.text, fontSize: 14 }}>📷 Scan Usage</Text>
+                    <Text style={{ color: scanUsage.scansUsed >= scanUsage.scansLimit ? colors.error : colors.muted, fontSize: 12, marginTop: 2 }}>
+                      {scanUsage.scansUsed}/{scanUsage.scansLimit} scans used this month
+                    </Text>
+                    {scanUsage.resetsAt && (
+                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                        Resets {new Date(scanUsage.resetsAt).toLocaleDateString()}
                       </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={resetScanCount}
-                      style={{ backgroundColor: 'rgba(239,68,68,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
-                    >
-                      <Text style={{ color: colors.error, fontSize: 12, fontWeight: '600' }}>Reset</Text>
-                    </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               )}
@@ -2079,8 +2135,10 @@ function AppContent() {
                 </View>
               )}
 
-              <View style={{ marginTop: 16 }}>
-                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 6 }}>RevenueCat User ID (for support):</Text>
+              {/* Support ID */}
+              <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Support ID</Text>
+                <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 8 }}>Share this with support if you need help with your account</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ color: colors.text, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', flex: 1 }} numberOfLines={1}>
                     {revenueCatUserId || 'Loading...'}
@@ -2090,7 +2148,7 @@ function AppContent() {
                       if (revenueCatUserId) {
                         Clipboard.setString(revenueCatUserId);
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        Alert.alert('Copied', 'User ID copied to clipboard');
+                        Alert.alert('Copied', 'Support ID copied to clipboard');
                       }
                     }}
                     style={{ backgroundColor: '#27272a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
@@ -2211,10 +2269,10 @@ function AppContent() {
                     </View>
                     {!hasGold && !hasLifetimeAccess && (
                       <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
-                        {scanCount >= FREE_SCAN_LIMIT ? (
-                          <Text style={{ color: colors.error }}>Scan limit reached. Upgrade to Gold for unlimited!</Text>
+                        {scanUsage.scansUsed >= scanUsage.scansLimit ? (
+                          <Text style={{ color: colors.error }}>All {scanUsage.scansLimit} free scans used.{scanUsage.resetsAt ? ` Resets ${new Date(scanUsage.resetsAt).toLocaleDateString()}.` : ''}</Text>
                         ) : (
-                          <Text>Scans used: {scanCount}/{FREE_SCAN_LIMIT}</Text>
+                          <Text>Scans: {scanUsage.scansUsed}/{scanUsage.scansLimit}{scanUsage.resetsAt ? ` (resets ${new Date(scanUsage.resetsAt).toLocaleDateString()})` : ''}</Text>
                         )}
                       </Text>
                     )}

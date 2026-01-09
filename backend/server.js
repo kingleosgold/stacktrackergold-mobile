@@ -531,6 +531,168 @@ app.get('/api/historical-spot', async (req, res) => {
   }
 });
 
+// ============================================
+// SCAN USAGE TRACKING (Server-Side)
+// ============================================
+
+// In-memory scan usage storage (persisted to JSON file)
+let scanUsageData = {};
+const SCAN_USAGE_FILE = path.join(__dirname, 'data', 'scan-usage.json');
+const FREE_SCAN_LIMIT = 5;
+const SCAN_PERIOD_DAYS = 30;
+
+// Load scan usage data from file on startup
+function loadScanUsageData() {
+  try {
+    if (fs.existsSync(SCAN_USAGE_FILE)) {
+      const data = fs.readFileSync(SCAN_USAGE_FILE, 'utf8');
+      scanUsageData = JSON.parse(data);
+      console.log(`📊 Loaded scan usage data for ${Object.keys(scanUsageData).length} users`);
+    } else {
+      console.log('📊 No scan usage file found, starting fresh');
+      scanUsageData = {};
+    }
+  } catch (error) {
+    console.error('❌ Failed to load scan usage data:', error.message);
+    scanUsageData = {};
+  }
+}
+
+// Save scan usage data to file
+function saveScanUsageData() {
+  try {
+    // Ensure data directory exists
+    const dataDir = path.join(__dirname, 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(SCAN_USAGE_FILE, JSON.stringify(scanUsageData, null, 2));
+  } catch (error) {
+    console.error('❌ Failed to save scan usage data:', error.message);
+  }
+}
+
+// Check if period needs reset (older than 30 days)
+function checkAndResetPeriod(userRecord) {
+  const now = new Date();
+  const periodStart = new Date(userRecord.periodStart);
+  const daysSincePeriodStart = (now - periodStart) / (1000 * 60 * 60 * 24);
+
+  if (daysSincePeriodStart >= SCAN_PERIOD_DAYS) {
+    userRecord.scansUsed = 0;
+    userRecord.periodStart = now.toISOString();
+    return true; // Period was reset
+  }
+  return false;
+}
+
+// Calculate when period resets
+function getResetDate(periodStart) {
+  const resetDate = new Date(periodStart);
+  resetDate.setDate(resetDate.getDate() + SCAN_PERIOD_DAYS);
+  return resetDate.toISOString();
+}
+
+/**
+ * Get scan status for a user
+ * GET /api/scan-status?rcUserId={revenueCatUserId}
+ */
+app.get('/api/scan-status', (req, res) => {
+  try {
+    const { rcUserId } = req.query;
+
+    if (!rcUserId) {
+      return res.status(400).json({ error: 'rcUserId parameter required' });
+    }
+
+    console.log(`📊 Scan status check for user: ${rcUserId.substring(0, 8)}...`);
+
+    // Get or create user record
+    if (!scanUsageData[rcUserId]) {
+      scanUsageData[rcUserId] = {
+        scansUsed: 0,
+        periodStart: new Date().toISOString()
+      };
+      saveScanUsageData();
+    }
+
+    const userRecord = scanUsageData[rcUserId];
+
+    // Check if period needs reset
+    const wasReset = checkAndResetPeriod(userRecord);
+    if (wasReset) {
+      console.log(`   Period reset for user ${rcUserId.substring(0, 8)}...`);
+      saveScanUsageData();
+    }
+
+    const response = {
+      success: true,
+      scansUsed: userRecord.scansUsed,
+      scansLimit: FREE_SCAN_LIMIT,
+      periodStart: userRecord.periodStart,
+      resetsAt: getResetDate(userRecord.periodStart)
+    };
+
+    console.log(`   Scans used: ${userRecord.scansUsed}/${FREE_SCAN_LIMIT}`);
+
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Scan status error:', error);
+    res.status(500).json({ error: 'Failed to get scan status' });
+  }
+});
+
+/**
+ * Increment scan count for a user (called after successful scan)
+ * POST /api/increment-scan
+ * Body: { rcUserId }
+ */
+app.post('/api/increment-scan', (req, res) => {
+  try {
+    const { rcUserId } = req.body;
+
+    if (!rcUserId) {
+      return res.status(400).json({ error: 'rcUserId required in request body' });
+    }
+
+    console.log(`📊 Incrementing scan count for user: ${rcUserId.substring(0, 8)}...`);
+
+    // Get or create user record
+    if (!scanUsageData[rcUserId]) {
+      scanUsageData[rcUserId] = {
+        scansUsed: 0,
+        periodStart: new Date().toISOString()
+      };
+    }
+
+    const userRecord = scanUsageData[rcUserId];
+
+    // Check if period needs reset first
+    checkAndResetPeriod(userRecord);
+
+    // Increment scan count
+    userRecord.scansUsed += 1;
+
+    // Save to file
+    saveScanUsageData();
+
+    const response = {
+      success: true,
+      scansUsed: userRecord.scansUsed,
+      scansLimit: FREE_SCAN_LIMIT,
+      periodStart: userRecord.periodStart,
+      resetsAt: getResetDate(userRecord.periodStart)
+    };
+
+    console.log(`   New scan count: ${userRecord.scansUsed}/${FREE_SCAN_LIMIT}`);
+
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Increment scan error:', error);
+    res.status(500).json({ error: 'Failed to increment scan count' });
+  }
+});
+
 /**
  * Scan receipt using Claude Vision
  * Privacy: Image is processed in memory only, never stored
@@ -1112,6 +1274,7 @@ const PORT = process.env.PORT || 3000;
 
 // Load data on startup
 loadHistoricalData(); // Synchronous JSON load
+loadScanUsageData(); // Load scan usage tracking data
 
 fetchLiveSpotPrices().then(() => {
   app.listen(PORT, () => {
