@@ -704,6 +704,27 @@ app.post('/api/scan-receipt', upload.single('receipt'), async (req, res) => {
   console.log('📷 Scan request received');
 
   try {
+    // DEBUG: Log spot price cache state
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 DEBUG: spotPriceCache contents:');
+    console.log('   Full cache:', JSON.stringify(spotPriceCache, null, 2));
+    console.log('   spotPriceCache.prices:', spotPriceCache.prices);
+    console.log('   spotPriceCache.prices?.silver:', spotPriceCache.prices?.silver);
+    console.log('   spotPriceCache.prices?.gold:', spotPriceCache.prices?.gold);
+    console.log('   lastUpdated:', spotPriceCache.lastUpdated);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // Ensure we have fresh spot prices (refresh if older than 10 min)
+    const cacheAge = spotPriceCache.lastUpdated
+      ? (Date.now() - spotPriceCache.lastUpdated.getTime()) / 1000 / 60
+      : Infinity;
+
+    if (cacheAge > 10) {
+      console.log('🔄 Spot price cache expired, refreshing before scan...');
+      await fetchLiveSpotPrices();
+      console.log('✅ Spot prices refreshed:', spotPriceCache.prices);
+    }
+
     if (!req.file) {
       console.log('❌ No file uploaded');
       return res.status(400).json({ error: 'No image provided' });
