@@ -755,27 +755,31 @@ Return ONLY a JSON object with this structure:
       "quantity": number of items,
       "ozt": troy ounces per item (use standard weights: 1oz coins = 1, 1/10oz = 0.1, etc.),
       "unitPrice": price per unit in dollars (number only)
-    },
-    // ... more items if present
+    }
   ]
 }
 
-CRITICAL - READ PRICES CAREFULLY:
-- Double-check ALL digits when reading prices - receipt OCR is error-prone
-- Pay special attention to digits that look similar: 3 vs 8, 1 vs 7, 5 vs 6, 0 vs O
-- If a price seems unusually low for precious metals (e.g., $30 for a 1oz silver coin when typical prices are $25-40), verify the digits
-- Cross-reference prices with quantities and totals when visible to ensure accuracy
-- American Silver Eagles typically cost $25-50 each, Gold Eagles $1800-2500+ depending on size
+⚠️ CRITICAL - PRICE READING (READ THIS CAREFULLY):
+Current spot prices (as of today):
+- Silver spot: ~$${spotPriceCache.prices?.silver || 30}/oz
+- Gold spot: ~$${spotPriceCache.prices?.gold || 2600}/oz
+
+Precious metals are ALWAYS sold ABOVE spot price (dealer premium):
+- Silver coins typically sell for $${(spotPriceCache.prices?.silver || 30) + 5}-$${(spotPriceCache.prices?.silver || 30) + 20}/oz (spot + $5-20 premium)
+- Gold coins typically sell for $${(spotPriceCache.prices?.gold || 2600) + 50}-$${(spotPriceCache.prices?.gold || 2600) + 200}/oz (spot + $50-200 premium)
+
+IF YOU READ A PRICE BELOW OR NEAR SPOT, YOU LIKELY MISREAD IT:
+- A silver coin at $30-40 is WRONG - it should be $70-100+ range
+- The digit "8" is often misread as "3" - $80 becomes $30
+- The digit "7" is often misread as "1" - $79 becomes $19
+- Double-check the FIRST digit of every price especially
 
 Important:
 - Extract EVERY line item as a separate object in the "items" array
-- If only one item, return array with one element
 - unitPrice should be the price PER ITEM, not the total
 - If you see a total and quantity, calculate unitPrice = total / quantity
 - Standard coin weights: American Eagle 1oz, 1/2oz, 1/4oz, 1/10oz
-- Look for the actual metal type (gold, silver, etc.), not just "bullion"
-- Date should be the purchase/order date, not shipping date
-- Each item in the array should have its own metal type (one item might be silver, another gold)`
+- Date should be the purchase/order date, not shipping date`
             },
           ],
         },
@@ -836,6 +840,129 @@ Important:
     // Ensure items array exists
     if (!extractedData.items || !Array.isArray(extractedData.items)) {
       extractedData.items = [];
+    }
+
+    // ============================================
+    // PRICE VALIDATION: Check for suspiciously low prices
+    // ============================================
+    const silverSpot = spotPriceCache.prices?.silver || 30;
+    const goldSpot = spotPriceCache.prices?.gold || 2600;
+
+    // Minimum expected prices (spot + minimum typical premium)
+    const minSilverPrice = silverSpot + 3;  // At least $3 above spot per oz
+    const minGoldPrice = goldSpot + 30;     // At least $30 above spot per oz
+
+    const suspiciousItems = [];
+
+    for (let i = 0; i < extractedData.items.length; i++) {
+      const item = extractedData.items[i];
+      const metal = (item.metal || '').toLowerCase();
+      const pricePerOz = item.unitPrice / (item.ozt || 1);
+
+      let isSuspicious = false;
+      let reason = '';
+
+      if (metal === 'silver' || metal.includes('silver')) {
+        if (pricePerOz < minSilverPrice) {
+          isSuspicious = true;
+          reason = `Silver at $${item.unitPrice}/unit ($${pricePerOz.toFixed(2)}/oz) is below minimum expected $${minSilverPrice}/oz (spot $${silverSpot} + $3 premium)`;
+        }
+      } else if (metal === 'gold' || metal.includes('gold')) {
+        if (pricePerOz < minGoldPrice) {
+          isSuspicious = true;
+          reason = `Gold at $${item.unitPrice}/unit ($${pricePerOz.toFixed(2)}/oz) is below minimum expected $${minGoldPrice}/oz (spot $${goldSpot} + $30 premium)`;
+        }
+      }
+
+      if (isSuspicious) {
+        suspiciousItems.push({ index: i, item, reason });
+        console.log(`⚠️ SUSPICIOUS PRICE DETECTED (Item ${i + 1}): ${reason}`);
+      }
+    }
+
+    // If we have suspicious prices, make a second API call to re-read them
+    if (suspiciousItems.length > 0 && base64Image) {
+      console.log(`\n🔄 Re-reading ${suspiciousItems.length} suspicious price(s)...`);
+
+      try {
+        const rereadResponse = await anthropic.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: mediaType,
+                    data: base64Image,
+                  },
+                },
+                {
+                  type: 'text',
+                  text: `I need you to CAREFULLY re-read the prices for these specific items on this receipt. The previous reading got prices that are TOO LOW to be real.
+
+ITEMS TO RE-READ:
+${suspiciousItems.map((s, idx) => `${idx + 1}. "${s.item.description}" - Previously read as $${s.item.unitPrice} (THIS IS LIKELY WRONG)`).join('\n')}
+
+IMPORTANT CONTEXT:
+- Current silver spot price is ~$${silverSpot}/oz
+- Current gold spot price is ~$${goldSpot}/oz
+- Dealers ALWAYS charge a premium ABOVE spot (typically $5-20 for silver, $50-200 for gold)
+- A 1oz silver coin should cost $${silverSpot + 5}-$${silverSpot + 25} range, NOT $30-40
+- The digit "8" is commonly misread as "3" (e.g., $80.01 → $30.01)
+- The digit "7" is commonly misread as "1" (e.g., $79.01 → $19.01)
+
+Look VERY carefully at the receipt and tell me the CORRECT prices for these items.
+
+Return JSON only:
+{
+  "correctedPrices": [
+    {"description": "item description", "unitPrice": corrected_price_number}
+  ]
+}`
+                },
+              ],
+            },
+          ],
+        });
+
+        const rereadContent = rereadResponse.content[0];
+        if (rereadContent.type === 'text') {
+          console.log('🔍 Re-read response:', rereadContent.text);
+
+          const rereadMatch = rereadContent.text.match(/\{[\s\S]*\}/);
+          if (rereadMatch) {
+            const rereadData = JSON.parse(rereadMatch[0]);
+
+            if (rereadData.correctedPrices && Array.isArray(rereadData.correctedPrices)) {
+              // Apply corrections
+              for (const correction of rereadData.correctedPrices) {
+                // Find matching item and update price
+                for (const suspicious of suspiciousItems) {
+                  if (correction.description &&
+                      suspicious.item.description.toLowerCase().includes(correction.description.toLowerCase().substring(0, 20)) ||
+                      correction.description.toLowerCase().includes(suspicious.item.description.toLowerCase().substring(0, 20))) {
+                    const oldPrice = extractedData.items[suspicious.index].unitPrice;
+                    const newPrice = correction.unitPrice;
+
+                    // Only apply if new price is higher and reasonable
+                    if (newPrice > oldPrice) {
+                      console.log(`✅ PRICE CORRECTED: "${suspicious.item.description}" $${oldPrice} → $${newPrice}`);
+                      extractedData.items[suspicious.index].unitPrice = newPrice;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (rereadError) {
+        console.error('⚠️ Re-read attempt failed:', rereadError.message);
+        // Continue with original (possibly wrong) prices
+      }
     }
 
     // Clear image data from memory immediately
