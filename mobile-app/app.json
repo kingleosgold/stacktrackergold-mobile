@@ -2,7 +2,7 @@
   "expo": {
     "name": "Stack Tracker Pro",
     "slug": "stack-tracker-pro",
-    "version": "1.0.2",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.stacktrackerpro.app",
-      "buildNumber": "11",
+      "buildNumber": "14",
       "requireFullScreen": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Stack Tracker Pro needs camera access to scan your precious metals purchase receipts using AI-powered OCR. Your photos are processed securely and never stored.",
@@ -74,6 +74,12 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Stack Tracker Pro uses Face ID to securely protect your precious metals portfolio data."
+        }
+      ],
+      [
+        "react-native-cloud-storage",
+        {
+          "iCloudContainerEnvironment": "Production"
         }
       ]
     ],

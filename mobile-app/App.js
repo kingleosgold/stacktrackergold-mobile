@@ -20,9 +20,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import Purchases from 'react-native-purchases';
 import * as XLSX from 'xlsx';
+import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
 import { initializePurchases, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
 import GoldPaywall from './src/components/GoldPaywall';
 import Tutorial from './src/components/Tutorial';
+
+// iCloud sync key
+const ICLOUD_HOLDINGS_KEY = 'stack_tracker_holdings.json';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'https://stack-tracker-pro-production.up.railway.app';
@@ -113,8 +117,18 @@ const PieChart = ({ data, size = 150 }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   if (total === 0) return null;
 
+  // Calculate legend percentages from all data (including 0%)
+  const legendItems = data.map((item) => ({
+    ...item,
+    percentage: item.value / total,
+  }));
+
+  // Filter out zero-value segments for pie rendering
+  const nonZeroData = data.filter((item) => item.value > 0);
+
+  // Build segments with angles for rendering
   let currentAngle = 0;
-  const segments = data.map((item) => {
+  const segments = nonZeroData.map((item) => {
     const percentage = item.value / total;
     const angle = percentage * 360;
     const startAngle = currentAngle;
@@ -124,8 +138,16 @@ const PieChart = ({ data, size = 150 }) => {
 
   return (
     <View style={{ alignItems: 'center' }}>
-      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', position: 'relative' }}>
-        {segments.map((segment, index) => (
+      <View style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        overflow: 'hidden',
+        position: 'relative',
+        backgroundColor: segments[0]?.color, // Fill background with first segment color
+      }}>
+        {/* Render remaining segments as overlays */}
+        {segments.slice(1).map((segment, index) => (
           <View
             key={index}
             style={{
@@ -154,11 +176,12 @@ const PieChart = ({ data, size = 150 }) => {
           </Text>
         </View>
       </View>
+      {/* Legend shows all items including 0% */}
       <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
-        {segments.map((segment, index) => (
+        {legendItems.map((item, index) => (
           <View key={index} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: segment.color, marginRight: 6 }} />
-            <Text style={{ color: '#a1a1aa', fontSize: 12 }}>{segment.label} {(segment.percentage * 100).toFixed(0)}%</Text>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: item.color, marginRight: 6 }} />
+            <Text style={{ color: '#a1a1aa', fontSize: 12 }}>{item.label} {(item.percentage * 100).toFixed(0)}%</Text>
           </View>
         ))}
       </View>
@@ -290,6 +313,12 @@ function AppContent() {
 
   // Upgrade Banner (session-only dismissal)
   const [upgradeBannerDismissed, setUpgradeBannerDismissed] = useState(false);
+
+  // iCloud Sync State
+  const [iCloudSyncEnabled, setICloudSyncEnabled] = useState(false);
+  const [iCloudAvailable, setICloudAvailable] = useState(false);
+  const [iCloudSyncing, setICloudSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
 
   // Scan State
   const [scanStatus, setScanStatus] = useState(null);
@@ -508,6 +537,179 @@ function AppContent() {
       console.error('Error saving data:', error);
     }
   };
+
+  // ============================================
+  // ICLOUD SYNC FUNCTIONS
+  // ============================================
+
+  // Check if iCloud is available
+  const checkiCloudAvailability = async () => {
+    if (Platform.OS !== 'ios') {
+      setICloudAvailable(false);
+      return false;
+    }
+    try {
+      const available = await CloudStorage.isCloudAvailable();
+      setICloudAvailable(available);
+      return available;
+    } catch (error) {
+      console.log('iCloud availability check failed:', error?.message);
+      setICloudAvailable(false);
+      return false;
+    }
+  };
+
+  // Load iCloud sync preference
+  const loadiCloudSyncPreference = async () => {
+    try {
+      const enabled = await AsyncStorage.getItem('stack_icloud_sync_enabled');
+      const lastSync = await AsyncStorage.getItem('stack_last_sync_time');
+      if (enabled === 'true') setICloudSyncEnabled(true);
+      if (lastSync) setLastSyncTime(lastSync);
+    } catch (error) {
+      console.error('Failed to load iCloud preference:', error);
+    }
+  };
+
+  // Save holdings to iCloud
+  const syncToCloud = async (silver = silverItems, gold = goldItems) => {
+    if (!iCloudSyncEnabled || !iCloudAvailable || Platform.OS !== 'ios') return;
+
+    try {
+      setICloudSyncing(true);
+      const cloudData = {
+        silverItems: silver,
+        goldItems: gold,
+        lastModified: new Date().toISOString(),
+        version: '1.0',
+      };
+
+      await CloudStorage.writeFile(
+        ICLOUD_HOLDINGS_KEY,
+        JSON.stringify(cloudData),
+        CloudStorageScope.Documents
+      );
+
+      const syncTime = new Date().toISOString();
+      setLastSyncTime(syncTime);
+      await AsyncStorage.setItem('stack_last_sync_time', syncTime);
+      console.log('Synced to iCloud successfully');
+    } catch (error) {
+      console.error('iCloud sync failed:', error?.message);
+    } finally {
+      setICloudSyncing(false);
+    }
+  };
+
+  // Load holdings from iCloud
+  const syncFromCloud = async () => {
+    if (!iCloudAvailable || Platform.OS !== 'ios') return null;
+
+    try {
+      setICloudSyncing(true);
+      const exists = await CloudStorage.exists(ICLOUD_HOLDINGS_KEY, CloudStorageScope.Documents);
+      if (!exists) {
+        console.log('No iCloud data found');
+        return null;
+      }
+
+      const content = await CloudStorage.readFile(ICLOUD_HOLDINGS_KEY, CloudStorageScope.Documents);
+      const cloudData = JSON.parse(content);
+
+      return cloudData;
+    } catch (error) {
+      console.error('Failed to read from iCloud:', error?.message);
+      return null;
+    } finally {
+      setICloudSyncing(false);
+    }
+  };
+
+  // Toggle iCloud sync
+  const toggleiCloudSync = async (enabled) => {
+    if (enabled && !iCloudAvailable) {
+      Alert.alert('iCloud Unavailable', 'Please sign in to iCloud in your device settings to enable sync.');
+      return;
+    }
+
+    setICloudSyncEnabled(enabled);
+    await AsyncStorage.setItem('stack_icloud_sync_enabled', enabled ? 'true' : 'false');
+
+    if (enabled) {
+      // Check for existing cloud data
+      const cloudData = await syncFromCloud();
+      if (cloudData && cloudData.lastModified) {
+        const localTimestamp = await AsyncStorage.getItem('stack_last_modified');
+        const cloudTime = new Date(cloudData.lastModified).getTime();
+        const localTime = localTimestamp ? new Date(localTimestamp).getTime() : 0;
+
+        if (cloudTime > localTime && (cloudData.silverItems?.length > 0 || cloudData.goldItems?.length > 0)) {
+          // Cloud data is newer - ask user or auto-apply
+          Alert.alert(
+            'iCloud Data Found',
+            'Found newer data in iCloud. Would you like to use it?',
+            [
+              { text: 'Keep Local', style: 'cancel', onPress: () => syncToCloud() },
+              {
+                text: 'Use iCloud',
+                onPress: () => {
+                  if (cloudData.silverItems) setSilverItems(cloudData.silverItems);
+                  if (cloudData.goldItems) setGoldItems(cloudData.goldItems);
+                  setLastSyncTime(cloudData.lastModified);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+              },
+            ]
+          );
+        } else {
+          // Local is newer or same - sync to cloud
+          await syncToCloud();
+        }
+      } else {
+        // No cloud data - sync local to cloud
+        await syncToCloud();
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  // Manual sync trigger
+  const triggerManualSync = async () => {
+    if (!iCloudAvailable) {
+      Alert.alert('iCloud Unavailable', 'Please sign in to iCloud in your device settings.');
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await syncToCloud();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Synced', 'Your holdings have been synced to iCloud.');
+  };
+
+  // Update local timestamp when data changes
+  const updateLocalTimestamp = async () => {
+    await AsyncStorage.setItem('stack_last_modified', new Date().toISOString());
+  };
+
+  // Initialize iCloud on app start
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      checkiCloudAvailability();
+      loadiCloudSyncPreference();
+    }
+  }, []);
+
+  // Sync to cloud when holdings change (debounced)
+  useEffect(() => {
+    if (!isAuthenticated || !dataLoaded || !iCloudSyncEnabled) return;
+
+    updateLocalTimestamp();
+    const timeout = setTimeout(() => {
+      syncToCloud();
+    }, 2000); // Debounce 2 seconds
+
+    return () => clearTimeout(timeout);
+  }, [silverItems, goldItems, iCloudSyncEnabled, isAuthenticated, dataLoaded]);
 
   useEffect(() => {
     // Only save after initial data has been loaded to prevent overwriting with empty arrays
@@ -2068,9 +2270,81 @@ function AppContent() {
         {/* SETTINGS TAB */}
         {tab === 'settings' && (
           <>
+            {/* iCloud Sync Section - iOS only */}
+            {Platform.OS === 'ios' && (
+              <View style={styles.card}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={styles.cardTitle}>☁️ iCloud Sync</Text>
+                  {iCloudSyncing && <ActivityIndicator size="small" color={colors.gold} />}
+                </View>
+                <Text style={{ color: colors.muted, marginBottom: 12 }}>
+                  {iCloudAvailable
+                    ? 'Automatically sync holdings across your Apple devices'
+                    : 'Sign in to iCloud in Settings to enable sync'}
+                </Text>
+
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: '#27272a',
+                    padding: 12,
+                    borderRadius: 8,
+                    marginBottom: 12,
+                    opacity: iCloudAvailable ? 1 : 0.5,
+                  }}
+                  onPress={() => toggleiCloudSync(!iCloudSyncEnabled)}
+                  disabled={!iCloudAvailable}
+                >
+                  <Text style={{ color: colors.text, fontWeight: '500' }}>Enable iCloud Sync</Text>
+                  <View style={{
+                    width: 44,
+                    height: 24,
+                    borderRadius: 12,
+                    backgroundColor: iCloudSyncEnabled ? colors.success : '#52525b',
+                    justifyContent: 'center',
+                    padding: 2,
+                  }}>
+                    <View style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      backgroundColor: '#fff',
+                      alignSelf: iCloudSyncEnabled ? 'flex-end' : 'flex-start',
+                    }} />
+                  </View>
+                </TouchableOpacity>
+
+                {iCloudSyncEnabled && (
+                  <>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>
+                        {lastSyncTime
+                          ? `Last synced: ${new Date(lastSyncTime).toLocaleString()}`
+                          : 'Not synced yet'}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={triggerManualSync}
+                        style={{ backgroundColor: '#27272a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
+                        disabled={iCloudSyncing}
+                      >
+                        <Text style={{ color: colors.gold, fontWeight: '500', fontSize: 12 }}>
+                          {iCloudSyncing ? 'Syncing...' : 'Sync Now'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={{ color: colors.muted, fontSize: 11, fontStyle: 'italic' }}>
+                      Changes sync automatically when you add or edit holdings
+                    </Text>
+                  </>
+                )}
+              </View>
+            )}
+
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>☁️ Cloud Backup</Text>
-              <Text style={{ color: colors.muted, marginBottom: 16 }}>Save to iCloud, Google Drive, or any cloud storage</Text>
+              <Text style={styles.cardTitle}>📦 Manual Backup</Text>
+              <Text style={{ color: colors.muted, marginBottom: 16 }}>Export to Files, Google Drive, or any storage</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.success }]} onPress={createBackup}>
                   <Text style={{ color: '#000', fontWeight: '600' }}>📤 Backup</Text>
@@ -2133,7 +2407,7 @@ function AppContent() {
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>About</Text>
-              <Text style={{ color: colors.muted }}>Stack Tracker Pro v1.0.2</Text>
+              <Text style={{ color: colors.muted }}>Stack Tracker Pro v1.0.1</Text>
               <Text style={{ color: colors.gold, fontStyle: 'italic', marginTop: 8 }}>"We CAN'T access your data."</Text>
 
               {hasLifetimeAccess && (
@@ -2544,11 +2818,20 @@ function AppContent() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Using Multiple Devices</Text>
-          <Text style={styles.privacyItem}>• Stack Tracker Pro does not automatically sync between devices</Text>
-          <Text style={[styles.privacyItem, { marginTop: 8 }]}>• To use on multiple devices (iPhone + iPad):</Text>
-          <Text style={[styles.privacyItem, { paddingLeft: 12 }]}>1. Backup from your primary device</Text>
-          <Text style={[styles.privacyItem, { paddingLeft: 12 }]}>2. Restore on your secondary device</Text>
-          <Text style={[styles.privacyItem, { marginTop: 8, color: colors.muted, fontSize: 12 }]}>Note: Changes on one device won't appear on the other unless you backup and restore again</Text>
+          {Platform.OS === 'ios' ? (
+            <>
+              <Text style={styles.privacyItem}>• Enable iCloud Sync in Settings to automatically sync across your Apple devices</Text>
+              <Text style={[styles.privacyItem, { marginTop: 8 }]}>• All your iPhones and iPads signed into the same iCloud account will stay in sync</Text>
+              <Text style={[styles.privacyItem, { marginTop: 8, color: colors.muted, fontSize: 12 }]}>Alternatively, use Manual Backup/Restore for cross-platform transfers</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.privacyItem}>• Use Manual Backup to export your holdings</Text>
+              <Text style={[styles.privacyItem, { marginTop: 8 }]}>• To use on multiple devices:</Text>
+              <Text style={[styles.privacyItem, { paddingLeft: 12 }]}>1. Backup from your primary device</Text>
+              <Text style={[styles.privacyItem, { paddingLeft: 12 }]}>2. Restore on your secondary device</Text>
+            </>
+          )}
         </View>
 
         <View style={styles.card}>
