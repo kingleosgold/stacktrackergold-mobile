@@ -1212,24 +1212,44 @@ function AppContent() {
       console.log(`   Width: ${asset.width}px`);
       console.log(`   Height: ${asset.height}px`);
       console.log(`   Type: ${asset.type || 'unknown'}`);
-      console.log(`   File size: ${asset.fileSize ? (asset.fileSize / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+      console.log(`   MimeType: ${asset.mimeType || 'unknown'}`);
+      console.log(`   File size from picker: ${asset.fileSize ? (asset.fileSize / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+
+      // Read actual file and send as base64 to bypass FormData compression
+      let fullBase64;
+      let fileSize;
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(asset.uri, { size: true });
+        fileSize = fileInfo.size;
+        console.log(`   Actual file size on disk: ${fileSize ? (fileSize / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+
+        // Read full file as base64
+        fullBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64
+        });
+        console.log(`   Full base64 length: ${fullBase64.length} characters`);
+        console.log(`   Full base64 first 50: ${fullBase64.substring(0, 50)}`);
+        console.log(`   Full base64 last 50: ${fullBase64.substring(fullBase64.length - 50)}`);
+      } catch (fileReadError) {
+        console.log(`   File read error: ${fileReadError.message}`);
+        throw new Error('Could not read image file');
+      }
 
       // Use actual mime type from asset if available
       const mimeType = asset.mimeType || asset.type || 'image/jpeg';
+      console.log(`   Using mimeType: ${mimeType}`);
 
-      const formData = new FormData();
-      formData.append('receipt', {
-        uri: asset.uri,
-        type: mimeType,
-        name: `receipt.${mimeType.split('/')[1] || 'jpg'}`
-      });
-
-      console.log('📤 Sending receipt to server...');
+      // Send as JSON with base64 instead of FormData to avoid compression
+      console.log('📤 Sending receipt to server as base64...');
 
       const response = await fetch(`${API_BASE_URL}/api/scan-receipt`, {
         method: 'POST',
-        body: formData,
-        headers: { 'Content-Type': 'multipart/form-data' },
+        body: JSON.stringify({
+          image: fullBase64,
+          mimeType: mimeType,
+          originalSize: fileSize
+        }),
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (__DEV__) console.log('📥 Response status:', response.status);

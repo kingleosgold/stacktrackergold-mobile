@@ -35,7 +35,8 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 
-app.use(express.json());
+// Increase JSON limit for base64 image uploads
+app.use(express.json({ limit: '20mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -700,6 +701,7 @@ app.post('/api/increment-scan', async (req, res) => {
 /**
  * Scan receipt using Claude Vision
  * Privacy: Image is processed in memory only, never stored
+ * Accepts both FormData (multipart) and JSON with base64
  */
 app.post('/api/scan-receipt', upload.single('receipt'), async (req, res) => {
   const startTime = Date.now();
@@ -709,30 +711,77 @@ app.post('/api/scan-receipt', upload.single('receipt'), async (req, res) => {
   console.log('╚══════════════════════════════════════════════════════════════╝');
 
   try {
-    if (!req.file) {
-      console.log('❌ No file uploaded');
+    let base64Image;
+    let mediaType;
+
+    // Check if request is JSON with base64 or FormData
+    if (req.body && req.body.image) {
+      // JSON format with base64
+      console.log('📄 RECEIVED AS JSON/BASE64:');
+      base64Image = req.body.image;
+      mediaType = req.body.mimeType || 'image/jpeg';
+      const originalSize = req.body.originalSize;
+
+      console.log(`   - Original size from client: ${originalSize ? (originalSize / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+      console.log(`   - Base64 length: ${base64Image.length} characters`);
+      console.log(`   - Calculated size: ${(base64Image.length * 0.75 / 1024).toFixed(2)} KB`);
+      console.log(`   - Media type: ${mediaType}`);
+      console.log(`   - Base64 first 100 chars: ${base64Image.substring(0, 100)}`);
+      console.log(`   - Base64 last 50 chars: ${base64Image.substring(base64Image.length - 50)}`);
+
+      // Decode to check format
+      const buffer = Buffer.from(base64Image, 'base64');
+      console.log(`   - Decoded buffer length: ${buffer.length} bytes`);
+      console.log(`   - First 20 bytes (hex): ${buffer.slice(0, 20).toString('hex')}`);
+
+      const isJPEG = buffer[0] === 0xFF && buffer[1] === 0xD8;
+      const isPNG = buffer[0] === 0x89 && buffer[1] === 0x50;
+      console.log(`   - Detected format: ${isJPEG ? 'JPEG' : isPNG ? 'PNG' : 'Unknown'} (from magic bytes)`);
+
+      // Get dimensions
+      try {
+        const dimensions = sizeOf(buffer);
+        console.log(`   - Dimensions: ${dimensions.width}x${dimensions.height}px`);
+        console.log(`   - Image format: ${dimensions.type}`);
+      } catch (dimError) {
+        console.log(`   - Dimensions: Unable to read (${dimError.message})`);
+      }
+
+    } else if (req.file) {
+      // FormData format
+      console.log('📄 RECEIVED AS FORMDATA:');
+      console.log(`   - MIME type: ${req.file.mimetype}`);
+      console.log(`   - Size: ${(req.file.size / 1024).toFixed(2)} KB (${req.file.size} bytes)`);
+      console.log(`   - Original name: ${req.file.originalname}`);
+
+      // Get and log image dimensions
+      try {
+        const dimensions = sizeOf(req.file.buffer);
+        console.log(`   - Dimensions: ${dimensions.width}x${dimensions.height}px`);
+        console.log(`   - Image format: ${dimensions.type}`);
+      } catch (dimError) {
+        console.log(`   - Dimensions: Unable to read (${dimError.message})`);
+      }
+
+      // Convert buffer to base64
+      base64Image = req.file.buffer.toString('base64');
+      mediaType = req.file.mimetype || 'image/jpeg';
+
+      console.log(`   - Base64 length: ${base64Image.length} characters`);
+      console.log(`   - Base64 first 100 chars: ${base64Image.substring(0, 100)}`);
+      console.log(`   - Base64 last 50 chars: ${base64Image.substring(base64Image.length - 50)}`);
+      console.log(`   - Media type being sent: ${mediaType}`);
+      console.log(`   - Buffer length: ${req.file.buffer.length} bytes`);
+      console.log(`   - First 20 bytes (hex): ${req.file.buffer.slice(0, 20).toString('hex')}`);
+
+      const isJPEG = req.file.buffer[0] === 0xFF && req.file.buffer[1] === 0xD8;
+      const isPNG = req.file.buffer[0] === 0x89 && req.file.buffer[1] === 0x50;
+      console.log(`   - Detected format: ${isJPEG ? 'JPEG' : isPNG ? 'PNG' : 'Unknown'} (from magic bytes)`);
+
+    } else {
+      console.log('❌ No image provided');
       return res.status(400).json({ error: 'No image provided' });
     }
-
-    // Log file details
-    console.log('📄 IMAGE DETAILS:');
-    console.log(`   - MIME type: ${req.file.mimetype}`);
-    console.log(`   - Size: ${(req.file.size / 1024).toFixed(2)} KB (${req.file.size} bytes)`);
-    console.log(`   - Original name: ${req.file.originalname}`);
-
-    // Get and log image dimensions
-    try {
-      const dimensions = sizeOf(req.file.buffer);
-      console.log(`   - Dimensions: ${dimensions.width}x${dimensions.height}px`);
-      console.log(`   - Image format: ${dimensions.type}`);
-    } catch (dimError) {
-      console.log(`   - Dimensions: Unable to read (${dimError.message})`);
-    }
-
-    // Convert buffer to base64 (stays in memory)
-    const base64Image = req.file.buffer.toString('base64');
-    const mediaType = req.file.mimetype || 'image/jpeg';
-    console.log(`   - Base64 length: ${base64Image.length} characters`);
 
     // Prompt with ext price for verification
     const prompt = `This is a receipt from a precious metals dealer. Read it carefully and extract ONLY precious metal products.
@@ -887,7 +936,8 @@ Return as JSON only:
     console.log('─'.repeat(60));
 
     // Clear image data from memory immediately
-    req.file.buffer = null;
+    if (req.file) req.file.buffer = null;
+    if (req.body && req.body.image) req.body.image = null;
 
     const totalDuration = Date.now() - startTime;
     console.log(`\n🏁 SCAN COMPLETE in ${totalDuration}ms (API: ${apiDuration}ms)`);
@@ -906,9 +956,8 @@ Return as JSON only:
 
   } catch (error) {
     // Ensure image is cleared even on error
-    if (req.file) {
-      req.file.buffer = null;
-    }
+    if (req.file) req.file.buffer = null;
+    if (req.body && req.body.image) req.body.image = null;
 
     console.error('\n❌ SCAN ERROR:');
     console.error('   Message:', error.message);
