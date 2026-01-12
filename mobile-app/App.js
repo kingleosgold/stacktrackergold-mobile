@@ -765,21 +765,20 @@ function AppContent() {
     const timeoutId = setTimeout(() => {
       const setupRevenueCat = async () => {
         try {
-          // Use production key for production builds, test key for development
-          const apiKey = __DEV__
-            ? 'test_LkMLacPMbzdsKIpCuG6QgATsBnNi'  // Sandbox/test key
-            : 'appl_WDKPrWsOHfWzfJhxOGluQYsniLW';   // Production key
+          // Use the same API key for all builds - RevenueCat auto-detects sandbox vs production
+          // based on the App Store receipt. EAS dev builds use release mode so __DEV__ is false.
+          const apiKey = 'appl_WDKPrWsOHfWzfJhxOGluQYsniLW';
 
-          if (__DEV__) console.log('🔧 Initializing RevenueCat with key:', apiKey.substring(0, 10) + '...');
+          console.log('🔧 Initializing RevenueCat...');
 
           const initialized = await initializePurchases(apiKey);
           if (initialized) {
             // Additional delay before checking entitlements
             await new Promise(resolve => setTimeout(resolve, 100));
             await checkEntitlements();
-            if (__DEV__) console.log('✅ RevenueCat setup complete');
+            console.log('✅ RevenueCat setup complete');
           } else {
-            if (__DEV__) console.log('⚠️ RevenueCat initialization returned false, skipping entitlements');
+            console.log('⚠️ RevenueCat initialization returned false, skipping entitlements');
           }
         } catch (error) {
           // Log but don't crash - RevenueCat is not critical for app function
