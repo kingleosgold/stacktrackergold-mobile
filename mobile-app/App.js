@@ -9,6 +9,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   Alert, Modal, Platform, SafeAreaView, StatusBar, ActivityIndicator,
   Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions, AppState, FlatList, Clipboard, Linking,
+  useColorScheme,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
@@ -246,6 +247,15 @@ const ModalWrapper = ({ visible, onClose, title, children }) => (
 
 // Main app content (wrapped by ErrorBoundary below)
 function AppContent() {
+  // Theme
+  const systemColorScheme = useColorScheme();
+  const [themePreference, setThemePreference] = useState('system'); // 'system', 'light', 'dark'
+
+  // Derive actual theme from preference
+  const isDarkMode = themePreference === 'system'
+    ? systemColorScheme !== 'light'
+    : themePreference === 'dark';
+
   // Core State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -333,14 +343,39 @@ function AppContent() {
   const [junkType, setJunkType] = useState('90');
   const [junkFaceValue, setJunkFaceValue] = useState('');
 
-  // Colors
-  const colors = {
+  // Colors - dynamic based on theme
+  const colors = isDarkMode ? {
+    // Dark mode colors
     silver: '#94a3b8',
     gold: '#fbbf24',
     success: '#22c55e',
     error: '#ef4444',
     text: '#e4e4e7',
     muted: '#71717a',
+    background: '#09090b',
+    cardBg: '#18181b',
+    border: 'rgba(255,255,255,0.1)',
+  } : {
+    // Light mode colors
+    silver: '#64748b',
+    gold: '#d97706',
+    success: '#16a34a',
+    error: '#dc2626',
+    text: '#18181b',
+    muted: '#71717a',
+    background: '#f4f4f5',
+    cardBg: '#ffffff',
+    border: 'rgba(0,0,0,0.1)',
+  };
+
+  // Change theme and save to AsyncStorage
+  const changeTheme = async (newTheme) => {
+    setThemePreference(newTheme);
+    try {
+      await AsyncStorage.setItem('stack_theme_preference', newTheme);
+    } catch (error) {
+      console.error('Failed to save theme preference:', error);
+    }
   };
 
   // Helper function to format currency with commas
@@ -477,7 +512,7 @@ function AppContent() {
 
   const loadData = async () => {
     try {
-      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedMidnightValue, storedMidnightDate] = await Promise.all([
+      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedMidnightValue, storedMidnightDate, storedTheme] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
         AsyncStorage.getItem('stack_silver_spot'),
@@ -486,6 +521,7 @@ function AppContent() {
         AsyncStorage.getItem('stack_has_seen_tutorial'),
         AsyncStorage.getItem('stack_midnight_value'),
         AsyncStorage.getItem('stack_midnight_date'),
+        AsyncStorage.getItem('stack_theme_preference'),
       ]);
 
       // Safely parse JSON data with fallbacks
@@ -500,6 +536,9 @@ function AppContent() {
       if (timestamp) setPriceTimestamp(timestamp);
       if (storedMidnightValue) setMidnightValue(parseFloat(storedMidnightValue) || 0);
       if (storedMidnightDate) setMidnightDate(storedMidnightDate);
+      if (storedTheme && ['system', 'light', 'dark'].includes(storedTheme)) {
+        setThemePreference(storedTheme);
+      }
 
       // Show tutorial if user hasn't seen it
       if (!hasSeenTutorial) {
@@ -2018,22 +2057,22 @@ function AppContent() {
   // ============================================
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.8)', borderBottomColor: colors.border }]}>
         <View style={styles.headerContent}>
           <View style={styles.logo}>
             <View style={[styles.logoIcon, { backgroundColor: colors.gold }]}>
               <Text style={{ fontSize: 20 }}>🪙</Text>
             </View>
             <View>
-              <Text style={styles.logoTitle}>Stack Tracker Pro</Text>
-              <Text style={styles.logoSubtitle}>Make Stacking Great Again 🚀</Text>
+              <Text style={[styles.logoTitle, { color: colors.text }]}>Stack Tracker Pro</Text>
+              <Text style={[styles.logoSubtitle, { color: colors.muted }]}>Make Stacking Great Again 🚀</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.privacyBadge} onPress={() => setShowPrivacyModal(true)}>
+          <TouchableOpacity style={[styles.privacyBadge, { backgroundColor: isDarkMode ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', borderColor: isDarkMode ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.2)' }]} onPress={() => setShowPrivacyModal(true)}>
             <Text style={{ color: colors.success, fontSize: 11 }}>🔒 Private</Text>
           </TouchableOpacity>
         </View>
@@ -2050,8 +2089,8 @@ function AppContent() {
         {tab === 'dashboard' && (
           <>
             {/* Portfolio Value */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>💰 Portfolio Value</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>💰 Portfolio Value</Text>
               <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700', marginBottom: 4 }}>
                 ${totalMeltValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </Text>
@@ -2061,8 +2100,8 @@ function AppContent() {
             </View>
 
             {/* Today's Change */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>📅 Today's Change</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>📅 Today's Change</Text>
               {showDailyChange ? (
                 <>
                   <Text style={{ color: isDailyChangePositive ? colors.success : colors.error, fontSize: 32, fontWeight: '700', marginBottom: 4 }}>
@@ -2086,8 +2125,8 @@ function AppContent() {
             </View>
 
             {/* Holdings Pie Chart */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>📊 Holdings Breakdown</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>📊 Holdings Breakdown</Text>
               <PieChart
                 data={[
                   { label: 'Silver', value: silverMeltValue, color: colors.silver },
@@ -2098,13 +2137,13 @@ function AppContent() {
             </View>
 
             {/* Gold/Silver Ratio */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>⚖️ Gold/Silver Ratio</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>⚖️ Gold/Silver Ratio</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                 <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>{goldSilverRatio.toFixed(1)}</Text>
                 <Text style={{ color: colors.muted, marginLeft: 8 }}>:1</Text>
               </View>
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
+              <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 8 }}>
                 {goldSilverRatio > 80 ? (
                   <Text style={{ color: colors.silver }}>📈 HIGH - Silver may be undervalued</Text>
                 ) : goldSilverRatio < 60 ? (
@@ -2116,8 +2155,8 @@ function AppContent() {
             </View>
 
             {/* Quick Stats */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>📈 Quick Stats</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>📈 Quick Stats</Text>
               <View style={styles.statRow}>
                 <Text style={styles.statRowLabel}>Silver Holdings</Text>
                 <Text style={[styles.statRowValue, { color: colors.silver }]}>{totalSilverOzt.toFixed(2)} oz</Text>
@@ -2126,7 +2165,7 @@ function AppContent() {
                 <Text style={styles.statRowLabel}>Gold Holdings</Text>
                 <Text style={[styles.statRowValue, { color: colors.gold }]}>{totalGoldOzt.toFixed(3)} oz</Text>
               </View>
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={styles.statRowLabel}>Cost Basis</Text>
                 <Text style={styles.statRowValue}>${totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
@@ -2140,7 +2179,7 @@ function AppContent() {
                   )}
                 </View>
               </View>
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={styles.statRowLabel}>Avg Silver Cost</Text>
                 <Text style={styles.statRowValue}>${formatCurrency(avgSilverCostPerOz)}/oz</Text>
@@ -2152,16 +2191,16 @@ function AppContent() {
             </View>
 
             {/* Milestones */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>🏆 Stack Milestones</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>🏆 Stack Milestones</Text>
               <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${totalSilverOzt.toFixed(0)} / ${nextSilverMilestone} oz`} />
               <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${totalGoldOzt.toFixed(2)} / ${nextGoldMilestone} oz`} />
             </View>
 
             {/* Live Spot Prices */}
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={styles.cardTitle}>💹 Live Spot Prices</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>💹 Live Spot Prices</Text>
                 <TouchableOpacity onPress={fetchSpotPrices}>
                   <Text style={{ color: colors.muted }}>🔄 Refresh</Text>
                 </TouchableOpacity>
@@ -2200,7 +2239,7 @@ function AppContent() {
           <>
             <View style={styles.metalTabs}>
               <TouchableOpacity
-                style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]}
+                style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : colors.border, backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setMetalTab('silver');
@@ -2209,7 +2248,7 @@ function AppContent() {
                 <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted, fontWeight: '600' }}>🥈 Silver ({silverItems.length})</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]}
+                style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : colors.border, backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setMetalTab('gold');
@@ -2218,7 +2257,7 @@ function AppContent() {
                 <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted, fontWeight: '600' }}>🥇 Gold ({goldItems.length})</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.metalTab, { borderColor: metalTab === 'both' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'both' ? `${colors.gold}22` : 'transparent' }]}
+                style={[styles.metalTab, { borderColor: metalTab === 'both' ? colors.gold : colors.border, backgroundColor: metalTab === 'both' ? `${colors.gold}22` : 'transparent' }]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setMetalTab('both');
@@ -2291,9 +2330,9 @@ function AppContent() {
                 {silverItems.length > 0 && (
                   <>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 }}>
-                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
                       <Text style={{ color: colors.silver, fontWeight: '600', marginHorizontal: 12 }}>🥈 SILVER ({silverItems.length})</Text>
-                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
                     </View>
                     {sortItems(silverItems, 'silver').map(item => {
                       const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
@@ -2329,9 +2368,9 @@ function AppContent() {
                 {goldItems.length > 0 && (
                   <>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: silverItems.length > 0 ? 24 : 8 }}>
-                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
                       <Text style={{ color: colors.gold, fontWeight: '600', marginHorizontal: 12 }}>🥇 GOLD ({goldItems.length})</Text>
-                      <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
                     </View>
                     {sortItems(goldItems, 'gold').map(item => {
                       const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
@@ -2378,18 +2417,18 @@ function AppContent() {
         {/* TOOLS TAB */}
         {tab === 'tools' && (
           <>
-            <TouchableOpacity style={styles.card} onPress={() => setShowSpeculationModal(true)}>
-              <Text style={styles.cardTitle}>🔮 Speculation Tool</Text>
+            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowSpeculationModal(true)}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>🔮 Speculation Tool</Text>
               <Text style={{ color: colors.muted }}>What if silver hits $100? What if gold hits $10,000?</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.card} onPress={() => setShowJunkCalcModal(true)}>
-              <Text style={styles.cardTitle}>🧮 Junk Silver Calculator</Text>
+            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowJunkCalcModal(true)}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>🧮 Junk Silver Calculator</Text>
               <Text style={{ color: colors.muted }}>Calculate melt value of constitutional silver</Text>
             </TouchableOpacity>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>📊 Break-Even Analysis</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>📊 Break-Even Analysis</Text>
               <View style={{ backgroundColor: `${colors.silver}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
                 <Text style={{ color: colors.silver }}>Silver: ${formatCurrency(silverBreakeven)}/oz needed</Text>
                 <Text style={{ color: colors.muted, fontSize: 11 }}>{silverSpot >= silverBreakeven ? '✅ Profitable!' : `Need +$${formatCurrency(silverBreakeven - silverSpot)}`}</Text>
@@ -2400,8 +2439,8 @@ function AppContent() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.card} onPress={exportCSV}>
-              <Text style={styles.cardTitle}>📤 Export CSV</Text>
+            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={exportCSV}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>📤 Export CSV</Text>
               <Text style={{ color: colors.muted }}>Download holdings spreadsheet</Text>
             </TouchableOpacity>
           </>
@@ -2412,10 +2451,10 @@ function AppContent() {
           <>
             {/* iCloud Sync Section - iOS only */}
             {Platform.OS === 'ios' && (
-              <View style={styles.card}>
+              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={styles.cardTitle}>☁️ iCloud Sync</Text>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>☁️ iCloud Sync</Text>
                     {!hasGoldAccess && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
                         <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>🔒 GOLD</Text>
@@ -2514,8 +2553,51 @@ function AppContent() {
               </View>
             )}
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>📦 Manual Backup</Text>
+            {/* Appearance Section */}
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>🎨 Appearance</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                {[
+                  { key: 'light', label: '☀️ Light' },
+                  { key: 'dark', label: '🌙 Dark' },
+                  { key: 'system', label: '⚙️ System' },
+                ].map((option) => (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 8,
+                      borderRadius: 8,
+                      backgroundColor: themePreference === option.key
+                        ? (isDarkMode ? 'rgba(251,191,36,0.2)' : 'rgba(217,119,6,0.2)')
+                        : colors.cardBg,
+                      borderWidth: 1,
+                      borderColor: themePreference === option.key ? colors.gold : colors.border,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      changeTheme(option.key);
+                    }}
+                  >
+                    <Text style={{
+                      color: themePreference === option.key ? colors.gold : colors.text,
+                      fontWeight: themePreference === option.key ? '600' : '400',
+                      fontSize: 13,
+                    }}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
+                {themePreference === 'system' ? 'Following iOS settings' : `${themePreference === 'dark' ? 'Dark' : 'Light'} mode enabled`}
+              </Text>
+            </View>
+
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>📦 Manual Backup</Text>
               <Text style={{ color: colors.muted, marginBottom: 16 }}>Export to Files, Google Drive, or any storage</Text>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: colors.success }]} onPress={createBackup}>
@@ -2527,8 +2609,8 @@ function AppContent() {
               </View>
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>⚙️ Settings</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>⚙️ Settings</Text>
 
               {!hasGold && !hasLifetimeAccess && (
                 <TouchableOpacity
@@ -2561,7 +2643,7 @@ function AppContent() {
 
               {/* Scan Usage - only show for free users */}
               {!hasGold && !hasLifetimeAccess && (
-                <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
+                <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
                   <View>
                     <Text style={{ color: colors.text, fontSize: 14 }}>📷 Scan Usage</Text>
                     <Text style={{ color: scanUsage.scansUsed >= scanUsage.scansLimit ? colors.error : colors.muted, fontSize: 12, marginTop: 2 }}>
@@ -2577,8 +2659,8 @@ function AppContent() {
               )}
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>About</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>About</Text>
               <Text style={{ color: colors.muted }}>Stack Tracker Pro v1.0.1</Text>
               <Text style={{ color: colors.gold, fontStyle: 'italic', marginTop: 8 }}>"We CAN'T access your data."</Text>
 
@@ -2602,8 +2684,8 @@ function AppContent() {
             </View>
 
             {/* Help & Tips Section */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Help & Tips</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Help & Tips</Text>
               <TouchableOpacity
                 style={styles.statRow}
                 onPress={() => {
@@ -2616,8 +2698,8 @@ function AppContent() {
             </View>
 
             {/* Advanced Section */}
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Advanced</Text>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Advanced</Text>
 
               <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Support ID</Text>
               <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 8 }}>Share this with support if you need help with your account</Text>
@@ -2676,7 +2758,7 @@ function AppContent() {
       )}
 
       {/* Bottom Tabs */}
-      <View style={styles.bottomTabs}>
+      <View style={[styles.bottomTabs, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)', borderTopColor: colors.border }]}>
         {[
           { key: 'dashboard', icon: '📊', label: 'Dashboard' },
           { key: 'holdings', icon: '🪙', label: 'Holdings' },
@@ -2770,10 +2852,10 @@ function AppContent() {
                   </View>
 
                   <View style={styles.metalTabs}>
-                    <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]} onPress={() => setMetalTab('silver')}>
+                    <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : colors.border, backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]} onPress={() => setMetalTab('silver')}>
                       <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted }}>🥈 Silver</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : 'rgba(255,255,255,0.1)', backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]} onPress={() => setMetalTab('gold')}>
+                    <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : colors.border, backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]} onPress={() => setMetalTab('gold')}>
                       <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted }}>🥇 Gold</Text>
                     </TouchableOpacity>
                   </View>
@@ -2862,7 +2944,7 @@ function AppContent() {
             { s: 150, g: 7500, label: 'Moon 🚀' },
             { s: 500, g: 15000, label: 'Hyper' },
           ].map((preset, i) => (
-            <TouchableOpacity key={i} style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: 12, borderRadius: 12, marginRight: 8 }} onPress={() => { setSpecSilverPrice(preset.s.toString()); setSpecGoldPrice(preset.g.toString()); Keyboard.dismiss(); }}>
+            <TouchableOpacity key={i} style={{ backgroundColor: colors.border, padding: 12, borderRadius: 12, marginRight: 8 }} onPress={() => { setSpecSilverPrice(preset.s.toString()); setSpecGoldPrice(preset.g.toString()); Keyboard.dismiss(); }}>
               <Text style={{ color: colors.text }}>{preset.label}</Text>
               <Text style={{ color: colors.muted, fontSize: 10 }}>${preset.s} / ${preset.g}</Text>
             </TouchableOpacity>
@@ -2897,7 +2979,7 @@ function AppContent() {
         {/* Type selector at TOP */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
           {[{ k: '90', l: '90%' }, { k: '40', l: '40%' }, { k: '35', l: 'War Nickels' }].map(t => (
-            <TouchableOpacity key={t.k} style={[styles.metalTab, { flex: 1, borderColor: junkType === t.k ? colors.silver : 'rgba(255,255,255,0.1)', backgroundColor: junkType === t.k ? `${colors.silver}22` : 'transparent' }]} onPress={() => { setJunkType(t.k); Keyboard.dismiss(); }}>
+            <TouchableOpacity key={t.k} style={[styles.metalTab, { flex: 1, borderColor: junkType === t.k ? colors.silver : colors.border, backgroundColor: junkType === t.k ? `${colors.silver}22` : 'transparent' }]} onPress={() => { setJunkType(t.k); Keyboard.dismiss(); }}>
               <Text style={{ color: junkType === t.k ? colors.silver : colors.muted, fontSize: 12 }}>{t.l}</Text>
             </TouchableOpacity>
           ))}
@@ -2917,7 +2999,7 @@ function AppContent() {
           <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>${formatCurrency(junkMeltValue)}</Text>
         </View>
 
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 8 }}>
+        <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 8 }}>
           <Text style={{ color: colors.muted, fontSize: 11 }}>
             {junkType === '90' && '90% silver: Pre-1965 dimes, quarters, halves. Multiply face value × 0.715 for oz.'}
             {junkType === '40' && '40% silver: 1965-1970 Kennedy halves. Multiply face value × 0.295 for oz.'}
@@ -2932,13 +3014,13 @@ function AppContent() {
         onClose={() => setShowPrivacyModal(false)}
         title="🔒 Privacy Architecture"
       >
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.success }]}>✅ What We Do</Text>
           <Text style={styles.privacyItem}>• Store data locally on YOUR device</Text>
           <Text style={styles.privacyItem}>• Process receipts in memory only</Text>
           <Text style={styles.privacyItem}>• Delete images immediately</Text>
         </View>
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.error }]}>❌ What We DON'T Do</Text>
           <Text style={styles.privacyItem}>• Store your data on servers</Text>
           <Text style={styles.privacyItem}>• Track your holdings</Text>
@@ -2956,14 +3038,14 @@ function AppContent() {
         onClose={() => setShowHelpModal(false)}
         title="📖 Help & Tips"
       >
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Getting Started</Text>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Getting Started</Text>
           <Text style={styles.privacyItem}>• Add purchases manually by tapping "+" on the Holdings tab</Text>
           <Text style={styles.privacyItem}>• Or use AI Receipt Scanner to automatically extract data from receipts and invoices</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>AI Receipt Scanner</Text>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>AI Receipt Scanner</Text>
           <Text style={styles.privacyItem}>• Tap "Take Photo" to capture a receipt with your camera</Text>
           <Text style={styles.privacyItem}>• Tap "Upload Photo" to select an existing image from your gallery</Text>
           <Text style={styles.privacyItem}>• The AI will extract product name, quantity, price, dealer, and date</Text>
@@ -2972,8 +3054,8 @@ function AppContent() {
           <Text style={styles.privacyItem}>• Gold/Lifetime subscribers get unlimited scans</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Backup & Restore</Text>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Backup & Restore</Text>
           <Text style={styles.privacyItem}>• Your data is stored locally on your device only - we can't access it</Text>
           <Text style={styles.privacyItem}>• Use "Backup" to save your portfolio to iCloud Drive, Google Drive, or any cloud storage</Text>
           <Text style={styles.privacyItem}>• Use "Restore" to load a backup onto this device or a new device</Text>
@@ -2982,8 +3064,8 @@ function AppContent() {
           </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Using Multiple Devices</Text>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Using Multiple Devices</Text>
           {Platform.OS === 'ios' ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -3006,14 +3088,14 @@ function AppContent() {
           )}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Export CSV</Text>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Export CSV</Text>
           <Text style={styles.privacyItem}>• Export your entire portfolio as a CSV spreadsheet</Text>
           <Text style={styles.privacyItem}>• Use for your own records, tax preparation, or importing to other tools</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Support</Text>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Support</Text>
           <Text style={styles.privacyItem}>• Need help? Email stacktrackerpro@gmail.com</Text>
           <Text style={[styles.privacyItem, { marginTop: 4, color: colors.muted, fontSize: 12 }]}>Include your Support ID (found in Settings → Advanced) for faster assistance</Text>
         </View>
@@ -3270,7 +3352,7 @@ function AppContent() {
       >
         {detailItem && (
           <>
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
               <Text style={[styles.cardTitle, { fontSize: 20 }]}>{detailItem.productName}</Text>
               {detailItem.datePurchased && (
                 <View style={styles.statRow}>
@@ -3284,7 +3366,7 @@ function AppContent() {
                   <Text style={styles.statRowValue}>{detailItem.source}</Text>
                 </View>
               )}
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={styles.statRowLabel}>Quantity</Text>
                 <Text style={styles.statRowValue}>{detailItem.quantity}x</Text>
@@ -3301,7 +3383,7 @@ function AppContent() {
                 <Text style={styles.statRowLabel}>Total Weight</Text>
                 <Text style={styles.statRowValue}>{(detailItem.ozt * detailItem.quantity).toFixed(2)} oz</Text>
               </View>
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={styles.statRowLabel}>Premium (per unit)</Text>
                 <Text style={[styles.statRowValue, { color: colors.gold }]}>${formatCurrency(detailItem.premium)}</Text>
@@ -3324,7 +3406,7 @@ function AppContent() {
                   <Text style={styles.statRowValue}>${formatCurrency(detailItem.shipping)}</Text>
                 </View>
               )}
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
                 <Text style={[styles.statRowLabel, { fontSize: 14, fontWeight: '600' }]}>Total Cost Basis</Text>
                 <Text style={[styles.statRowValue, { fontSize: 16 }]}>
