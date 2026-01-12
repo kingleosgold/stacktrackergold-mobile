@@ -1166,105 +1166,133 @@ function AppContent() {
   // RECEIPT SCANNING
   // ============================================
 
-  const scanReceipt = async (source = 'gallery') => {
+  // Show scanning tips before opening picker
+  const showScanningTips = (source) => {
+    const tips = source === 'camera'
+      ? "For best results:\n\n• Lay paper receipt flat with good lighting\n• Avoid shadows and glare\n• Include all line items in frame"
+      : "For best results:\n\n• Use screenshots from dealer apps or emails\n• For paper receipts: lay flat with good lighting\n• Select multiple images for long receipts";
+
+    Alert.alert(
+      '📷 Scanning Tips',
+      tips,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: () => performScan(source) }
+      ]
+    );
+  };
+
+  // Process a single image and return items
+  const processImage = async (asset, imageIndex, totalImages) => {
+    console.log(`📷 Processing image ${imageIndex + 1}/${totalImages}`);
+    console.log(`   URI: ${asset.uri}`);
+    console.log(`   Width: ${asset.width}px, Height: ${asset.height}px`);
+
+    // Read file as base64
+    const fileInfo = await FileSystem.getInfoAsync(asset.uri, { size: true });
+    const fullBase64 = await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: FileSystem.EncodingType.Base64
+    });
+
+    console.log(`   File size: ${fileInfo.size ? (fileInfo.size / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+    console.log(`   Base64 length: ${fullBase64.length} characters`);
+
+    const mimeType = asset.mimeType || asset.type || 'image/jpeg';
+
+    const response = await fetch(`${API_BASE_URL}/api/scan-receipt`, {
+      method: 'POST',
+      body: JSON.stringify({
+        image: fullBase64,
+        mimeType: mimeType,
+        originalSize: fileInfo.size
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const data = await response.json();
+    return data;
+  };
+
+  // Perform the actual scan after tips
+  const performScan = async (source) => {
     // Check scan limit first
     if (!checkScanLimit()) return;
 
     let result;
 
     if (source === 'camera') {
-      // Request camera permission
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert('Permission Required', 'Please allow access to your camera to take photos of receipts.');
         return;
       }
-
       result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1.0 });
     } else {
-      // Request media library permission
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
         Alert.alert('Permission Required', 'Please allow access to your photos.');
         return;
       }
-
-      result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1.0 });
+      // Allow multiple selection for gallery
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 1.0,
+        allowsMultipleSelection: true,
+        selectionLimit: 10
+      });
     }
 
     if (result.canceled) return;
 
-    // Safety check for assets array
     if (!result.assets || result.assets.length === 0) {
       Alert.alert('Error', 'No image selected');
       return;
     }
 
+    const totalImages = result.assets.length;
     setScanStatus('scanning');
-    setScanMessage('Analyzing receipt...');
+    setScanMessage(`Analyzing ${totalImages} image${totalImages > 1 ? 's' : ''}...`);
 
     try {
-      const asset = result.assets[0];
+      // Process all images and combine results
+      let allItems = [];
+      let dealer = '';
+      let purchaseDate = '';
+      let successCount = 0;
 
-      // Log image details for debugging
-      console.log('📷 IMAGE DETAILS FROM PICKER:');
-      console.log(`   URI: ${asset.uri}`);
-      console.log(`   Width: ${asset.width}px`);
-      console.log(`   Height: ${asset.height}px`);
-      console.log(`   Type: ${asset.type || 'unknown'}`);
-      console.log(`   MimeType: ${asset.mimeType || 'unknown'}`);
-      console.log(`   File size from picker: ${asset.fileSize ? (asset.fileSize / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+      for (let i = 0; i < result.assets.length; i++) {
+        const asset = result.assets[i];
+        setScanMessage(`Analyzing image ${i + 1} of ${totalImages}...`);
 
-      // Read actual file and send as base64 to bypass FormData compression
-      let fullBase64;
-      let fileSize;
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(asset.uri, { size: true });
-        fileSize = fileInfo.size;
-        console.log(`   Actual file size on disk: ${fileSize ? (fileSize / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+        try {
+          const data = await processImage(asset, i, totalImages);
 
-        // Read full file as base64
-        fullBase64 = await FileSystem.readAsStringAsync(asset.uri, {
-          encoding: FileSystem.EncodingType.Base64
-        });
-        console.log(`   Full base64 length: ${fullBase64.length} characters`);
-        console.log(`   Full base64 first 50: ${fullBase64.substring(0, 50)}`);
-        console.log(`   Full base64 last 50: ${fullBase64.substring(fullBase64.length - 50)}`);
-      } catch (fileReadError) {
-        console.log(`   File read error: ${fileReadError.message}`);
-        throw new Error('Could not read image file');
+          if (data.success && data.items && data.items.length > 0) {
+            allItems = [...allItems, ...data.items];
+            // Use first found dealer/date
+            if (!dealer && data.dealer) dealer = data.dealer;
+            if (!purchaseDate && data.purchaseDate) purchaseDate = data.purchaseDate;
+            successCount++;
+            if (__DEV__) console.log(`✅ Image ${i + 1}: Found ${data.items.length} items`);
+          } else {
+            if (__DEV__) console.log(`⚠️ Image ${i + 1}: No items found`);
+          }
+        } catch (imgError) {
+          console.error(`❌ Image ${i + 1} failed:`, imgError.message);
+        }
       }
 
-      // Use actual mime type from asset if available
-      const mimeType = asset.mimeType || asset.type || 'image/jpeg';
-      console.log(`   Using mimeType: ${mimeType}`);
+      // Only increment scan count once for the batch
+      if (allItems.length > 0) {
+        await incrementScanCount();
+      }
 
-      // Send as JSON with base64 instead of FormData to avoid compression
-      console.log('📤 Sending receipt to server as base64...');
-
-      const response = await fetch(`${API_BASE_URL}/api/scan-receipt`, {
-        method: 'POST',
-        body: JSON.stringify({
-          image: fullBase64,
-          mimeType: mimeType,
-          originalSize: fileSize
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (__DEV__) console.log('📥 Response status:', response.status);
-
-      const data = await response.json();
-      if (__DEV__) console.log('📄 Full server response:', JSON.stringify(data, null, 2));
+      const data = { success: allItems.length > 0, items: allItems, dealer, purchaseDate };
+      if (__DEV__) console.log(`📄 Combined results: ${allItems.length} items from ${successCount}/${totalImages} images`);
 
       // Handle multi-item receipt response
       if (data.success && data.items && data.items.length > 0) {
-        // Only increment scan count on successful extraction
-        await incrementScanCount();
-
         const items = data.items;
-        const purchaseDate = data.purchaseDate || '';
-        const dealer = data.dealer || '';
 
         if (__DEV__) console.log(`✅ Found ${items.length} item(s) on receipt`);
 
@@ -2698,11 +2726,11 @@ function AppContent() {
                   <View style={[styles.card, { backgroundColor: 'rgba(148,163,184,0.1)' }]}>
                     <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12 }}>📷 AI Receipt Scanner</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver, flex: 1 }]} onPress={() => scanReceipt('camera')}>
+                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver, flex: 1 }]} onPress={() => showScanningTips('camera')}>
                         <Text style={{ color: '#000' }}>📷 Take Photo</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver, flex: 1 }]} onPress={() => scanReceipt('gallery')}>
-                        <Text style={{ color: '#000' }}>🖼️ Upload Photo</Text>
+                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.silver, flex: 1 }]} onPress={() => showScanningTips('gallery')}>
+                        <Text style={{ color: '#000' }}>🖼️ Upload Photos</Text>
                       </TouchableOpacity>
                     </View>
                     {!hasGold && !hasLifetimeAccess && (
