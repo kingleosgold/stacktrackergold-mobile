@@ -128,6 +128,9 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   if (total === 0) return null;
 
+  // Gap angle in degrees between segments
+  const gapAngle = 6;
+
   // Calculate legend percentages from all data (including 0%)
   const legendItems = data.map((item) => ({
     ...item,
@@ -137,47 +140,41 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
   // Filter out zero-value segments for pie rendering
   const nonZeroData = data.filter((item) => item.value > 0);
 
-  // Build segments with cumulative angles
-  let cumulativeAngle = 0;
-  const segments = nonZeroData.map((item) => {
+  // Build segments with angles (accounting for gaps)
+  const numSegments = nonZeroData.length;
+  const totalGap = numSegments > 1 ? gapAngle * numSegments : 0;
+  const availableAngle = 360 - totalGap;
+
+  let currentAngle = 0;
+  const segments = nonZeroData.map((item, index) => {
     const percentage = item.value / total;
-    const angle = percentage * 360;
-    const startAngle = cumulativeAngle;
-    cumulativeAngle += angle;
+    const angle = percentage * availableAngle;
+    const startAngle = currentAngle;
+    currentAngle += angle + (numSegments > 1 ? gapAngle : 0);
     return { ...item, percentage, startAngle, angle };
   });
 
-  // For a two-segment pie, we use the "mask" approach:
-  // 1. Background = first segment color (fills 100%)
-  // 2. Second segment is rendered by masking/covering from its start angle
-  // This works by placing two half-circles that "reveal" the second color
-
-  const renderSecondSegment = () => {
-    if (segments.length < 2) return null;
-    const segment = segments[1];
+  // Render a single segment arc using half-circle technique
+  const renderSegment = (segment, index) => {
     const { startAngle, angle, color } = segment;
-
-    // The second segment starts where the first ends
-    // We need to cover "angle" degrees starting from "startAngle"
-
     if (angle <= 0) return null;
 
     const elements = [];
+    const bgColor = cardBgColor || '#18181b'; // Gap color = background
 
     if (angle <= 180) {
-      // For <= 180 degrees, we need one rotated half that reveals the second color
-      // We place the second color on the right half, rotate container to startAngle
+      // Single half-circle with mask
       elements.push(
         <View
-          key="seg-single"
+          key={`seg-${index}`}
           style={{
             position: 'absolute',
             width: size,
             height: size,
-            transform: [{ rotate: `${startAngle}deg` }],
+            transform: [{ rotate: `${startAngle - 90}deg` }],
           }}
         >
-          {/* Right half with second color */}
+          {/* Colored half */}
           <View style={{
             position: 'absolute',
             width: size / 2,
@@ -185,28 +182,29 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
             left: size / 2,
             backgroundColor: color,
           }} />
-          {/* Left-side mask to hide excess - rotated to show only "angle" degrees */}
+          {/* Mask to cut off excess */}
           <View style={{
             position: 'absolute',
             width: size / 2,
             height: size,
             left: size / 2,
-            backgroundColor: segments[0].color,
+            backgroundColor: bgColor,
+            transformOrigin: 'left center',
             transform: [{ rotate: `${angle}deg` }],
           }} />
         </View>
       );
     } else {
-      // For > 180 degrees, we show the full right half plus part of the left
-      // First, show the entire right half (180 degrees)
+      // For > 180 degrees, need two half-circles
+      // First half: full 180 degrees
       elements.push(
         <View
-          key="seg-right"
+          key={`seg-${index}-right`}
           style={{
             position: 'absolute',
             width: size,
             height: size,
-            transform: [{ rotate: `${startAngle}deg` }],
+            transform: [{ rotate: `${startAngle - 90}deg` }],
           }}
         >
           <View style={{
@@ -218,20 +216,18 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
           }} />
         </View>
       );
-
-      // Then show the remaining portion on the left side
+      // Second half: remaining angle
       const remainingAngle = angle - 180;
       elements.push(
         <View
-          key="seg-left"
+          key={`seg-${index}-left`}
           style={{
             position: 'absolute',
             width: size,
             height: size,
-            transform: [{ rotate: `${startAngle + 180}deg` }],
+            transform: [{ rotate: `${startAngle + 90}deg` }],
           }}
         >
-          {/* Right half with second color */}
           <View style={{
             position: 'absolute',
             width: size / 2,
@@ -239,19 +235,18 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
             left: size / 2,
             backgroundColor: color,
           }} />
-          {/* Mask to hide excess */}
           <View style={{
             position: 'absolute',
             width: size / 2,
             height: size,
             left: size / 2,
-            backgroundColor: segments[0].color,
+            backgroundColor: bgColor,
+            transformOrigin: 'left center',
             transform: [{ rotate: `${remainingAngle}deg` }],
           }} />
         </View>
       );
     }
-
     return elements;
   };
 
@@ -263,10 +258,10 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
         borderRadius: size / 2,
         overflow: 'hidden',
         position: 'relative',
-        backgroundColor: segments[0]?.color, // Base with first color
+        backgroundColor: cardBgColor || '#18181b', // Background = gap color
       }}>
-        {/* Render second segment overlay */}
-        {renderSecondSegment()}
+        {/* Render each segment */}
+        {segments.map((segment, index) => renderSegment(segment, index))}
 
         {/* Center hole */}
         <View style={{
