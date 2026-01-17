@@ -24,6 +24,7 @@ import * as XLSX from 'xlsx';
 import * as Notifications from 'expo-notifications';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
 import { initializePurchases, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
+import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import GoldPaywall from './src/components/GoldPaywall';
 import Tutorial from './src/components/Tutorial';
 
@@ -1723,6 +1724,68 @@ function AppContent() {
       ]
     );
   };
+
+  // ============================================
+  // HOME SCREEN WIDGET (Gold/Lifetime Feature)
+  // ============================================
+
+  /**
+   * Sync portfolio data to iOS home screen widget
+   * Called when prices update or portfolio changes
+   */
+  const syncWidget = async () => {
+    // Only sync for Gold/Lifetime subscribers
+    if (!hasGold && !hasLifetimeAccess) return;
+
+    // Only sync on iOS with WidgetKit available
+    if (Platform.OS !== 'ios' || !isWidgetKitAvailable()) return;
+
+    try {
+      // Calculate daily change
+      let dailyChangeAmt = 0;
+      let dailyChangePct = 0;
+
+      if (midnightSnapshot && spotPricesLive) {
+        const midnightBaseline = (totalSilverOzt * midnightSnapshot.silverSpot) +
+                                 (totalGoldOzt * midnightSnapshot.goldSpot);
+        if (midnightBaseline > 0) {
+          dailyChangeAmt = totalMeltValue - midnightBaseline;
+          dailyChangePct = (dailyChangeAmt / midnightBaseline) * 100;
+        }
+      }
+
+      await syncWidgetData({
+        portfolioValue: totalMeltValue,
+        dailyChangeAmount: dailyChangeAmt,
+        dailyChangePercent: dailyChangePct,
+        goldSpot: goldSpot,
+        silverSpot: silverSpot,
+        hasSubscription: hasGold || hasLifetimeAccess,
+      });
+
+      if (__DEV__) console.log('📱 Widget data synced');
+    } catch (error) {
+      if (__DEV__) console.log('Widget sync failed:', error.message);
+    }
+  };
+
+  // Sync widget when prices or portfolio changes
+  useEffect(() => {
+    if (dataLoaded && spotPricesLive && (hasGold || hasLifetimeAccess)) {
+      syncWidget();
+    }
+  }, [totalMeltValue, silverSpot, goldSpot, dataLoaded, spotPricesLive, hasGold, hasLifetimeAccess]);
+
+  // Sync widget when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && (hasGold || hasLifetimeAccess)) {
+        syncWidget();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [hasGold, hasLifetimeAccess]);
 
   // ============================================
   // CLOUD BACKUP
@@ -3542,6 +3605,82 @@ function AppContent() {
                 </>
               )}
             </View>
+
+            {/* Home Screen Widget Section (iOS only, Gold/Lifetime Feature) */}
+            {Platform.OS === 'ios' && (
+              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>📱 Home Screen Widget</Text>
+                    {!hasGoldAccess && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                        <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>🔒 GOLD</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {!hasGoldAccess ? (
+                  <>
+                    <Text style={{ color: colors.muted, marginBottom: 12 }}>
+                      View your portfolio value and spot prices on your home screen
+                    </Text>
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: colors.gold,
+                        padding: 12,
+                        borderRadius: 8,
+                        gap: 8,
+                      }}
+                      onPress={() => setShowPaywallModal(true)}
+                    >
+                      <Text style={{ color: '#000', fontWeight: '600' }}>Unlock Home Widget</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ color: colors.muted, marginBottom: 12 }}>
+                      Add the Stack Tracker widget to your home screen to see your portfolio at a glance.
+                    </Text>
+
+                    {/* Widget Preview */}
+                    <View style={{
+                      backgroundColor: '#1a1a2e',
+                      borderRadius: 16,
+                      padding: 16,
+                      marginBottom: 12,
+                    }}>
+                      <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '600', marginBottom: 8 }}>
+                        Stack Tracker Pro
+                      </Text>
+                      <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold', marginBottom: 4 }}>
+                        {formatCurrency(totalMeltValue, 0)}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                        <Text style={{ color: colors.gold, fontSize: 12 }}>🥇 Gold ${goldSpot.toFixed(0)}</Text>
+                        <Text style={{ color: colors.silver, fontSize: 12 }}>🥈 Silver ${silverSpot.toFixed(2)}</Text>
+                      </View>
+                      <Text style={{ color: '#71717a', fontSize: 9 }}>Widget preview</Text>
+                    </View>
+
+                    {/* Instructions */}
+                    <View style={{ backgroundColor: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 8 }}>
+                      <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 6, fontSize: 13 }}>How to add widget:</Text>
+                      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+                        1. Long-press your home screen{'\n'}
+                        2. Tap the + button (top left){'\n'}
+                        3. Search for "Stack Tracker"{'\n'}
+                        4. Choose small or medium size{'\n'}
+                        5. Tap "Add Widget"
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            )}
 
             {/* Appearance Section */}
             <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
