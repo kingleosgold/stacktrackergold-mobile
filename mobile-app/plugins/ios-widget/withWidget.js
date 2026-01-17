@@ -249,92 +249,109 @@ const withXcodeProjectMod = (config) => {
       if (target) {
         console.log('Added widget target to Xcode project');
 
-        // Create a new PBXGroup for the widget
-        const widgetGroupKey = xcodeProject.pbxCreateGroup(WIDGET_NAME, WIDGET_NAME);
-
-        // Safely add widget group to main project group
+        // CRITICAL: Configure build settings FIRST before any file operations
+        // This ensures DEVELOPMENT_TEAM is set even if file operations fail
         try {
-          const mainGroupId = xcodeProject.getFirstProject().firstProject.mainGroup;
-          const groups = xcodeProject.hash.project.objects['PBXGroup'];
-          if (groups[mainGroupId] && groups[mainGroupId].children) {
-            groups[mainGroupId].children.push({ value: widgetGroupKey, comment: WIDGET_NAME });
-          }
-        } catch (groupError) {
-          console.log('Could not add widget to main group:', groupError.message);
-        }
+          const nativeTargets = xcodeProject.hash.project.objects['PBXNativeTarget'];
+          const configurations = xcodeProject.pbxXCBuildConfigurationSection();
 
-        // Add source files to widget target
-        const widgetFiles = [
-          { name: 'StackTrackerWidget.swift', type: 'sourcecode.swift' },
-          { name: 'WidgetViews.swift', type: 'sourcecode.swift' },
-          { name: 'WidgetData.swift', type: 'sourcecode.swift' },
-        ];
+          // Find our widget target and its build configuration list
+          for (const targetKey in nativeTargets) {
+            const nativeTarget = nativeTargets[targetKey];
+            if (nativeTarget && nativeTarget.name === targetName) {
+              const buildConfigListId = nativeTarget.buildConfigurationList;
 
-        for (const file of widgetFiles) {
-          const filePath = `${WIDGET_NAME}/${file.name}`;
-          xcodeProject.addSourceFile(filePath, { target: target.uuid }, widgetGroupKey);
-        }
+              // Get the build configuration list
+              const configLists = xcodeProject.hash.project.objects['XCConfigurationList'];
+              const configList = configLists[buildConfigListId];
 
-        // Add Assets.xcassets
-        xcodeProject.addResourceFile(
-          `${WIDGET_NAME}/Assets.xcassets`,
-          { target: target.uuid },
-          widgetGroupKey
-        );
+              if (configList && configList.buildConfigurations) {
+                // Update each build configuration
+                for (const configRef of configList.buildConfigurations) {
+                  const configId = configRef.value;
+                  const buildConfig = configurations[configId];
 
-        // Configure build settings for the widget target
-        // Get the target's build configuration list
-        const nativeTargets = xcodeProject.hash.project.objects['PBXNativeTarget'];
-        const configurations = xcodeProject.pbxXCBuildConfigurationSection();
+                  if (buildConfig && buildConfig.buildSettings) {
+                    const buildSettings = buildConfig.buildSettings;
 
-        // Find our widget target and its build configuration list
-        for (const targetKey in nativeTargets) {
-          const nativeTarget = nativeTargets[targetKey];
-          if (nativeTarget && nativeTarget.name === targetName) {
-            const buildConfigListId = nativeTarget.buildConfigurationList;
+                    // Code signing settings - CRITICAL for EAS builds
+                    buildSettings.DEVELOPMENT_TEAM = APPLE_TEAM_ID;
+                    buildSettings.CODE_SIGN_STYLE = 'Automatic';
 
-            // Get the build configuration list
-            const configLists = xcodeProject.hash.project.objects['XCConfigurationList'];
-            const configList = configLists[buildConfigListId];
+                    // Set all other required build settings
+                    buildSettings.SWIFT_VERSION = '5.0';
+                    buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '17.0';
+                    buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';
+                    buildSettings.CODE_SIGN_ENTITLEMENTS = `${WIDGET_NAME}/${WIDGET_NAME}.entitlements`;
+                    buildSettings.ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = 'WidgetBackground';
+                    buildSettings.ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = 'AccentColor';
+                    buildSettings.GENERATE_INFOPLIST_FILE = 'YES';
+                    buildSettings.MARKETING_VERSION = '1.0';
+                    buildSettings.CURRENT_PROJECT_VERSION = '1';
+                    buildSettings.INFOPLIST_FILE = `${WIDGET_NAME}/Info.plist`;
+                    buildSettings.INFOPLIST_KEY_CFBundleDisplayName = 'Stack Tracker';
+                    buildSettings.INFOPLIST_KEY_NSHumanReadableCopyright = '';
+                    buildSettings.LD_RUNPATH_SEARCH_PATHS = '"$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"';
+                    buildSettings.PRODUCT_NAME = '"$(TARGET_NAME)"';
+                    buildSettings.SKIP_INSTALL = 'YES';
+                    buildSettings.SWIFT_EMIT_LOC_STRINGS = 'YES';
+                    buildSettings.PRODUCT_BUNDLE_IDENTIFIER = widgetBundleId;
 
-            if (configList && configList.buildConfigurations) {
-              // Update each build configuration
-              for (const configRef of configList.buildConfigurations) {
-                const configId = configRef.value;
-                const config = configurations[configId];
-
-                if (config && config.buildSettings) {
-                  const buildSettings = config.buildSettings;
-
-                  // Set all required build settings
-                  buildSettings.SWIFT_VERSION = '5.0';
-                  buildSettings.IPHONEOS_DEPLOYMENT_TARGET = '17.0';
-                  buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';
-                  buildSettings.CODE_SIGN_ENTITLEMENTS = `${WIDGET_NAME}/${WIDGET_NAME}.entitlements`;
-                  buildSettings.ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = 'WidgetBackground';
-                  buildSettings.ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = 'AccentColor';
-                  buildSettings.GENERATE_INFOPLIST_FILE = 'YES';
-                  buildSettings.MARKETING_VERSION = '1.0';
-                  buildSettings.CURRENT_PROJECT_VERSION = '1';
-                  buildSettings.INFOPLIST_FILE = `${WIDGET_NAME}/Info.plist`;
-                  buildSettings.INFOPLIST_KEY_CFBundleDisplayName = 'Stack Tracker';
-                  buildSettings.INFOPLIST_KEY_NSHumanReadableCopyright = '';
-                  buildSettings.LD_RUNPATH_SEARCH_PATHS = '"$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"';
-                  buildSettings.PRODUCT_NAME = '"$(TARGET_NAME)"';
-                  buildSettings.SKIP_INSTALL = 'YES';
-                  buildSettings.SWIFT_EMIT_LOC_STRINGS = 'YES';
-                  buildSettings.PRODUCT_BUNDLE_IDENTIFIER = widgetBundleId;
-
-                  // Code signing settings - CRITICAL for EAS builds
-                  buildSettings.DEVELOPMENT_TEAM = APPLE_TEAM_ID;
-                  buildSettings.CODE_SIGN_STYLE = 'Automatic';
-
-                  console.log(`Configured build settings for ${config.name || 'widget'} configuration`);
+                    console.log(`Configured build settings for ${buildConfig.name || 'widget'} configuration (DEVELOPMENT_TEAM=${APPLE_TEAM_ID})`);
+                  }
                 }
               }
+              break;
             }
-            break;
           }
+        } catch (buildSettingsError) {
+          console.log('Error configuring build settings:', buildSettingsError.message);
+        }
+
+        // Now try to add files (non-critical, widget extension files are copied by withWidgetExtension)
+        try {
+          // Create a new PBXGroup for the widget
+          const widgetGroupKey = xcodeProject.pbxCreateGroup(WIDGET_NAME, WIDGET_NAME);
+
+          // Safely add widget group to main project group
+          try {
+            const mainGroupId = xcodeProject.getFirstProject().firstProject.mainGroup;
+            const groups = xcodeProject.hash.project.objects['PBXGroup'];
+            if (groups[mainGroupId] && groups[mainGroupId].children) {
+              groups[mainGroupId].children.push({ value: widgetGroupKey, comment: WIDGET_NAME });
+            }
+          } catch (groupError) {
+            console.log('Could not add widget to main group:', groupError.message);
+          }
+
+          // Add source files to widget target
+          const widgetFiles = [
+            { name: 'StackTrackerWidget.swift', type: 'sourcecode.swift' },
+            { name: 'WidgetViews.swift', type: 'sourcecode.swift' },
+            { name: 'WidgetData.swift', type: 'sourcecode.swift' },
+          ];
+
+          for (const file of widgetFiles) {
+            const filePath = `${WIDGET_NAME}/${file.name}`;
+            try {
+              xcodeProject.addSourceFile(filePath, { target: target.uuid }, widgetGroupKey);
+            } catch (fileError) {
+              console.log(`Could not add source file ${file.name}:`, fileError.message);
+            }
+          }
+
+          // Add Assets.xcassets
+          try {
+            xcodeProject.addResourceFile(
+              `${WIDGET_NAME}/Assets.xcassets`,
+              { target: target.uuid },
+              widgetGroupKey
+            );
+          } catch (assetError) {
+            console.log('Could not add Assets.xcassets:', assetError.message);
+          }
+        } catch (fileOpsError) {
+          console.log('File operations note:', fileOpsError.message);
         }
       }
     } catch (error) {

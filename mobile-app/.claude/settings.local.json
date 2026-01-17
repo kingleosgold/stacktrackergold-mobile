@@ -37,7 +37,12 @@
       "Bash(npm uninstall:*)",
       "Bash(eas submit:*)",
       "Bash(git ls-tree:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(eas build:view:*)",
+      "WebFetch(domain:expo.dev)",
+      "Bash(eas build:list:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)"
     ]
   }
 }
