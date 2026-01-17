@@ -94,6 +94,7 @@ const { isSupabaseAvailable } = require('./supabaseClient');
 const { fetchETFHistorical, slvToSpotSilver, gldToSpotGold, hasETFDataForDate, fetchBothETFs } = require('./services/etfPrices');
 const { calibrateRatios, getRatioForDate, needsCalibration } = require('./services/calibrateRatios');
 const { logPriceFetch, findLoggedPrice, findClosestLoggedPrice, getLogStats } = require('./services/priceLogger');
+const { createAlert, getAlertsForUser, deleteAlert, checkAlerts, getAlertCount } = require('./services/priceAlerts');
 
 // Cache for historical prices (to avoid repeated API calls for the same date)
 // Historical prices don't change, so we can cache them indefinitely
@@ -948,6 +949,179 @@ app.post('/api/increment-scan', async (req, res) => {
   }
 });
 
+// ============================================
+// PRICE ALERTS (Gold/Lifetime Feature)
+// ============================================
+
+/**
+ * Create a new price alert
+ * POST /api/alerts
+ * Body: { userId, metal, targetPrice, direction, pushToken }
+ */
+app.post('/api/alerts', async (req, res) => {
+  try {
+    const { userId, metal, targetPrice, direction, pushToken } = req.body;
+
+    // Validate required fields
+    if (!userId || !metal || !targetPrice || !direction) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: userId, metal, targetPrice, direction'
+      });
+    }
+
+    // Validate metal
+    if (!['gold', 'silver'].includes(metal)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Metal must be "gold" or "silver"'
+      });
+    }
+
+    // Validate direction
+    if (!['above', 'below'].includes(direction)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Direction must be "above" or "below"'
+      });
+    }
+
+    // Validate target price
+    const price = parseFloat(targetPrice);
+    if (isNaN(price) || price <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Target price must be a positive number'
+      });
+    }
+
+    const alert = await createAlert({
+      userId,
+      metal,
+      targetPrice: price,
+      direction,
+      pushToken: pushToken || null
+    });
+
+    res.json({
+      success: true,
+      alert
+    });
+
+  } catch (error) {
+    console.error('❌ Create alert error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create alert'
+    });
+  }
+});
+
+/**
+ * Get all alerts for a user
+ * GET /api/alerts/:userId
+ */
+app.get('/api/alerts/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required'
+      });
+    }
+
+    const alerts = await getAlertsForUser(userId);
+
+    res.json({
+      success: true,
+      alerts,
+      count: alerts.length
+    });
+
+  } catch (error) {
+    console.error('❌ Get alerts error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get alerts'
+    });
+  }
+});
+
+/**
+ * Delete an alert
+ * DELETE /api/alerts/:alertId
+ * Query: userId (required for ownership verification)
+ */
+app.delete('/api/alerts/:alertId', async (req, res) => {
+  try {
+    const { alertId } = req.params;
+    const { userId } = req.query;
+
+    if (!alertId || !userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Alert ID and User ID are required'
+      });
+    }
+
+    await deleteAlert(alertId, userId);
+
+    res.json({
+      success: true,
+      message: 'Alert deleted'
+    });
+
+  } catch (error) {
+    console.error('❌ Delete alert error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete alert'
+    });
+  }
+});
+
+/**
+ * Check all active alerts against current prices
+ * POST /api/alerts/check
+ * This should be called periodically (e.g., every 15 minutes)
+ */
+app.post('/api/alerts/check', async (req, res) => {
+  try {
+    // Use cached spot prices
+    const currentPrices = spotPriceCache.prices;
+
+    if (!currentPrices.gold || !currentPrices.silver) {
+      return res.status(503).json({
+        success: false,
+        error: 'Spot prices not available'
+      });
+    }
+
+    console.log(`🔔 Checking alerts at Gold $${currentPrices.gold}, Silver $${currentPrices.silver}...`);
+
+    const result = await checkAlerts(currentPrices);
+
+    res.json({
+      success: true,
+      ...result,
+      prices: {
+        gold: currentPrices.gold,
+        silver: currentPrices.silver
+      },
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Check alerts error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to check alerts'
+    });
+  }
+});
+
 /**
  * Scan receipt using Gemini 1.5 Flash (primary) or Claude Vision (fallback)
  * Privacy: Image is processed in memory only, never stored
@@ -1688,7 +1862,40 @@ fetchLiveSpotPrices().then(() => {
     console.log('⚡ Price Fetching: ON-DEMAND ONLY (10-min cache)');
     console.log('💸 API: MetalPriceAPI Primary, GoldAPI Fallback (10,000/month each)');
     console.log('🗄️ Scan Storage: /tmp/scan-usage.json');
+    console.log('🔔 Price Alerts: ENABLED (checking every 15 min)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+    // Check price alerts every 15 minutes
+    const ALERT_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+    setInterval(async () => {
+      try {
+        // Make sure we have fresh prices before checking
+        const cacheAge = spotPriceCache.lastUpdated
+          ? (Date.now() - spotPriceCache.lastUpdated.getTime()) / 1000 / 60
+          : Infinity;
+
+        if (cacheAge > 10) {
+          await fetchLiveSpotPrices();
+        }
+
+        const result = await checkAlerts(spotPriceCache.prices);
+        if (result.checked > 0) {
+          console.log(`🔔 Alert check complete: ${result.triggered}/${result.checked} triggered`);
+        }
+      } catch (error) {
+        console.error('❌ Alert check error:', error.message);
+      }
+    }, ALERT_CHECK_INTERVAL);
+
+    // Run initial alert check after 1 minute (let server stabilize)
+    setTimeout(async () => {
+      try {
+        const result = await checkAlerts(spotPriceCache.prices);
+        console.log(`🔔 Initial alert check: ${result.triggered}/${result.checked} triggered`);
+      } catch (error) {
+        console.error('❌ Initial alert check error:', error.message);
+      }
+    }, 60 * 1000);
   });
 }).catch(error => {
   console.error('Startup error:', error);

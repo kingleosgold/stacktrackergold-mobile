@@ -21,10 +21,20 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import Purchases from 'react-native-purchases';
 import * as XLSX from 'xlsx';
+import * as Notifications from 'expo-notifications';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
 import { initializePurchases, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
 import GoldPaywall from './src/components/GoldPaywall';
 import Tutorial from './src/components/Tutorial';
+
+// Configure notifications behavior
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // iCloud sync key
 const ICLOUD_HOLDINGS_KEY = 'stack_tracker_holdings.json';
@@ -642,6 +652,19 @@ function AppContent() {
   const [scanMessage, setScanMessage] = useState('');
   const [editingItem, setEditingItem] = useState(null);
 
+  // Push Notifications State
+  const [expoPushToken, setExpoPushToken] = useState(null);
+
+  // Price Alerts State (Gold/Lifetime feature)
+  const [priceAlerts, setPriceAlerts] = useState([]);
+  const [showAddAlertModal, setShowAddAlertModal] = useState(false);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [newAlert, setNewAlert] = useState({
+    metal: 'silver',
+    targetPrice: '',
+    direction: 'above', // 'above' or 'below'
+  });
+
   // Form State
   const [form, setForm] = useState({
     productName: '', source: '', datePurchased: '', ozt: '',
@@ -1213,6 +1236,66 @@ function AppContent() {
 
   useEffect(() => { authenticate(); }, []);
 
+  // Register for push notifications (for price alerts)
+  const registerForPushNotifications = async () => {
+    try {
+      // Check if device (not simulator)
+      if (!Constants.isDevice) {
+        console.log('📱 Push notifications require a physical device');
+        return null;
+      }
+
+      // Check existing permissions
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      // Request permission if not granted
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        console.log('📱 Push notification permission not granted');
+        return null;
+      }
+
+      // Get Expo push token
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: Constants.expoConfig?.extra?.eas?.projectId,
+      });
+
+      const token = tokenData.data;
+      console.log('📱 Expo Push Token:', token);
+
+      // Configure for iOS
+      if (Platform.OS === 'ios') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#fbbf24',
+        });
+      }
+
+      return token;
+    } catch (error) {
+      console.error('❌ Push notification registration error:', error);
+      return null;
+    }
+  };
+
+  // Register for push notifications after authentication
+  useEffect(() => {
+    if (isAuthenticated) {
+      registerForPushNotifications().then(token => {
+        if (token) {
+          setExpoPushToken(token);
+        }
+      });
+    }
+  }, [isAuthenticated]);
+
   // Check entitlements function (can be called after purchase)
   const checkEntitlements = async () => {
     try {
@@ -1282,6 +1365,13 @@ function AppContent() {
   useEffect(() => {
     if (revenueCatUserId && !hasGold && !hasLifetimeAccess) {
       fetchScanStatus();
+    }
+  }, [revenueCatUserId, hasGold, hasLifetimeAccess]);
+
+  // Fetch price alerts when user has Gold/Lifetime access
+  useEffect(() => {
+    if (revenueCatUserId && (hasGold || hasLifetimeAccess)) {
+      fetchPriceAlerts();
     }
   }, [revenueCatUserId, hasGold, hasLifetimeAccess]);
 
@@ -1522,6 +1612,116 @@ function AppContent() {
       return false;
     }
     return true;
+  };
+
+  // ============================================
+  // PRICE ALERTS (Gold/Lifetime Feature)
+  // ============================================
+
+  // Fetch user's price alerts
+  const fetchPriceAlerts = async () => {
+    if (!revenueCatUserId) return;
+    if (!hasGold && !hasLifetimeAccess) return; // Only for premium users
+
+    setAlertsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/alerts/${encodeURIComponent(revenueCatUserId)}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setPriceAlerts(data.alerts || []);
+        if (__DEV__) console.log(`🔔 Loaded ${data.alerts?.length || 0} price alerts`);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching price alerts:', error);
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
+
+  // Create a new price alert
+  const createPriceAlert = async () => {
+    if (!revenueCatUserId) {
+      Alert.alert('Error', 'Unable to create alert. Please try again.');
+      return;
+    }
+
+    const targetPrice = parseFloat(newAlert.targetPrice);
+    if (isNaN(targetPrice) || targetPrice <= 0) {
+      Alert.alert('Invalid Price', 'Please enter a valid target price.');
+      return;
+    }
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: revenueCatUserId,
+          metal: newAlert.metal,
+          targetPrice: targetPrice,
+          direction: newAlert.direction,
+          pushToken: expoPushToken,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPriceAlerts(prev => [data.alert, ...prev]);
+        setShowAddAlertModal(false);
+        setNewAlert({ metal: 'silver', targetPrice: '', direction: 'above' });
+
+        Alert.alert(
+          'Alert Created',
+          `You'll be notified when ${newAlert.metal === 'gold' ? 'gold' : 'silver'} goes ${newAlert.direction} $${targetPrice}/oz.`
+        );
+      } else {
+        Alert.alert('Error', data.error || 'Failed to create alert');
+      }
+    } catch (error) {
+      console.error('❌ Error creating price alert:', error);
+      Alert.alert('Error', 'Failed to create alert. Please try again.');
+    }
+  };
+
+  // Delete a price alert
+  const deletePriceAlert = async (alertId) => {
+    if (!revenueCatUserId) return;
+
+    Alert.alert(
+      'Delete Alert',
+      'Are you sure you want to delete this price alert?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+              const response = await fetch(
+                `${API_BASE_URL}/api/alerts/${alertId}?userId=${encodeURIComponent(revenueCatUserId)}`,
+                { method: 'DELETE' }
+              );
+
+              const data = await response.json();
+
+              if (data.success) {
+                setPriceAlerts(prev => prev.filter(a => a.id !== alertId));
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+            } catch (error) {
+              console.error('❌ Error deleting price alert:', error);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // ============================================
@@ -3195,6 +3395,154 @@ function AppContent() {
               </View>
             )}
 
+            {/* Price Alerts Section (Gold/Lifetime Feature) */}
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>🔔 Price Alerts</Text>
+                  {!hasGoldAccess && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                      <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>🔒 GOLD</Text>
+                    </View>
+                  )}
+                </View>
+                {alertsLoading && hasGoldAccess && <ActivityIndicator size="small" color={colors.gold} />}
+              </View>
+
+              {!hasGoldAccess ? (
+                <>
+                  <Text style={{ color: colors.muted, marginBottom: 12 }}>
+                    Get notified when gold or silver hits your target price
+                  </Text>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.gold,
+                      padding: 12,
+                      borderRadius: 8,
+                      gap: 8,
+                    }}
+                    onPress={() => setShowPaywallModal(true)}
+                  >
+                    <Text style={{ color: '#000', fontWeight: '600' }}>Unlock Price Alerts</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: colors.muted, marginBottom: 12 }}>
+                    Get push notifications when spot prices hit your targets
+                  </Text>
+
+                  {/* Add New Alert Button */}
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: colors.gold,
+                      padding: 12,
+                      borderRadius: 8,
+                      gap: 8,
+                      marginBottom: priceAlerts.length > 0 ? 16 : 0,
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setShowAddAlertModal(true);
+                    }}
+                  >
+                    <Text style={{ color: '#000', fontWeight: '600' }}>+ Add Price Alert</Text>
+                  </TouchableOpacity>
+
+                  {/* Active Alerts List */}
+                  {priceAlerts.filter(a => a.active).length > 0 && (
+                    <View>
+                      <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 8 }}>Active Alerts</Text>
+                      {priceAlerts.filter(a => a.active).map((alert) => (
+                        <View
+                          key={alert.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)',
+                            padding: 12,
+                            borderRadius: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 16 }}>{alert.metal === 'gold' ? '🥇' : '🥈'}</Text>
+                              <Text style={{ color: colors.text, fontWeight: '600' }}>
+                                {alert.metal === 'gold' ? 'Gold' : 'Silver'} {alert.direction === 'above' ? '↑' : '↓'} ${parseFloat(alert.target_price).toFixed(2)}
+                              </Text>
+                            </View>
+                            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                              Notify when {alert.direction} ${parseFloat(alert.target_price).toFixed(2)}/oz
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => deletePriceAlert(alert.id)}
+                            style={{ padding: 8 }}
+                          >
+                            <Text style={{ color: colors.error, fontSize: 16 }}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Triggered Alerts */}
+                  {priceAlerts.filter(a => a.triggered).length > 0 && (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ color: colors.muted, fontWeight: '600', marginBottom: 8 }}>Triggered</Text>
+                      {priceAlerts.filter(a => a.triggered).slice(0, 3).map((alert) => (
+                        <View
+                          key={alert.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: isDarkMode ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.1)',
+                            padding: 12,
+                            borderRadius: 8,
+                            marginBottom: 8,
+                            opacity: 0.7,
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 16 }}>✓</Text>
+                              <Text style={{ color: colors.success, fontWeight: '600' }}>
+                                {alert.metal === 'gold' ? 'Gold' : 'Silver'} hit ${parseFloat(alert.target_price).toFixed(2)}
+                              </Text>
+                            </View>
+                            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                              {alert.triggered_at ? new Date(alert.triggered_at).toLocaleDateString() : 'Recently'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => deletePriceAlert(alert.id)}
+                            style={{ padding: 8 }}
+                          >
+                            <Text style={{ color: colors.muted, fontSize: 14 }}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {priceAlerts.length === 0 && !alertsLoading && (
+                    <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center', marginTop: 4, fontStyle: 'italic' }}>
+                      No alerts set. Tap above to create one!
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+
             {/* Appearance Section */}
             <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
               <Text style={[styles.cardTitle, { color: colors.text }]}>🎨 Appearance</Text>
@@ -3767,6 +4115,131 @@ function AppContent() {
         onClose={() => setShowPaywallModal(false)}
         onPurchaseSuccess={checkEntitlements}
       />
+
+      {/* Add Price Alert Modal */}
+      <ModalWrapper
+        visible={showAddAlertModal}
+        onClose={() => {
+          setShowAddAlertModal(false);
+          setNewAlert({ metal: 'silver', targetPrice: '', direction: 'above' });
+        }}
+        title="Add Price Alert"
+        colors={colors}
+        isDarkMode={isDarkMode}
+      >
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ color: colors.muted, marginBottom: 16 }}>
+            Get notified when spot prices reach your target. Current prices: Gold ${goldSpot.toFixed(2)}, Silver ${silverSpot.toFixed(2)}
+          </Text>
+
+          {/* Metal Selection */}
+          <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 8 }}>Metal</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+            {['silver', 'gold'].map((metal) => (
+              <TouchableOpacity
+                key={metal}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 8,
+                  backgroundColor: newAlert.metal === metal
+                    ? (metal === 'gold' ? colors.gold : colors.silver)
+                    : (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setNewAlert(prev => ({ ...prev, metal }));
+                }}
+              >
+                <Text style={{
+                  color: newAlert.metal === metal ? '#000' : colors.text,
+                  fontWeight: '600',
+                }}>
+                  {metal === 'gold' ? '🥇 Gold' : '🥈 Silver'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Direction Selection */}
+          <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 8 }}>Alert When Price Goes...</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+            {[
+              { key: 'above', label: '↑ Above' },
+              { key: 'below', label: '↓ Below' },
+            ].map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 8,
+                  backgroundColor: newAlert.direction === option.key
+                    ? (option.key === 'above' ? colors.success : colors.error)
+                    : (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'),
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setNewAlert(prev => ({ ...prev, direction: option.key }));
+                }}
+              >
+                <Text style={{
+                  color: newAlert.direction === option.key ? '#fff' : colors.text,
+                  fontWeight: '600',
+                }}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Target Price Input */}
+          <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 8 }}>Target Price ($/oz)</Text>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}>
+            <Text style={{ color: colors.text, fontSize: 16, marginRight: 4 }}>$</Text>
+            <TextInput
+              style={{ flex: 1, color: colors.text, fontSize: 16, paddingVertical: 14 }}
+              value={newAlert.targetPrice}
+              onChangeText={(value) => setNewAlert(prev => ({ ...prev, targetPrice: value }))}
+              keyboardType="decimal-pad"
+              placeholder={newAlert.metal === 'gold' ? '4500.00' : '75.00'}
+              placeholderTextColor={colors.muted}
+            />
+          </View>
+          <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
+            Current {newAlert.metal === 'gold' ? 'gold' : 'silver'} spot: ${newAlert.metal === 'gold' ? goldSpot.toFixed(2) : silverSpot.toFixed(2)}/oz
+          </Text>
+        </View>
+
+        {/* Create Alert Button */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: colors.gold,
+            padding: 16,
+            borderRadius: 10,
+            alignItems: 'center',
+          }}
+          onPress={createPriceAlert}
+        >
+          <Text style={{ color: '#000', fontWeight: '700', fontSize: 16 }}>Create Alert</Text>
+        </TouchableOpacity>
+
+        {!expoPushToken && (
+          <Text style={{ color: colors.error, fontSize: 11, textAlign: 'center', marginTop: 12 }}>
+            Push notifications not enabled. Enable notifications in Settings to receive alerts.
+          </Text>
+        )}
+      </ModalWrapper>
 
       {/* Scanned Items Preview Modal */}
       <ModalWrapper
