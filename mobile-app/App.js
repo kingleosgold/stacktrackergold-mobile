@@ -687,6 +687,9 @@ function AppContent() {
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
   const [showSharePreview, setShowSharePreview] = useState(false);
 
+  // Analytics fetch abort controller - allows canceling in-progress fetches
+  const analyticsAbortRef = useRef(null);
+
   // Form State
   const [form, setForm] = useState({
     productName: '', source: '', datePurchased: '', ozt: '',
@@ -2010,10 +2013,18 @@ function AppContent() {
     if (!hasGold && !hasLifetimeAccess) return;
     if (!revenueCatUserId) return;
 
+    // Cancel any in-progress fetch
+    if (analyticsAbortRef.current) {
+      analyticsAbortRef.current.abort();
+    }
+
+    // Create new abort controller for this fetch
+    const controller = new AbortController();
+    analyticsAbortRef.current = controller;
+
     setAnalyticsLoading(true);
     try {
-      // Add timeout to the initial fetch
-      const controller = new AbortController();
+      // Add timeout
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch(
@@ -2021,12 +2032,22 @@ function AppContent() {
         { signal: controller.signal }
       );
       clearTimeout(timeoutId);
+
+      // Check if this request was aborted (user switched ranges)
+      if (controller.signal.aborted) {
+        if (__DEV__) console.log('📊 Analytics fetch aborted (range changed)');
+        return;
+      }
+
       const data = await response.json();
+
+      // Double-check we weren't aborted while parsing JSON
+      if (controller.signal.aborted) return;
 
       if (data.success && data.snapshots) {
         // If user has holdings but no snapshots, save one now and calculate historical data
         if (data.snapshots.length === 0 && (silverItems.length > 0 || goldItems.length > 0)) {
-          if (__DEV__) console.log('📊 No snapshots found but user has holdings - saving initial snapshot and calculating history');
+          if (__DEV__) console.log('📊 No snapshots found but user has holdings - calculating history for range:', range);
 
           // Save current snapshot (don't await - let it run in background)
           saveDailySnapshot().catch(err => console.log('Snapshot save error:', err.message));
@@ -2039,6 +2060,9 @@ function AppContent() {
             );
             const historicalData = await Promise.race([historicalPromise, timeoutPromise]);
 
+            // Check if aborted before setting state
+            if (controller.signal.aborted) return;
+
             if (historicalData && historicalData.length > 0) {
               setAnalyticsSnapshots(historicalData);
               if (__DEV__) console.log(`📊 Calculated ${historicalData.length} historical data points`);
@@ -2046,6 +2070,9 @@ function AppContent() {
               throw new Error('No historical data returned');
             }
           } catch (histError) {
+            // Check if aborted
+            if (controller.signal.aborted) return;
+
             if (__DEV__) console.log('⚠️ Historical calculation failed, using today only:', histError.message);
             // Fallback: show today's data only
             setAnalyticsSnapshots([{
@@ -2072,6 +2099,12 @@ function AppContent() {
         setAnalyticsSnapshots([]);
       }
     } catch (error) {
+      // Don't log or set state for aborted requests
+      if (error.name === 'AbortError' || controller.signal.aborted) {
+        if (__DEV__) console.log('📊 Analytics fetch aborted');
+        return;
+      }
+
       console.error('❌ Error fetching analytics:', error.message);
       // On error, show today's data as fallback if user has holdings
       if (silverItems.length > 0 || goldItems.length > 0) {
@@ -2089,7 +2122,10 @@ function AppContent() {
         setAnalyticsSnapshots([]);
       }
     } finally {
-      setAnalyticsLoading(false);
+      // Only set loading false if this is still the active request
+      if (!controller.signal.aborted) {
+        setAnalyticsLoading(false);
+      }
     }
   };
 
@@ -2105,6 +2141,13 @@ function AppContent() {
     if (tab === 'analytics' && revenueCatUserId && (hasGold || hasLifetimeAccess)) {
       fetchAnalyticsSnapshots(analyticsRange);
     }
+
+    // Cleanup: cancel any in-progress fetch when dependencies change or unmount
+    return () => {
+      if (analyticsAbortRef.current) {
+        analyticsAbortRef.current.abort();
+      }
+    };
   }, [tab, analyticsRange, revenueCatUserId, hasGold, hasLifetimeAccess]);
 
   // ============================================
