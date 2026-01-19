@@ -22,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import Purchases from 'react-native-purchases';
 import * as XLSX from 'xlsx';
 import * as Notifications from 'expo-notifications';
+import * as StoreReview from 'expo-store-review';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
 import { initializePurchases, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
@@ -1880,7 +1881,92 @@ function AppContent() {
   };
 
   /**
+   * Calculate historical portfolio values from holdings + historical spot prices
+   * This generates chart data client-side without needing to persist every historical snapshot
+   */
+  const calculateHistoricalPortfolioData = async (range = '1M') => {
+    const allItems = [...silverItems, ...goldItems];
+    if (allItems.length === 0) return [];
+
+    // Determine date range
+    const now = new Date();
+    let startDate = new Date();
+    switch (range.toUpperCase()) {
+      case '1W': startDate.setDate(now.getDate() - 7); break;
+      case '1M': startDate.setMonth(now.getMonth() - 1); break;
+      case '3M': startDate.setMonth(now.getMonth() - 3); break;
+      case '6M': startDate.setMonth(now.getMonth() - 6); break;
+      case '1Y': startDate.setFullYear(now.getFullYear() - 1); break;
+      case 'ALL':
+        // Find oldest purchase date
+        const oldestPurchase = allItems.reduce((oldest, item) => {
+          if (item.datePurchased && item.datePurchased < oldest) return item.datePurchased;
+          return oldest;
+        }, now.toISOString().split('T')[0]);
+        startDate = new Date(oldestPurchase);
+        break;
+    }
+
+    // Generate dates to calculate (sample every few days for performance)
+    const dates = [];
+    const totalDays = Math.ceil((now - startDate) / (1000 * 60 * 60 * 24));
+    const step = totalDays > 60 ? Math.ceil(totalDays / 30) : (totalDays > 14 ? 2 : 1);
+
+    for (let d = new Date(startDate); d <= now; d.setDate(d.getDate() + step)) {
+      dates.push(d.toISOString().split('T')[0]);
+    }
+    // Always include today
+    const today = now.toISOString().split('T')[0];
+    if (!dates.includes(today)) dates.push(today);
+
+    // Fetch historical prices and calculate portfolio values
+    const historicalData = [];
+    for (const date of dates) {
+      try {
+        // Get items owned on this date (purchased on or before this date)
+        const ownedItems = allItems.filter(item => !item.datePurchased || item.datePurchased <= date);
+
+        if (ownedItems.length === 0) continue;
+
+        // Calculate oz owned
+        const silverOz = ownedItems
+          .filter(i => silverItems.includes(i))
+          .reduce((sum, i) => sum + (i.ozt * i.quantity), 0);
+        const goldOz = ownedItems
+          .filter(i => goldItems.includes(i))
+          .reduce((sum, i) => sum + (i.ozt * i.quantity), 0);
+
+        // Fetch historical spot prices
+        const response = await fetch(`${API_BASE_URL}/api/historical-spot?date=${date}`);
+        const priceData = await response.json();
+
+        if (priceData.success) {
+          const silverSpotHist = priceData.silver || silverSpot;
+          const goldSpotHist = priceData.gold || goldSpot;
+          const totalValue = (silverOz * silverSpotHist) + (goldOz * goldSpotHist);
+
+          historicalData.push({
+            date,
+            total_value: totalValue,
+            gold_value: goldOz * goldSpotHist,
+            silver_value: silverOz * silverSpotHist,
+            gold_oz: goldOz,
+            silver_oz: silverOz,
+            gold_spot: goldSpotHist,
+            silver_spot: silverSpotHist,
+          });
+        }
+      } catch (error) {
+        if (__DEV__) console.log(`⚠️ Could not fetch price for ${date}:`, error.message);
+      }
+    }
+
+    return historicalData;
+  };
+
+  /**
    * Fetch portfolio snapshots for analytics charts
+   * If user has holdings but no snapshots, saves one immediately and calculates historical data
    */
   const fetchAnalyticsSnapshots = async (range = analyticsRange) => {
     if (!hasGold && !hasLifetimeAccess) return;
@@ -1894,8 +1980,36 @@ function AppContent() {
       const data = await response.json();
 
       if (data.success && data.snapshots) {
-        setAnalyticsSnapshots(data.snapshots);
-        if (__DEV__) console.log(`📊 Loaded ${data.snapshots.length} snapshots for range: ${range}`);
+        // If user has holdings but no snapshots, save one now and calculate historical data
+        if (data.snapshots.length === 0 && (silverItems.length > 0 || goldItems.length > 0)) {
+          if (__DEV__) console.log('📊 No snapshots found but user has holdings - saving initial snapshot and calculating history');
+
+          // Save current snapshot
+          await saveDailySnapshot();
+
+          // Calculate historical data from holdings
+          const historicalData = await calculateHistoricalPortfolioData(range);
+
+          if (historicalData.length > 0) {
+            setAnalyticsSnapshots(historicalData);
+            if (__DEV__) console.log(`📊 Calculated ${historicalData.length} historical data points`);
+          } else {
+            // At minimum, show today's data
+            setAnalyticsSnapshots([{
+              date: new Date().toISOString().split('T')[0],
+              total_value: totalMeltValue,
+              gold_value: totalGoldOzt * goldSpot,
+              silver_value: totalSilverOzt * silverSpot,
+              gold_oz: totalGoldOzt,
+              silver_oz: totalSilverOzt,
+              gold_spot: goldSpot,
+              silver_spot: silverSpot,
+            }]);
+          }
+        } else {
+          setAnalyticsSnapshots(data.snapshots);
+          if (__DEV__) console.log(`📊 Loaded ${data.snapshots.length} snapshots for range: ${range}`);
+        }
       }
     } catch (error) {
       console.error('❌ Error fetching analytics:', error.message);
@@ -1990,6 +2104,95 @@ function AppContent() {
       Alert.alert('Error', 'Failed to restore: ' + error.message);
     }
   };
+
+  // ============================================
+  // IN-APP REVIEW PROMPT
+  // ============================================
+
+  /**
+   * Check if we should show the review prompt
+   * Conditions:
+   * - Max 3 prompts per year
+   * - At least 30 days between prompts
+   * - Triggered after 10th holding OR 7 days of use
+   */
+  const checkAndRequestReview = async (trigger = 'holdings') => {
+    try {
+      // Check if store review is available
+      const isAvailable = await StoreReview.isAvailableAsync();
+      if (!isAvailable) {
+        if (__DEV__) console.log('📱 Store review not available on this device');
+        return;
+      }
+
+      // Get review prompt history
+      const reviewHistoryStr = await AsyncStorage.getItem('stack_review_prompts');
+      const reviewHistory = reviewHistoryStr ? JSON.parse(reviewHistoryStr) : [];
+      const now = Date.now();
+      const oneYear = 365 * 24 * 60 * 60 * 1000;
+      const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
+      // Filter to prompts within the last year
+      const promptsThisYear = reviewHistory.filter(ts => now - ts < oneYear);
+
+      // Check if we've hit max prompts (3 per year)
+      if (promptsThisYear.length >= 3) {
+        if (__DEV__) console.log('📱 Max review prompts reached this year');
+        return;
+      }
+
+      // Check if at least 30 days since last prompt
+      const lastPrompt = promptsThisYear.length > 0 ? Math.max(...promptsThisYear) : 0;
+      if (lastPrompt && now - lastPrompt < thirtyDays) {
+        if (__DEV__) console.log('📱 Too soon since last review prompt');
+        return;
+      }
+
+      // Check trigger conditions
+      if (trigger === 'holdings') {
+        const totalHoldings = silverItems.length + goldItems.length;
+        if (totalHoldings < 10) {
+          return; // Not enough holdings yet
+        }
+        if (__DEV__) console.log(`📱 Triggering review prompt: ${totalHoldings} holdings`);
+      } else if (trigger === 'days') {
+        const firstOpenStr = await AsyncStorage.getItem('stack_first_open_date');
+        if (!firstOpenStr) {
+          // First time opening, save the date
+          await AsyncStorage.setItem('stack_first_open_date', new Date().toISOString());
+          return;
+        }
+        const firstOpen = new Date(firstOpenStr).getTime();
+        const sevenDays = 7 * 24 * 60 * 60 * 1000;
+        if (now - firstOpen < sevenDays) {
+          return; // Not 7 days yet
+        }
+        if (__DEV__) console.log('📱 Triggering review prompt: 7+ days of use');
+      }
+
+      // Request the review
+      await StoreReview.requestReview();
+
+      // Save the prompt timestamp
+      promptsThisYear.push(now);
+      await AsyncStorage.setItem('stack_review_prompts', JSON.stringify(promptsThisYear));
+      if (__DEV__) console.log('📱 Review prompt shown successfully');
+
+    } catch (error) {
+      console.error('❌ Error with review prompt:', error.message);
+    }
+  };
+
+  // Check for 7-day review trigger on app load
+  useEffect(() => {
+    if (dataLoaded && isAuthenticated) {
+      // Small delay to not interfere with initial load
+      const timer = setTimeout(() => {
+        checkAndRequestReview('days');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [dataLoaded, isAuthenticated]);
 
   // ============================================
   // SPOT PRICE CHANGE DISPLAY TOGGLE
@@ -2954,12 +3157,16 @@ function AppContent() {
         setSilverItems(prev => prev.map(i => i.id === editingItem.id ? item : i));
       } else {
         setSilverItems(prev => [...prev, item]);
+        // Check for review prompt after adding (not editing)
+        checkAndRequestReview('holdings');
       }
     } else {
       if (editingItem) {
         setGoldItems(prev => prev.map(i => i.id === editingItem.id ? item : i));
       } else {
         setGoldItems(prev => [...prev, item]);
+        // Check for review prompt after adding (not editing)
+        checkAndRequestReview('holdings');
       }
     }
 
@@ -3702,8 +3909,10 @@ function AppContent() {
                       <Text style={{ fontSize: 32, marginBottom: 12 }}>📊</Text>
                       <Text style={{ color: colors.muted, textAlign: 'center' }}>
                         {analyticsSnapshots.length === 0
-                          ? 'No data yet. Snapshots are saved daily when you open the app.'
-                          : 'Need at least 2 data points to show a chart. Check back tomorrow!'}
+                          ? (silverItems.length === 0 && goldItems.length === 0
+                            ? 'Add some holdings to see your portfolio analytics!'
+                            : 'Loading historical data...')
+                          : 'Need at least 2 data points to show a chart.'}
                       </Text>
                     </View>
                   )}
@@ -3930,12 +4139,12 @@ function AppContent() {
 
                 {/* Data Points Info */}
                 <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 8 }]}>Snapshot Data</Text>
+                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 8 }]}>Chart Data</Text>
                   <Text style={{ color: colors.muted, marginBottom: 8 }}>
                     {analyticsSnapshots.length} data point{analyticsSnapshots.length !== 1 ? 's' : ''} in selected range
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: 12 }}>
-                    Portfolio snapshots are saved once daily when you open the app. More data points = better charts!
+                    Historical values are calculated from your holdings and past spot prices. Daily snapshots are saved automatically.
                   </Text>
                 </View>
               </>
