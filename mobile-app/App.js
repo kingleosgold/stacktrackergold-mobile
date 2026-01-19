@@ -1995,66 +1995,39 @@ function AppContent() {
     console.log(`📊 Calculating ${sortedDates.length} data points for range ${range}`);
     console.log(`   📦 ${cachedCount} cached, ${uncachedDates.length} need fetching`);
 
-    // Helper function to fetch with timeout
-    const fetchWithTimeout = async (url, timeoutMs = 5000) => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    // Fetch all uncached dates in ONE batch request (much faster than individual calls)
+    if (uncachedDates.length > 0) {
       try {
-        const response = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        return response;
-      } catch (error) {
-        clearTimeout(timeoutId);
-        throw error;
-      }
-    };
+        console.log(`   🚀 Batch fetching ${uncachedDates.length} dates...`);
+        const response = await fetch(`${API_BASE_URL}/api/historical-spot-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dates: uncachedDates }),
+        });
+        const batchData = await response.json();
 
-    // Fetch uncached dates with a time limit
-    // After time limit, use whatever we've cached so far
-    const fetchStartTime = Date.now();
-    const maxFetchTime = 30000; // 30 seconds max for fetching
-    let consecutiveFailures = 0;
-    const maxConsecutiveFailures = 3;
-    let fetchedCount = 0;
-
-    for (const date of uncachedDates) {
-      // Stop if we've exceeded the time limit
-      if (Date.now() - fetchStartTime > maxFetchTime) {
-        console.log(`⏱️ Fetch time limit reached (${maxFetchTime/1000}s), using ${fetchedCount} fetched + ${cachedCount} cached prices`);
-        break;
-      }
-
-      // Stop if we've had too many failures in a row
-      if (consecutiveFailures >= maxConsecutiveFailures) {
-        console.log('⚠️ Too many consecutive failures, stopping historical fetch');
-        break;
-      }
-
-      try {
-        // Fetch historical spot prices with timeout
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/historical-spot?date=${date}`, 5000);
-        const priceData = await response.json();
-
-        if (priceData.success) {
-          consecutiveFailures = 0; // Reset on success
-          fetchedCount++;
-          // Cache the result
-          historicalPriceCache.current[date] = {
-            gold: priceData.gold,
-            silver: priceData.silver,
-          };
-          console.log(`   ✅ Fetched & cached ${date}: Gold $${priceData.gold}, Silver $${priceData.silver}`);
+        if (batchData.success && batchData.results) {
+          let fetchedCount = 0;
+          for (const [date, result] of Object.entries(batchData.results)) {
+            if (result.success && result.gold && result.silver) {
+              historicalPriceCache.current[date] = {
+                gold: result.gold,
+                silver: result.silver,
+              };
+              fetchedCount++;
+            }
+          }
+          console.log(`   ✅ Batch complete: ${fetchedCount} prices cached`);
         } else {
-          consecutiveFailures++;
-          console.log(`⚠️ API returned error for ${date}:`, priceData.error);
+          console.log('⚠️ Batch request failed:', batchData.error);
         }
       } catch (error) {
-        consecutiveFailures++;
-        console.log(`⚠️ Could not fetch price for ${date}:`, error.message);
+        console.log('⚠️ Batch fetch error:', error.message);
       }
     }
 
-    console.log(`📊 Fetch phase complete: ${fetchedCount} new + ${cachedCount} previously cached`);
+    const finalCachedCount = Object.keys(historicalPriceCache.current).length;
+    console.log(`📊 Fetch phase complete: ${finalCachedCount} total prices cached`);
 
     // Now calculate portfolio values using cached prices
     const historicalData = [];

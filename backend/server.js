@@ -727,6 +727,123 @@ app.get('/api/historical-spot', async (req, res) => {
   }
 });
 
+/**
+ * BATCH Historical Spot Price Lookup
+ * Accepts multiple dates in one request - much faster than individual calls
+ * Uses local MacroTrends data + current spot for speed (no external API calls)
+ *
+ * POST /api/historical-spot-batch
+ * Body: { dates: ["2024-01-15", "2024-01-16", ...] }
+ */
+app.post('/api/historical-spot-batch', async (req, res) => {
+  try {
+    const { dates } = req.body;
+
+    if (!dates || !Array.isArray(dates) || dates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'dates array is required'
+      });
+    }
+
+    // Limit batch size to prevent abuse
+    if (dates.length > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'Maximum 100 dates per batch request'
+      });
+    }
+
+    console.log(`📅 Batch historical spot lookup: ${dates.length} dates`);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+
+    const results = {};
+    let fromMacrotrends = 0;
+    let fromCurrentSpot = 0;
+    let fromCache = 0;
+
+    for (const date of dates) {
+      // Validate date format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        results[date] = { success: false, error: 'Invalid date format' };
+        continue;
+      }
+
+      const requestedDate = new Date(date + 'T00:00:00');
+
+      // For today or future dates, use current spot
+      if (date >= todayStr) {
+        results[date] = {
+          success: true,
+          gold: spotPriceCache.prices.gold,
+          silver: spotPriceCache.prices.silver,
+          source: 'current-spot'
+        };
+        fromCurrentSpot++;
+        continue;
+      }
+
+      // Check our in-memory cache first
+      if (historicalPriceCache.gold[date] && historicalPriceCache.silver[date]) {
+        results[date] = {
+          success: true,
+          gold: historicalPriceCache.gold[date],
+          silver: historicalPriceCache.silver[date],
+          source: 'cache'
+        };
+        fromCache++;
+        continue;
+      }
+
+      // Use MacroTrends data (available for most dates)
+      const goldPrice = historicalData.gold[date];
+      const silverPrice = historicalData.silver[date];
+
+      if (goldPrice && silverPrice) {
+        results[date] = {
+          success: true,
+          gold: goldPrice,
+          silver: silverPrice,
+          source: 'macrotrends'
+        };
+        // Also cache for future
+        historicalPriceCache.gold[date] = goldPrice;
+        historicalPriceCache.silver[date] = silverPrice;
+        fromMacrotrends++;
+        continue;
+      }
+
+      // Fallback: use current spot for missing data
+      results[date] = {
+        success: true,
+        gold: spotPriceCache.prices.gold,
+        silver: spotPriceCache.prices.silver,
+        source: 'current-spot-fallback',
+        note: 'Historical data not available, using current spot'
+      };
+      fromCurrentSpot++;
+    }
+
+    console.log(`   ✅ Batch complete: ${fromMacrotrends} macrotrends, ${fromCache} cached, ${fromCurrentSpot} current spot`);
+
+    res.json({
+      success: true,
+      count: dates.length,
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ Batch historical spot error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to lookup historical prices'
+    });
+  }
+});
+
 // ============================================
 // SCAN USAGE TRACKING (Server-Side with /tmp/ persistence)
 // ============================================
