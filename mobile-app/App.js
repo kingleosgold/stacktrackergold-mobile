@@ -2071,7 +2071,17 @@ function AppContent() {
    * Filter snapshots array by time range (client-side filtering)
    */
   const filterSnapshotsByRange = (snapshots, range) => {
-    if (!snapshots || snapshots.length === 0) return [];
+    console.log(`\n🔍 FILTER DEBUG - Range: ${range}`);
+    console.log(`   📦 Input data points: ${snapshots?.length || 0}`);
+
+    if (!snapshots || snapshots.length === 0) {
+      console.log(`   ❌ No snapshots to filter`);
+      return [];
+    }
+
+    // Log first and last dates in input data
+    const sortedInput = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
+    console.log(`   📅 Input date range: ${sortedInput[0]?.date} to ${sortedInput[sortedInput.length - 1]?.date}`);
 
     const now = new Date();
     let startDate;
@@ -2094,11 +2104,23 @@ function AppContent() {
         break;
       case 'ALL':
       default:
+        console.log(`   ✅ ALL range - returning all ${snapshots.length} points`);
         return snapshots; // Return all
     }
 
     const startDateStr = startDate.toISOString().split('T')[0];
-    return snapshots.filter(s => s.date >= startDateStr);
+    console.log(`   🎯 Cutoff date for ${range}: ${startDateStr}`);
+
+    const filtered = snapshots.filter(s => s.date >= startDateStr);
+
+    // Log filtered results
+    const sortedFiltered = [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+    console.log(`   ✅ After filter: ${filtered.length} points`);
+    if (filtered.length > 0) {
+      console.log(`   📅 Filtered date range: ${sortedFiltered[0]?.date} to ${sortedFiltered[sortedFiltered.length - 1]?.date}`);
+    }
+
+    return filtered;
   };
 
   /**
@@ -2106,11 +2128,15 @@ function AppContent() {
    */
   const applyRangeFilter = (range) => {
     const cache = snapshotsCacheRef.current;
+    console.log(`\n📊 APPLY RANGE FILTER - Range: ${range}`);
+    console.log(`   Cache status: fetched=${cache.fetched}, primaryData=${cache.primaryData?.length || 0} points`);
 
     if (cache.primaryData && cache.primaryData.length > 0) {
       const filtered = filterSnapshotsByRange(cache.primaryData, range);
       setAnalyticsSnapshots(filtered);
-      if (__DEV__) console.log(`📊 Filtered to ${filtered.length} snapshots for range: ${range}`);
+      console.log(`   ✅ Set analyticsSnapshots to ${filtered.length} points`);
+    } else {
+      console.log(`   ❌ No primaryData in cache`);
     }
   };
 
