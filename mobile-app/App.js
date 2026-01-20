@@ -4216,15 +4216,31 @@ function AppContent() {
                       labelIndices.add(closestIdx);
                     }
 
+                    // Generate the labels array
+                    const labelsArray = analyticsSnapshots.map((s, i) => {
+                      if (!labelIndices.has(i)) return '';
+                      return formatLabel(s.date);
+                    });
+
+                    // DEBUG: Log chart data before rendering
+                    console.log('CHART DEBUG:', {
+                      range: analyticsRange,
+                      dataLength: analyticsSnapshots.length,
+                      firstDate: analyticsSnapshots[0]?.date,
+                      lastDate: analyticsSnapshots[analyticsSnapshots.length - 1]?.date,
+                      spanDays,
+                      spanYears,
+                      labelIndices: Array.from(labelIndices).sort((a, b) => a - b),
+                      labelsWithValues: labelsArray.filter(l => l !== ''),
+                      allLabels: labelsArray,
+                    });
+
                     return (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       <LineChart
                         key={`chart-${analyticsRange}-${analyticsSnapshots.length}`}
                         data={{
-                          labels: analyticsSnapshots.map((s, i) => {
-                            if (!labelIndices.has(i)) return '';
-                            return formatLabel(s.date);
-                          }),
+                          labels: labelsArray,
                           datasets: [{
                             data: analyticsSnapshots.map(s => s.total_value || 0),
                             color: (opacity = 1) => `rgba(251, 191, 36, ${opacity})`,
