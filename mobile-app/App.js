@@ -4283,6 +4283,13 @@ function AppContent() {
                         segments={5}
                         bezier
                         style={{ borderRadius: 8 }}
+                        formatXLabel={(label, index) => {
+                          console.log('formatXLabel called:', { label, index });
+                          return label || '';
+                        }}
+                        xLabelsOffset={0}
+                        withHorizontalLabels={true}
+                        withVerticalLabels={true}
                       />
                     </ScrollView>
                     );
