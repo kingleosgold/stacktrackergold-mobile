@@ -3849,43 +3849,43 @@ function AppContent() {
 
             {/* Quick Stats */}
             <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>📈 Quick Stats</Text>
+              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>📈 Quick Stats</Text>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Silver Holdings</Text>
-                <Text style={[styles.statRowValue, { color: colors.silver }]}>{totalSilverOzt.toFixed(2)} oz</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Silver Holdings</Text>
+                <Text style={[styles.statRowValue, { color: colors.silver, fontSize: scaledFonts.normal }]}>{totalSilverOzt.toFixed(2)} oz</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Gold Holdings</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold }]}>{totalGoldOzt.toFixed(3)} oz</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Gold Holdings</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>{totalGoldOzt.toFixed(3)} oz</Text>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Cost Basis</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>${totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Cost Basis</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Premiums Paid</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Premiums Paid</Text>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.statRowValue, { color: colors.gold }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                  <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
                   {totalPremiumsPct > 0 && (
-                    <Text style={{ color: colors.gold, fontSize: 11, marginTop: 2 }}>+{totalPremiumsPct.toFixed(1)}%</Text>
+                    <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, marginTop: 2 }}>+{totalPremiumsPct.toFixed(1)}%</Text>
                   )}
                 </View>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Avg Silver Cost</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>${formatCurrency(avgSilverCostPerOz)}/oz</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Avg Silver Cost</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(avgSilverCostPerOz)}/oz</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Avg Gold Cost</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>${formatCurrency(avgGoldCostPerOz)}/oz</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Avg Gold Cost</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(avgGoldCostPerOz)}/oz</Text>
               </View>
             </View>
 
             {/* Milestones */}
             <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>🏆 Stack Milestones</Text>
+              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
               <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${totalSilverOzt.toFixed(0)} / ${nextSilverMilestone} oz`} />
               <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${totalGoldOzt.toFixed(2)} / ${nextGoldMilestone} oz`} />
             </View>
@@ -5519,27 +5519,27 @@ function AppContent() {
             { s: 500, g: 15000, label: 'Hyper' },
           ].map((preset, i) => (
             <TouchableOpacity key={i} style={{ backgroundColor: colors.border, padding: 12, borderRadius: 12, marginRight: 8 }} onPress={() => { setSpecSilverPrice(preset.s.toString()); setSpecGoldPrice(preset.g.toString()); Keyboard.dismiss(); }}>
-              <Text style={{ color: colors.text }}>{preset.label}</Text>
-              <Text style={{ color: colors.muted, fontSize: 10 }}>${preset.s} / ${preset.g}</Text>
+              <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{preset.label}</Text>
+              <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>${preset.s} / ${preset.g}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
         {/* Results */}
         <View style={[styles.card, { backgroundColor: `${colors.success}22` }]}>
-          <Text style={{ color: colors.success, fontWeight: '600' }}>Projected Value</Text>
-          <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>${specTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
-          <Text style={{ color: specGainLoss >= 0 ? colors.success : colors.error }}>{specGainLoss >= 0 ? '+' : ''}{specGainLossPct.toFixed(1)}% from cost basis</Text>
+          <Text style={{ color: colors.success, fontWeight: '600', fontSize: scaledFonts.normal }}>Projected Value</Text>
+          <Text style={{ color: colors.text, fontSize: scaledFonts.huge, fontWeight: '700' }}>${specTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+          <Text style={{ color: specGainLoss >= 0 ? colors.success : colors.error, fontSize: scaledFonts.normal }}>{specGainLoss >= 0 ? '+' : ''}{specGainLossPct.toFixed(1)}% from cost basis</Text>
         </View>
 
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <View style={[styles.card, { flex: 1, backgroundColor: `${colors.silver}22` }]}>
-            <Text style={{ color: colors.silver, fontSize: 12 }}>Silver</Text>
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>${(totalSilverOzt * specSilverNum).toLocaleString()}</Text>
+            <Text style={{ color: colors.silver, fontSize: scaledFonts.small }}>Silver</Text>
+            <Text style={{ color: colors.text, fontSize: scaledFonts.large, fontWeight: '600' }}>${(totalSilverOzt * specSilverNum).toLocaleString()}</Text>
           </View>
           <View style={[styles.card, { flex: 1, backgroundColor: `${colors.gold}22` }]}>
-            <Text style={{ color: colors.gold, fontSize: 12 }}>Gold</Text>
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>${(totalGoldOzt * specGoldNum).toLocaleString()}</Text>
+            <Text style={{ color: colors.gold, fontSize: scaledFonts.small }}>Gold</Text>
+            <Text style={{ color: colors.text, fontSize: scaledFonts.large, fontWeight: '600' }}>${(totalGoldOzt * specGoldNum).toLocaleString()}</Text>
           </View>
         </View>
       </ModalWrapper>
@@ -5556,7 +5556,7 @@ function AppContent() {
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
           {[{ k: '90', l: '90%' }, { k: '40', l: '40%' }, { k: '35', l: 'War Nickels' }].map(t => (
             <TouchableOpacity key={t.k} style={[styles.metalTab, { flex: 1, borderColor: junkType === t.k ? colors.silver : colors.border, backgroundColor: junkType === t.k ? `${colors.silver}22` : 'transparent' }]} onPress={() => { setJunkType(t.k); Keyboard.dismiss(); }}>
-              <Text style={{ color: junkType === t.k ? colors.silver : colors.muted, fontSize: 12 }}>{t.l}</Text>
+              <Text style={{ color: junkType === t.k ? colors.silver : colors.muted, fontSize: scaledFonts.small }}>{t.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -5566,17 +5566,17 @@ function AppContent() {
 
         {/* Results */}
         <View style={[styles.card, { backgroundColor: `${colors.silver}22` }]}>
-          <Text style={{ color: colors.silver }}>Silver Content</Text>
-          <Text style={{ color: colors.text, fontSize: 28, fontWeight: '700' }}>{junkOzt.toFixed(3)} oz</Text>
+          <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver Content</Text>
+          <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700' }}>{junkOzt.toFixed(3)} oz</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: `${colors.success}22` }]}>
-          <Text style={{ color: colors.success }}>Melt Value @ ${formatCurrency(silverSpot)}/oz</Text>
-          <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>${formatCurrency(junkMeltValue)}</Text>
+          <Text style={{ color: colors.success, fontSize: scaledFonts.normal }}>Melt Value @ ${formatCurrency(silverSpot)}/oz</Text>
+          <Text style={{ color: colors.text, fontSize: scaledFonts.huge, fontWeight: '700' }}>${formatCurrency(junkMeltValue)}</Text>
         </View>
 
         <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 8 }}>
-          <Text style={{ color: colors.muted, fontSize: 11 }}>
+          <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>
             {junkType === '90' && '90% silver: Pre-1965 dimes, quarters, halves. Multiply face value × 0.715 for oz.'}
             {junkType === '40' && '40% silver: 1965-1970 Kennedy halves. Multiply face value × 0.295 for oz.'}
             {junkType === '35' && '35% silver: War Nickels (1942-1945). Each contains 0.0563 oz silver.'}
@@ -5619,100 +5619,100 @@ function AppContent() {
         isDarkMode={isDarkMode}
       >
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Getting Started</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Add purchases manually by tapping "+" on the Holdings tab</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Or use AI Receipt Scanner to automatically extract data from receipts</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Pull down on the Dashboard to refresh live spot prices</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Getting Started</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Add purchases manually by tapping "+" on the Holdings tab</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Or use AI Receipt Scanner to automatically extract data from receipts</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Pull down on the Dashboard to refresh live spot prices</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>AI Receipt Scanner</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Tap "Take Photo" to capture a receipt with your camera</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Tap "Upload Photo" to select an existing image</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• The AI extracts product name, quantity, price, dealer, and date</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>AI Receipt Scanner</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Tap "Take Photo" to capture a receipt with your camera</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Tap "Upload Photo" to select an existing image</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• The AI extracts product name, quantity, price, dealer, and date</Text>
           <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.15)', padding: 10, borderRadius: 8, marginTop: 8 }}>
-            <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>💡 Tip: Digital screenshots of online receipts work best!</Text>
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Clear text and good lighting improve accuracy</Text>
+            <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>💡 Tip: Digital screenshots of online receipts work best!</Text>
+            <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }}>Clear text and good lighting improve accuracy</Text>
           </View>
-          <Text style={[styles.privacyItem, { marginTop: 8, color: colors.text }]}>• Free users: 5 scans per month</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Gold/Lifetime: Unlimited scans</Text>
+          <Text style={[styles.privacyItem, { marginTop: 8, color: colors.text, fontSize: scaledFonts.small }]}>• Free users: 5 scans per month</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Gold/Lifetime: Unlimited scans</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Portfolio Analytics</Text>
+            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Portfolio Analytics</Text>
             <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-              <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>GOLD</Text>
+              <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
             </View>
           </View>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Track your portfolio value over time with interactive charts</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• View cost basis analysis and unrealized P/L</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• See premium analysis and holdings breakdown</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Select time ranges: 1W, 1M, 3M, 6M, 1Y, or All Time</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Track your portfolio value over time with interactive charts</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• View cost basis analysis and unrealized P/L</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• See premium analysis and holdings breakdown</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Select time ranges: 1W, 1M, 3M, 6M, 1Y, or All Time</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Share My Stack</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Create a beautiful image of your portfolio to share</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Tap "Share My Stack" on the Dashboard tab</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Shows total value, oz breakdown, and milestones</Text>
-          <Text style={[styles.privacyItem, { color: colors.muted, marginTop: 4 }]}>Perfect for sharing with fellow stackers!</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Share My Stack</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Create a beautiful image of your portfolio to share</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Tap "Share My Stack" on the Dashboard tab</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Shows total value, oz breakdown, and milestones</Text>
+          <Text style={[styles.privacyItem, { color: colors.muted, marginTop: 4, fontSize: scaledFonts.small }]}>Perfect for sharing with fellow stackers!</Text>
         </View>
 
         {Platform.OS === 'ios' && (
           <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Home Screen Widgets</Text>
-            <Text style={[styles.privacyItem, { color: colors.text }]}>• Add widgets to see your stack at a glance</Text>
-            <Text style={[styles.privacyItem, { color: colors.text }]}>• Long-press your home screen → tap "+"</Text>
-            <Text style={[styles.privacyItem, { color: colors.text }]}>• Search for "Stack Tracker Pro"</Text>
-            <Text style={[styles.privacyItem, { color: colors.text }]}>• Choose small, medium, or large widget size</Text>
+            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Home Screen Widgets</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Add widgets to see your stack at a glance</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Long-press your home screen → tap "+"</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Search for "Stack Tracker Pro"</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Choose small, medium, or large widget size</Text>
           </View>
         )}
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Backup & Restore</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Your data is stored locally on your device only</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Use "Backup" to save to iCloud Drive, Google Drive, etc.</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Use "Restore" to load a backup on any device</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Backup & Restore</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Your data is stored locally on your device only</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use "Backup" to save to iCloud Drive, Google Drive, etc.</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use "Restore" to load a backup on any device</Text>
           <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.15)', padding: 10, borderRadius: 8, marginTop: 8 }}>
-            <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>⚠️ IMPORTANT: Backup regularly to avoid data loss!</Text>
+            <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>⚠️ IMPORTANT: Backup regularly to avoid data loss!</Text>
           </View>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Using Multiple Devices</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Using Multiple Devices</Text>
           {Platform.OS === 'ios' ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Text style={[styles.privacyItem, { color: colors.text }]}>• iCloud Sync</Text>
+                <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• iCloud Sync</Text>
                 <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>GOLD</Text>
+                  <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
                 </View>
               </View>
-              <Text style={[styles.privacyItem, { paddingLeft: 12, marginTop: 4, color: colors.text }]}>Automatically sync across all your Apple devices</Text>
-              <Text style={[styles.privacyItem, { marginTop: 12, color: colors.text }]}>• Manual Backup/Restore (all users)</Text>
-              <Text style={[styles.privacyItem, { paddingLeft: 12, marginTop: 4, color: colors.muted, fontSize: 12 }]}>Export/import for cross-platform or offline backup</Text>
+              <Text style={[styles.privacyItem, { paddingLeft: 12, marginTop: 4, color: colors.text, fontSize: scaledFonts.small }]}>Automatically sync across all your Apple devices</Text>
+              <Text style={[styles.privacyItem, { marginTop: 12, color: colors.text, fontSize: scaledFonts.small }]}>• Manual Backup/Restore (all users)</Text>
+              <Text style={[styles.privacyItem, { paddingLeft: 12, marginTop: 4, color: colors.muted, fontSize: scaledFonts.small }]}>Export/import for cross-platform or offline backup</Text>
             </>
           ) : (
             <>
-              <Text style={[styles.privacyItem, { color: colors.text }]}>• Use Manual Backup to export your holdings</Text>
-              <Text style={[styles.privacyItem, { marginTop: 8, color: colors.text }]}>• To use on multiple devices:</Text>
-              <Text style={[styles.privacyItem, { paddingLeft: 12, color: colors.text }]}>1. Backup from your primary device</Text>
-              <Text style={[styles.privacyItem, { paddingLeft: 12, color: colors.text }]}>2. Restore on your secondary device</Text>
+              <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use Manual Backup to export your holdings</Text>
+              <Text style={[styles.privacyItem, { marginTop: 8, color: colors.text, fontSize: scaledFonts.small }]}>• To use on multiple devices:</Text>
+              <Text style={[styles.privacyItem, { paddingLeft: 12, color: colors.text, fontSize: scaledFonts.small }]}>1. Backup from your primary device</Text>
+              <Text style={[styles.privacyItem, { paddingLeft: 12, color: colors.text, fontSize: scaledFonts.small }]}>2. Restore on your secondary device</Text>
             </>
           )}
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Export CSV</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Export your portfolio as a CSV spreadsheet</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Great for records, tax prep, or other tools</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Export CSV</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Export your portfolio as a CSV spreadsheet</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Great for records, tax prep, or other tools</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text }]}>Support</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Need help? Email stacktrackerpro@gmail.com</Text>
-          <Text style={[styles.privacyItem, { marginTop: 4, color: colors.muted, fontSize: 12 }]}>Include your Support ID (Settings → Advanced) for faster help</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Support</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Need help? Email stacktrackerpro@gmail.com</Text>
+          <Text style={[styles.privacyItem, { marginTop: 4, color: colors.muted, fontSize: scaledFonts.small }]}>Include your Support ID (Settings → Advanced) for faster help</Text>
         </View>
       </ModalWrapper>
 
@@ -6191,69 +6191,69 @@ function AppContent() {
         {detailItem && (
           <>
             <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { fontSize: 20, color: colors.text }]}>{detailItem.productName}</Text>
+              <Text style={[styles.cardTitle, { fontSize: scaledFonts.xlarge, color: colors.text }]}>{detailItem.productName}</Text>
               {detailItem.datePurchased && (
                 <View style={styles.statRow}>
-                  <Text style={styles.statRowLabel}>📅 Purchase Date</Text>
-                  <Text style={[styles.statRowValue, { color: colors.text }]}>{detailItem.datePurchased}</Text>
+                  <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>📅 Purchase Date</Text>
+                  <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{detailItem.datePurchased}</Text>
                 </View>
               )}
               {detailItem.source && (
                 <View style={styles.statRow}>
-                  <Text style={styles.statRowLabel}>🏪 Source</Text>
-                  <Text style={[styles.statRowValue, { color: colors.text }]}>{detailItem.source}</Text>
+                  <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>🏪 Source</Text>
+                  <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{detailItem.source}</Text>
                 </View>
               )}
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Quantity</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>{detailItem.quantity}x</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Quantity</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{detailItem.quantity}x</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Unit Price</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>${formatCurrency(detailItem.unitPrice)}</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Unit Price</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(detailItem.unitPrice)}</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Troy Ounces (each)</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>{detailItem.ozt} oz</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Troy Ounces (each)</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{detailItem.ozt} oz</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Total Weight</Text>
-                <Text style={[styles.statRowValue, { color: colors.text }]}>{(detailItem.ozt * detailItem.quantity).toFixed(2)} oz</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Total Weight</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{(detailItem.ozt * detailItem.quantity).toFixed(2)} oz</Text>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Premium (per unit)</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold }]}>${formatCurrency(detailItem.premium)}</Text>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Premium (per unit)</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>${formatCurrency(detailItem.premium)}</Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={styles.statRowLabel}>Total Premium</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold }]}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Total Premium</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>
                   ${formatCurrency(detailItem.premium * detailItem.quantity)}
                 </Text>
               </View>
               {detailItem.taxes > 0 && (
                 <View style={styles.statRow}>
-                  <Text style={styles.statRowLabel}>Taxes</Text>
-                  <Text style={[styles.statRowValue, { color: colors.text }]}>${formatCurrency(detailItem.taxes)}</Text>
+                  <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Taxes</Text>
+                  <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(detailItem.taxes)}</Text>
                 </View>
               )}
               {detailItem.shipping > 0 && (
                 <View style={styles.statRow}>
-                  <Text style={styles.statRowLabel}>Shipping</Text>
-                  <Text style={[styles.statRowValue, { color: colors.text }]}>${formatCurrency(detailItem.shipping)}</Text>
+                  <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Shipping</Text>
+                  <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(detailItem.shipping)}</Text>
                 </View>
               )}
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: 14, fontWeight: '600' }]}>Total Cost Basis</Text>
-                <Text style={[styles.statRowValue, { fontSize: 16, color: colors.text }]}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Total Cost Basis</Text>
+                <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: colors.text }]}>
                   ${formatCurrency((detailItem.unitPrice * detailItem.quantity) + detailItem.taxes + detailItem.shipping)}
                 </Text>
               </View>
               <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: 14, fontWeight: '600' }]}>Current Melt Value</Text>
-                <Text style={[styles.statRowValue, { fontSize: 16, color: detailMetal === 'silver' ? colors.silver : colors.gold }]}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Current Melt Value</Text>
+                <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: detailMetal === 'silver' ? colors.silver : colors.gold }]}>
                   ${formatCurrency(detailItem.ozt * detailItem.quantity * (detailMetal === 'silver' ? silverSpot : goldSpot))}
                 </Text>
               </View>
@@ -6267,13 +6267,13 @@ function AppContent() {
                   editItem(detailItem, detailMetal);
                 }}
               >
-                <Text style={{ color: '#000', fontWeight: '600' }}>✏️ Edit</Text>
+                <Text style={{ color: '#000', fontWeight: '600', fontSize: scaledFonts.normal }}>✏️ Edit</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.buttonOutline, { flex: 1, borderColor: colors.error }]}
                 onPress={() => deleteItem(detailItem.id, detailMetal)}
               >
-                <Text style={{ color: colors.error, fontWeight: '600' }}>🗑 Delete</Text>
+                <Text style={{ color: colors.error, fontWeight: '600', fontSize: scaledFonts.normal }}>🗑 Delete</Text>
               </TouchableOpacity>
             </View>
           </>
