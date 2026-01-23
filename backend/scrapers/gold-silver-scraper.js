@@ -10,6 +10,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { findClosestLoggedPrice } = require('../services/priceLogger');
 
 // Store yesterday's closing prices for calculating change when using MetalPriceAPI
 let previousDayPrices = {
@@ -72,13 +73,33 @@ function savePreviousDayPrices(gold, silver) {
 /**
  * Get yesterday's prices for change calculation
  * Returns the stored prices only if they're from a PREVIOUS day
+ * Falls back to price_log database if local file doesn't have data
  */
-function getYesterdayPrices() {
+async function getYesterdayPrices() {
   const today = new Date().toISOString().split('T')[0];
 
-  // Only return prices if they're from a previous day (not today)
+  // First check local file
   if (previousDayPrices.date && previousDayPrices.date < today) {
     return previousDayPrices;
+  }
+
+  // Fallback: check price_log database for yesterday's prices
+  try {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    const loggedPrice = await findClosestLoggedPrice(yesterdayStr, '23:59'); // Get end of day price
+    if (loggedPrice && loggedPrice.gold && loggedPrice.silver) {
+      console.log(`📊 Using price_log for yesterday's prices: Gold $${loggedPrice.gold}, Silver $${loggedPrice.silver}`);
+      return {
+        gold: loggedPrice.gold,
+        silver: loggedPrice.silver,
+        date: yesterdayStr
+      };
+    }
+  } catch (err) {
+    console.log('⚠️  Could not fetch yesterday prices from price_log:', err.message);
   }
 
   return null;
@@ -135,7 +156,7 @@ async function scrapeGoldSilverPrices() {
     if (goldPrice && silverPrice) {
       // Calculate change from yesterday's prices (if available)
       let changeData = { gold: {}, silver: {}, source: 'unavailable' };
-      const yesterdayPrices = getYesterdayPrices();
+      const yesterdayPrices = await getYesterdayPrices();
 
       if (yesterdayPrices) {
         const goldChange = goldPrice - yesterdayPrices.gold;

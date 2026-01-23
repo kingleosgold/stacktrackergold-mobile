@@ -4297,8 +4297,15 @@ function AppContent() {
                 </View>
 
                 {/* Cost Basis Analysis */}
-                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border, position: 'relative', overflow: 'hidden' }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12 }]}>Cost Basis Analysis</Text>
+                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Cost Basis Analysis</Text>
+                    {!hasGoldAccess && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                        <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>🔒 GOLD</Text>
+                      </View>
+                    )}
+                  </View>
 
                   {/* Gold Analysis */}
                   {goldItems.length > 0 && (
@@ -4310,24 +4317,26 @@ function AppContent() {
                         const goldPL = goldMeltValue - totalGoldCost;
                         const goldPLPercent = totalGoldCost > 0 ? (goldPL / totalGoldCost) * 100 : 0;
                         const avgGoldCostPerOz = totalGoldOzt > 0 ? totalGoldCost / totalGoldOzt : 0;
+                        // Redact values for free users
+                        const redact = !hasGoldAccess;
                         return (
                           <>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Total Cost</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(totalGoldCost)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(totalGoldCost)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Current Value</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(goldMeltValue)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(goldMeltValue)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Avg Cost/oz</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(avgGoldCostPerOz)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(avgGoldCostPerOz)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Unrealized P/L</Text>
-                              <Text style={{ color: goldPL >= 0 ? colors.success : colors.error }}>
-                                {goldPL >= 0 ? '+' : ''}${formatCurrency(goldPL)} ({goldPLPercent >= 0 ? '+' : ''}{goldPLPercent.toFixed(1)}%)
+                              <Text style={{ color: redact ? colors.muted : (goldPL >= 0 ? colors.success : colors.error) }}>
+                                {redact ? '$••••• (•••%)' : `${goldPL >= 0 ? '+' : ''}$${formatCurrency(goldPL)} (${goldPLPercent >= 0 ? '+' : ''}${goldPLPercent.toFixed(1)}%)`}
                               </Text>
                             </View>
                           </>
@@ -4346,24 +4355,26 @@ function AppContent() {
                         const silverPL = silverMeltValue - totalSilverCost;
                         const silverPLPercent = totalSilverCost > 0 ? (silverPL / totalSilverCost) * 100 : 0;
                         const avgSilverCostPerOz = totalSilverOzt > 0 ? totalSilverCost / totalSilverOzt : 0;
+                        // Redact values for free users
+                        const redact = !hasGoldAccess;
                         return (
                           <>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Total Cost</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(totalSilverCost)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(totalSilverCost)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Current Value</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(silverMeltValue)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(silverMeltValue)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Avg Cost/oz</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(avgSilverCostPerOz)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(avgSilverCostPerOz)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Unrealized P/L</Text>
-                              <Text style={{ color: silverPL >= 0 ? colors.success : colors.error }}>
-                                {silverPL >= 0 ? '+' : ''}${formatCurrency(silverPL)} ({silverPLPercent >= 0 ? '+' : ''}{silverPLPercent.toFixed(1)}%)
+                              <Text style={{ color: redact ? colors.muted : (silverPL >= 0 ? colors.success : colors.error) }}>
+                                {redact ? '$••••• (•••%)' : `${silverPL >= 0 ? '+' : ''}$${formatCurrency(silverPL)} (${silverPLPercent >= 0 ? '+' : ''}${silverPLPercent.toFixed(1)}%)`}
                               </Text>
                             </View>
                           </>
@@ -4377,27 +4388,18 @@ function AppContent() {
                       Add holdings to see cost analysis
                     </Text>
                   )}
-
-                  {/* Heavy frosted glass overlay for non-Gold users */}
-                  {!hasGoldAccess && (
-                    <View style={{
-                      position: 'absolute',
-                      top: 40,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: isDarkMode ? 'rgba(24, 24, 27, 0.85)' : 'rgba(255, 255, 255, 0.85)',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}>
-                      <Text style={{ color: colors.gold, fontSize: 20 }}>🔒</Text>
-                    </View>
-                  )}
                 </View>
 
                 {/* Premium Analysis */}
-                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border, position: 'relative', overflow: 'hidden' }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12 }]}>Premium Analysis</Text>
+                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Premium Analysis</Text>
+                    {!hasGoldAccess && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                        <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '600' }}>🔒 GOLD</Text>
+                      </View>
+                    )}
+                  </View>
 
                   {(() => {
                     // Calculate average premium for each metal
@@ -4419,32 +4421,35 @@ function AppContent() {
                       ? silverPremiums.reduce((sum, i) => sum + calculatePremiumPercent(i.premium || 0, i.unitPrice || 0), 0) / silverPremiums.length
                       : 0;
 
+                    // Redact values for free users
+                    const redact = !hasGoldAccess;
+
                     return (
                       <>
                         {goldPremiums.length > 0 && (
                           <View style={{ marginBottom: 16 }}>
-                            <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8 }}>Gold ({goldPremiums.length} items with premium data)</Text>
+                            <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8 }}>Gold ({redact ? '•' : goldPremiums.length} items with premium data)</Text>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Avg Premium/oz</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(avgGoldPremium)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(avgGoldPremium)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                               <Text style={{ color: colors.muted }}>Avg Premium %</Text>
-                              <Text style={{ color: colors.text }}>{avgGoldPremiumPct.toFixed(1)}%</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '••••%' : `${avgGoldPremiumPct.toFixed(1)}%`}</Text>
                             </View>
                           </View>
                         )}
 
                         {silverPremiums.length > 0 && (
                           <View>
-                            <Text style={{ color: colors.silver, fontWeight: '600', marginBottom: 8 }}>Silver ({silverPremiums.length} items with premium data)</Text>
+                            <Text style={{ color: colors.silver, fontWeight: '600', marginBottom: 8 }}>Silver ({redact ? '•' : silverPremiums.length} items with premium data)</Text>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                               <Text style={{ color: colors.muted }}>Avg Premium/oz</Text>
-                              <Text style={{ color: colors.text }}>${formatCurrency(avgSilverPremium)}</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '$•••••' : `$${formatCurrency(avgSilverPremium)}`}</Text>
                             </View>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                               <Text style={{ color: colors.muted }}>Avg Premium %</Text>
-                              <Text style={{ color: colors.text }}>{avgSilverPremiumPct.toFixed(1)}%</Text>
+                              <Text style={{ color: colors.text }}>{redact ? '••••%' : `${avgSilverPremiumPct.toFixed(1)}%`}</Text>
                             </View>
                           </View>
                         )}
@@ -4457,22 +4462,6 @@ function AppContent() {
                       </>
                     );
                   })()}
-
-                  {/* Heavy frosted glass overlay for non-Gold users */}
-                  {!hasGoldAccess && (
-                    <View style={{
-                      position: 'absolute',
-                      top: 40,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      backgroundColor: isDarkMode ? 'rgba(24, 24, 27, 0.85)' : 'rgba(255, 255, 255, 0.85)',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}>
-                      <Text style={{ color: colors.gold, fontSize: 20 }}>🔒</Text>
-                    </View>
-                  )}
                 </View>
 
                 {/* Purchase Stats */}
