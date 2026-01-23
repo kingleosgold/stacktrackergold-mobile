@@ -8,6 +8,10 @@ struct WidgetData: Codable {
     let dailyChangePercent: Double
     let goldSpot: Double
     let silverSpot: Double
+    let goldChangeAmount: Double
+    let goldChangePercent: Double
+    let silverChangeAmount: Double
+    let silverChangePercent: Double
     let lastUpdated: Date
     let hasSubscription: Bool
 
@@ -17,6 +21,10 @@ struct WidgetData: Codable {
         case dailyChangePercent
         case goldSpot
         case silverSpot
+        case goldChangeAmount
+        case goldChangePercent
+        case silverChangeAmount
+        case silverChangePercent
         case lastUpdated
         case hasSubscription
     }
@@ -29,6 +37,10 @@ struct WidgetData: Codable {
             dailyChangePercent: 0,
             goldSpot: 2650,
             silverSpot: 31,
+            goldChangeAmount: 0,
+            goldChangePercent: 0,
+            silverChangeAmount: 0,
+            silverChangePercent: 0,
             lastUpdated: Date(),
             hasSubscription: false
         )
@@ -40,8 +52,12 @@ struct WidgetData: Codable {
             portfolioValue: 176432,
             dailyChangeAmount: 1204,
             dailyChangePercent: 0.69,
-            goldSpot: 4530,
-            silverSpot: 77.50,
+            goldSpot: 4937.46,
+            silverSpot: 96.50,
+            goldChangeAmount: 12.50,
+            goldChangePercent: 0.25,
+            silverChangeAmount: -0.16,
+            silverChangePercent: -0.17,
             lastUpdated: Date().addingTimeInterval(-120), // 2 minutes ago
             hasSubscription: true
         )

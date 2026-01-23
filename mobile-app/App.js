@@ -2036,6 +2036,10 @@ function AppContent() {
         dailyChangePercent: dailyChangePct,
         goldSpot: goldSpot,
         silverSpot: silverSpot,
+        goldChangeAmount: spotChange?.gold?.amount || 0,
+        goldChangePercent: spotChange?.gold?.percent || 0,
+        silverChangeAmount: spotChange?.silver?.amount || 0,
+        silverChangePercent: spotChange?.silver?.percent || 0,
         hasSubscription: hasGold || hasLifetimeAccess,
       };
 
@@ -2054,7 +2058,7 @@ function AppContent() {
     if (dataLoaded && spotPricesLive && (hasGold || hasLifetimeAccess)) {
       syncWidget();
     }
-  }, [totalMeltValue, silverSpot, goldSpot, dataLoaded, spotPricesLive, hasGold, hasLifetimeAccess]);
+  }, [totalMeltValue, silverSpot, goldSpot, spotChange, dataLoaded, spotPricesLive, hasGold, hasLifetimeAccess]);
 
   // Sync widget when app comes to foreground
   useEffect(() => {
@@ -5244,7 +5248,7 @@ function AppContent() {
                 ) : (
                   <>
                     <Text style={{ color: colors.muted, marginBottom: 12, fontSize: scaledFonts.normal }}>
-                      Add the Stack Tracker widget to your home screen to see your portfolio at a glance.
+                      Add the Stack Tracker Gold widget to your home screen to see your portfolio at a glance.
                     </Text>
 
                     {/* Widget Preview */}
@@ -5254,15 +5258,15 @@ function AppContent() {
                       padding: 16,
                       marginBottom: 12,
                     }}>
-                      <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '600', marginBottom: 8 }}>
+                      <Text style={{ color: colors.gold, fontSize: 10, fontWeight: '500', marginBottom: 8 }}>
                         Stack Tracker Gold
                       </Text>
-                      <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold', marginBottom: 4 }}>
+                      <Text style={{ color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 4 }}>
                         {formatCurrency(totalMeltValue, 0)}
                       </Text>
-                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                        <Text style={{ color: colors.gold, fontSize: 12 }}>🥇 Gold ${goldSpot.toFixed(0)}</Text>
-                        <Text style={{ color: colors.silver, fontSize: 12 }}>🥈 Silver ${silverSpot.toFixed(2)}</Text>
+                      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8 }}>
+                        <Text style={{ color: colors.gold, fontSize: 11 }}>Gold ${goldSpot.toFixed(2)}</Text>
+                        <Text style={{ color: colors.silver, fontSize: 11 }}>Silver ${silverSpot.toFixed(2)}</Text>
                       </View>
                       <Text style={{ color: '#71717a', fontSize: 9 }}>Widget preview</Text>
                     </View>
@@ -5273,7 +5277,7 @@ function AppContent() {
                       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
                         1. Long-press your home screen{'\n'}
                         2. Tap the + button (top left){'\n'}
-                        3. Search for "Stack Tracker"{'\n'}
+                        3. Search for "Stack Tracker Gold"{'\n'}
                         4. Choose small or medium size{'\n'}
                         5. Tap "Add Widget"
                       </Text>

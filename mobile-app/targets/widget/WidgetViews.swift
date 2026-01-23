@@ -24,34 +24,38 @@ struct SmallWidgetView: View {
     let data: WidgetData
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             // Header
             HStack {
-                Text("Stack Tracker")
-                    .font(.system(size: 11, weight: .semibold))
+                Text("Stack Tracker Gold")
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "#fbbf24"))
                 Spacer()
             }
 
             Spacer()
 
-            // Portfolio Value
+            // Portfolio Value - LARGE and prominent
             if data.hasSubscription {
                 Text(formatCurrency(data.portfolioValue))
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundColor(.white)
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(0.5)
                     .lineLimit(1)
 
                 // Daily Change
                 HStack(spacing: 4) {
+                    Text(data.dailyChangeAmount >= 0 ? "▲" : "▼")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(portfolioChangeColor)
+
                     Text(formatChange(data.dailyChangeAmount))
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(changeColor)
+                        .foregroundColor(portfolioChangeColor)
 
                     Text("(\(formatPercent(data.dailyChangePercent)))")
                         .font(.system(size: 11))
-                        .foregroundColor(changeColor)
+                        .foregroundColor(portfolioChangeColor)
                 }
             } else {
                 // Not subscribed message
@@ -72,14 +76,14 @@ struct SmallWidgetView: View {
                 .font(.system(size: 9))
                 .foregroundColor(Color(hex: "#71717a"))
         }
-        .padding(14)
+        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
             Color(hex: "#1a1a2e")
         }
     }
 
-    private var changeColor: Color {
+    private var portfolioChangeColor: Color {
         data.dailyChangeAmount >= 0 ? Color(hex: "#22c55e") : Color(hex: "#ef4444")
     }
 
@@ -108,88 +112,100 @@ struct MediumWidgetView: View {
     var body: some View {
         Group {
             if data.hasSubscription {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     // Header
                     HStack {
-                        Text("Stack Tracker Pro")
-                            .font(.system(size: 13, weight: .semibold))
+                        Text("Stack Tracker Gold")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundColor(Color(hex: "#fbbf24"))
                         Spacer()
+                        // Last Updated
+                        Text(timeAgoString)
+                            .font(.system(size: 9))
+                            .foregroundColor(Color(hex: "#71717a"))
                     }
 
                     Spacer()
 
-                    // Portfolio Row
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Portfolio")
-                                .font(.system(size: 11))
-                                .foregroundColor(Color(hex: "#71717a"))
-                            Text(formatCurrency(data.portfolioValue))
-                                .font(.system(size: 22, weight: .bold))
-                                .foregroundColor(.white)
-                        }
+                    // Portfolio Value - LARGE and prominent
+                    HStack(alignment: .bottom) {
+                        Text(formatCurrency(data.portfolioValue))
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundColor(.white)
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
 
                         Spacer()
 
                         // Daily Change
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("Today")
-                                .font(.system(size: 11))
+                                .font(.system(size: 10))
                                 .foregroundColor(Color(hex: "#71717a"))
-                            HStack(spacing: 4) {
+                            HStack(spacing: 3) {
+                                Text(data.dailyChangeAmount >= 0 ? "▲" : "▼")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(portfolioChangeColor)
                                 Text(formatChange(data.dailyChangeAmount))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(changeColor)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(portfolioChangeColor)
                                 Text("(\(formatPercent(data.dailyChangePercent)))")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(changeColor)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(portfolioChangeColor)
                             }
                         }
                     }
 
                     Spacer()
 
-                    // Spot Prices Row
+                    // Spot Prices Row with color coding
                     HStack(spacing: 16) {
                         // Gold
-                        HStack(spacing: 4) {
-                            Text("🥇")
-                                .font(.system(size: 14))
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("Gold")
-                                .font(.system(size: 11))
+                                .font(.system(size: 10))
                                 .foregroundColor(Color(hex: "#fbbf24"))
-                            Text("$\(Int(data.goldSpot))")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
+                            HStack(spacing: 4) {
+                                Text(formatSpotPrice(data.goldSpot))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(data.goldChangeAmount >= 0 ? "▲" : "▼")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(goldChangeColor)
+                                Text(formatSmallChange(data.goldChangeAmount))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(goldChangeColor)
+                            }
                         }
 
                         // Silver
-                        HStack(spacing: 4) {
-                            Text("🥈")
-                                .font(.system(size: 14))
+                        VStack(alignment: .leading, spacing: 2) {
                             Text("Silver")
-                                .font(.system(size: 11))
+                                .font(.system(size: 10))
                                 .foregroundColor(Color(hex: "#9ca3af"))
-                            Text("$\(String(format: "%.2f", data.silverSpot))")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white)
+                            HStack(spacing: 4) {
+                                Text(formatSpotPrice(data.silverSpot))
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(data.silverChangeAmount >= 0 ? "▲" : "▼")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(silverChangeColor)
+                                Text(formatSmallChange(data.silverChangeAmount))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(silverChangeColor)
+                            }
                         }
 
                         Spacer()
-
-                        // Last Updated
-                        Text(timeAgoString)
-                            .font(.system(size: 9))
-                            .foregroundColor(Color(hex: "#71717a"))
                     }
                 }
-                .padding(16)
+                .padding(14)
             } else {
                 // Not subscribed
                 VStack(spacing: 8) {
-                    Text("🔒")
+                    Image(systemName: "lock.fill")
                         .font(.system(size: 28))
+                        .foregroundColor(Color(hex: "#71717a"))
                     Text("Upgrade to Gold")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(Color(hex: "#fbbf24"))
@@ -207,8 +223,16 @@ struct MediumWidgetView: View {
         }
     }
 
-    private var changeColor: Color {
+    private var portfolioChangeColor: Color {
         data.dailyChangeAmount >= 0 ? Color(hex: "#22c55e") : Color(hex: "#ef4444")
+    }
+
+    private var goldChangeColor: Color {
+        data.goldChangeAmount >= 0 ? Color(hex: "#22c55e") : Color(hex: "#ef4444")
+    }
+
+    private var silverChangeColor: Color {
+        data.silverChangeAmount >= 0 ? Color(hex: "#22c55e") : Color(hex: "#ef4444")
     }
 
     private var timeAgoString: String {
@@ -237,6 +261,14 @@ private func formatCurrency(_ value: Double) -> String {
     return formatter.string(from: NSNumber(value: value)) ?? "$0"
 }
 
+private func formatSpotPrice(_ value: Double) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .currency
+    formatter.minimumFractionDigits = 2
+    formatter.maximumFractionDigits = 2
+    return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
+}
+
 private func formatChange(_ value: Double) -> String {
     let prefix = value >= 0 ? "+" : ""
     let formatter = NumberFormatter()
@@ -245,9 +277,18 @@ private func formatChange(_ value: Double) -> String {
     return prefix + (formatter.string(from: NSNumber(value: value)) ?? "$0")
 }
 
+private func formatSmallChange(_ value: Double) -> String {
+    let prefix = value >= 0 ? "+" : ""
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .currency
+    formatter.minimumFractionDigits = 2
+    formatter.maximumFractionDigits = 2
+    return prefix + (formatter.string(from: NSNumber(value: abs(value))) ?? "$0.00")
+}
+
 private func formatPercent(_ value: Double) -> String {
     let prefix = value >= 0 ? "+" : ""
-    return "\(prefix)\(String(format: "%.1f", value))%"
+    return "\(prefix)\(String(format: "%.2f", value))%"
 }
 
 // MARK: - Color Extension

@@ -35,6 +35,10 @@ export const isWidgetKitAvailable = () => {
  * @param {number} data.dailyChangePercent Today's change in percent
  * @param {number} data.goldSpot Current gold spot price
  * @param {number} data.silverSpot Current silver spot price
+ * @param {number} data.goldChangeAmount Gold price change from previous day
+ * @param {number} data.goldChangePercent Gold price change percent
+ * @param {number} data.silverChangeAmount Silver price change from previous day
+ * @param {number} data.silverChangePercent Silver price change percent
  * @param {boolean} data.hasSubscription Whether user has Gold/Lifetime access
  */
 export const updateWidgetData = async (data) => {
@@ -55,6 +59,10 @@ export const updateWidgetData = async (data) => {
       dailyChangePercent: data.dailyChangePercent || 0,
       goldSpot: data.goldSpot || 0,
       silverSpot: data.silverSpot || 0,
+      goldChangeAmount: data.goldChangeAmount || 0,
+      goldChangePercent: data.goldChangePercent || 0,
+      silverChangeAmount: data.silverChangeAmount || 0,
+      silverChangePercent: data.silverChangePercent || 0,
       lastUpdated: new Date().toISOString(),
       hasSubscription: data.hasSubscription || false,
     };

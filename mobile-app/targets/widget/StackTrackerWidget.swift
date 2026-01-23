@@ -17,8 +17,8 @@ struct StackTrackerWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             StackTrackerWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("Stack Tracker")
-        .description("View your precious metals portfolio value and spot prices at a glance.")
+        .configurationDisplayName("Stack Tracker Gold")
+        .description("View your precious metals portfolio value and live spot prices.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
