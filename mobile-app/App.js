@@ -375,7 +375,7 @@ class ErrorBoundary extends Component {
 // REUSABLE COMPONENTS
 // ============================================
 
-const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, prefix, editable = true, colors, isDarkMode }) => {
+const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, prefix, editable = true, colors, isDarkMode, scaledFonts }) => {
   // Default colors for backwards compatibility
   const labelColor = colors ? colors.muted : '#a1a1aa';
   const inputBg = colors ? (isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)') : 'rgba(0,0,0,0.3)';
@@ -384,13 +384,18 @@ const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, 
   const prefixColor = colors ? colors.muted : '#71717a';
   const disabledBg = colors ? (isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.1)') : 'rgba(0,0,0,0.5)';
 
+  // Font sizes - use scaledFonts if provided, otherwise defaults
+  const labelFontSize = scaledFonts ? scaledFonts.small : 12;
+  const inputFontSize = scaledFonts ? scaledFonts.normal : 14;
+  const prefixFontSize = scaledFonts ? scaledFonts.normal : 14;
+
   return (
     <View style={styles.floatingContainer}>
-      <Text style={[styles.floatingLabel, { color: labelColor }]}>{label}</Text>
+      <Text style={[styles.floatingLabel, { color: labelColor, fontSize: labelFontSize }]}>{label}</Text>
       <View style={[styles.inputRow, { backgroundColor: inputBg, borderColor: borderColor }, !editable && { backgroundColor: disabledBg }]}>
-        {prefix && <Text style={[styles.inputPrefix, { color: prefixColor }]}>{prefix}</Text>}
+        {prefix && <Text style={[styles.inputPrefix, { color: prefixColor, fontSize: prefixFontSize }]}>{prefix}</Text>}
         <TextInput
-          style={[styles.floatingInput, { color: textColor }, prefix && { paddingLeft: 4 }]}
+          style={[styles.floatingInput, { color: textColor, fontSize: inputFontSize }, prefix && { paddingLeft: 4 }]}
           placeholder={placeholder}
           placeholderTextColor={colors ? colors.muted : '#52525b'}
           keyboardType={keyboardType || 'default'}
@@ -5344,7 +5349,7 @@ function AppContent() {
             <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1a1a2e' : '#ffffff' }]}>
               {/* Header */}
               <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>{editingItem ? 'Edit' : 'Add'} Purchase</Text>
+                <Text style={[styles.modalTitle, { color: colors.text, fontSize: scaledFonts.xlarge }]}>{editingItem ? 'Edit' : 'Add'} Purchase</Text>
                 <TouchableOpacity
                   onPress={() => {
                     // If editing a scanned item, return to scan results without losing data
@@ -5365,7 +5370,7 @@ function AppContent() {
                   style={[styles.closeButton, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}
                   hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                 >
-                  <Text style={[styles.closeButtonText, { color: colors.text }]}>✕</Text>
+                  <Text style={[styles.closeButtonText, { color: colors.text, fontSize: scaledFonts.large }]}>✕</Text>
                 </TouchableOpacity>
               </View>
 
@@ -5378,22 +5383,22 @@ function AppContent() {
               >
                   {scanStatus && (
                     <View style={[styles.scanStatus, { backgroundColor: scanStatus === 'success' ? `${colors.success}22` : scanStatus === 'error' ? `${colors.error}22` : `${colors.gold}22` }]}>
-                      <Text style={{ color: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold }}>{scanMessage}</Text>
+                      <Text style={{ color: scanStatus === 'success' ? colors.success : scanStatus === 'error' ? colors.error : colors.gold, fontSize: scaledFonts.normal }}>{scanMessage}</Text>
                     </View>
                   )}
 
                   <View style={[styles.card, { backgroundColor: isDarkMode ? 'rgba(148,163,184,0.1)' : `${colors.gold}15` }]}>
-                    <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12 }}>📷 AI Receipt Scanner</Text>
+                    <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12, fontSize: scaledFonts.normal }}>📷 AI Receipt Scanner</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold, flex: 1 }]} onPress={() => showScanningTips('camera')}>
-                        <Text style={{ color: '#000' }}>📷 Take Photo</Text>
+                        <Text style={{ color: '#000', fontSize: scaledFonts.normal }}>📷 Take Photo</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold, flex: 1 }]} onPress={() => showScanningTips('gallery')}>
-                        <Text style={{ color: '#000' }}>🖼️ Upload Photos</Text>
+                        <Text style={{ color: '#000', fontSize: scaledFonts.normal }}>🖼️ Upload Photos</Text>
                       </TouchableOpacity>
                     </View>
                     {!hasGold && !hasLifetimeAccess && (
-                      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 8, textAlign: 'center' }}>
                         {scanUsage.scansUsed >= scanUsage.scansLimit ? (
                           <Text style={{ color: colors.error }}>All {scanUsage.scansLimit} free scans used.{scanUsage.resetsAt ? ` Resets ${new Date(scanUsage.resetsAt).toLocaleDateString()}.` : ''}</Text>
                         ) : (
@@ -5402,12 +5407,12 @@ function AppContent() {
                       </Text>
                     )}
                     {hasGold && (
-                      <Text style={{ color: colors.gold, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                      <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, marginTop: 8, textAlign: 'center' }}>
                         ✓ Unlimited scans with Gold
                       </Text>
                     )}
                     {hasLifetimeAccess && !hasGold && (
-                      <Text style={{ color: colors.success, fontSize: 11, marginTop: 8, textAlign: 'center' }}>
+                      <Text style={{ color: colors.success, fontSize: scaledFonts.tiny, marginTop: 8, textAlign: 'center' }}>
                         ✓ Unlimited scans (Lifetime Access)
                       </Text>
                     )}
@@ -5415,58 +5420,58 @@ function AppContent() {
 
                   <View style={styles.metalTabs}>
                     <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'silver' ? colors.silver : colors.border, backgroundColor: metalTab === 'silver' ? `${colors.silver}22` : 'transparent' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMetalTab('silver'); }}>
-                      <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted }}>🥈 Silver</Text>
+                      <Text style={{ color: metalTab === 'silver' ? colors.silver : colors.muted, fontSize: scaledFonts.normal }}>🥈 Silver</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.metalTab, { borderColor: metalTab === 'gold' ? colors.gold : colors.border, backgroundColor: metalTab === 'gold' ? `${colors.gold}22` : 'transparent' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMetalTab('gold'); }}>
-                      <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted }}>🥇 Gold</Text>
+                      <Text style={{ color: metalTab === 'gold' ? colors.gold : colors.muted, fontSize: scaledFonts.normal }}>🥇 Gold</Text>
                     </TouchableOpacity>
                   </View>
 
-                  <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" colors={colors} isDarkMode={isDarkMode} />
-                  <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" colors={colors} isDarkMode={isDarkMode} />
-                  <FloatingInput label="Date (YYYY-MM-DD)" value={form.datePurchased} onChangeText={handleDateChange} placeholder="2025-12-25" colors={colors} isDarkMode={isDarkMode} />
+                  <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
+                  <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
+                  <FloatingInput label="Date (YYYY-MM-DD)" value={form.datePurchased} onChangeText={handleDateChange} placeholder="2025-12-25" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit *" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" colors={colors} isDarkMode={isDarkMode} /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => setForm(p => ({ ...p, quantity: v }))} placeholder="1" keyboardType="number-pad" colors={colors} isDarkMode={isDarkMode} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit *" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => setForm(p => ({ ...p, quantity: v }))} placeholder="1" keyboardType="number-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => { setForm(p => ({ ...p, spotPrice: v })); setSpotPriceSource(null); }} placeholder="Auto" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => { setForm(p => ({ ...p, spotPrice: v })); setSpotPriceSource(null); }} placeholder="Auto" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                   </View>
 
                   {/* Accuracy indicators for historical spot prices */}
                   {spotPriceSource === 'price_log' && (
-                    <Text style={{ color: '#22C55E', fontSize: 12, marginTop: -4, marginBottom: 4 }}>
+                    <Text style={{ color: '#22C55E', fontSize: scaledFonts.small, marginTop: -4, marginBottom: 4 }}>
                       ✅ Exact price from our records
                     </Text>
                   )}
                   {spotPriceSource === 'etf_derived' && (
-                    <Text style={{ color: '#3B82F6', fontSize: 12, marginTop: -4, marginBottom: 4 }}>
+                    <Text style={{ color: '#3B82F6', fontSize: scaledFonts.small, marginTop: -4, marginBottom: 4 }}>
                       📊 Daily ETF-derived price. You can adjust if needed.
                     </Text>
                   )}
                   {(spotPriceSource === 'macrotrends' || spotPriceSource === 'static-json' || spotPriceSource === 'static-json-nearest') && (
-                    <Text style={{ color: '#E69500', fontSize: 12, marginTop: -4, marginBottom: 4 }}>
+                    <Text style={{ color: '#E69500', fontSize: scaledFonts.small, marginTop: -4, marginBottom: 4 }}>
                       ⚠️ Monthly average (daily price unavailable). You can edit this manually.
                     </Text>
                   )}
                   {(spotPriceSource === 'current-spot' || spotPriceSource === 'current-fallback' || spotPriceSource === 'client-fallback' || spotPriceSource === 'current_fallback') && (
-                    <Text style={{ color: '#E69500', fontSize: 12, marginTop: -4, marginBottom: 4 }}>
+                    <Text style={{ color: '#E69500', fontSize: scaledFonts.small, marginTop: -4, marginBottom: 4 }}>
                       ⚠️ Historical price unavailable - using today's spot. You can edit this manually.
                     </Text>
                   )}
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                   </View>
 
                   <View style={[styles.card, { backgroundColor: `${colors.gold}15` }]}>
-                    <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8 }}>Premium (Auto-calculated)</Text>
+                    <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8, fontSize: scaledFonts.normal }}>Premium (Auto-calculated)</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <View style={{ flex: 1 }}><FloatingInput label="Per Unit" value={form.premium} onChangeText={v => setForm(p => ({ ...p, premium: v }))} keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
+                      <View style={{ flex: 1 }}><FloatingInput label="Per Unit" value={form.premium} onChangeText={v => setForm(p => ({ ...p, premium: v }))} keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                         {(() => {
                           const totalPremium = parseFloat(form.premium || 0) * parseInt(form.quantity || 1);
@@ -5474,9 +5479,9 @@ function AppContent() {
                           const premiumPct = calculatePremiumPercent(parseFloat(form.premium || 0), unitPrice);
                           return (
                             <>
-                              <Text style={{ color: colors.muted, fontSize: 12 }}>Total: ${formatCurrency(totalPremium)}</Text>
+                              <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Total: ${formatCurrency(totalPremium)}</Text>
                               {premiumPct > 0 && (
-                                <Text style={{ color: colors.gold, fontSize: 11, marginTop: 2 }}>+{premiumPct.toFixed(1)}%</Text>
+                                <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, marginTop: 2 }}>+{premiumPct.toFixed(1)}%</Text>
                               )}
                             </>
                           );
@@ -5489,7 +5494,7 @@ function AppContent() {
                 {/* Sticky Save Button */}
                 <View style={[styles.stickyButtonContainer, { backgroundColor: isDarkMode ? '#1a1a2e' : '#ffffff', borderTopColor: colors.border }]}>
                   <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); savePurchase(); }}>
-                    <Text style={{ color: '#000', fontWeight: '600' }}>{editingItem ? 'Update' : 'Add'} Purchase</Text>
+                    <Text style={{ color: '#000', fontWeight: '600', fontSize: scaledFonts.normal }}>{editingItem ? 'Update' : 'Add'} Purchase</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -5507,8 +5512,8 @@ function AppContent() {
       >
         {/* Inputs at TOP */}
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-          <View style={{ flex: 1 }}><FloatingInput label="Silver Price" value={specSilverPrice} onChangeText={setSpecSilverPrice} keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
-          <View style={{ flex: 1 }}><FloatingInput label="Gold Price" value={specGoldPrice} onChangeText={setSpecGoldPrice} keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} /></View>
+          <View style={{ flex: 1 }}><FloatingInput label="Silver Price" value={specSilverPrice} onChangeText={setSpecSilverPrice} keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+          <View style={{ flex: 1 }}><FloatingInput label="Gold Price" value={specGoldPrice} onChangeText={setSpecGoldPrice} keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
         </View>
 
         {/* Quick presets */}
@@ -5562,7 +5567,7 @@ function AppContent() {
         </View>
 
         {/* Input */}
-        <FloatingInput label={junkType === '35' ? '# of Nickels' : 'Face Value ($)'} value={junkFaceValue} onChangeText={setJunkFaceValue} keyboardType="decimal-pad" prefix={junkType === '35' ? '' : '$'} colors={colors} isDarkMode={isDarkMode} />
+        <FloatingInput label={junkType === '35' ? '# of Nickels' : 'Face Value ($)'} value={junkFaceValue} onChangeText={setJunkFaceValue} keyboardType="decimal-pad" prefix={junkType === '35' ? '' : '$'} colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
 
         {/* Results */}
         <View style={[styles.card, { backgroundColor: `${colors.silver}22` }]}>
