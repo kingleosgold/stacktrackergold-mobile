@@ -32,6 +32,8 @@ import { LineChart } from 'react-native-chart-kit';
 import GoldPaywall from './src/components/GoldPaywall';
 import Tutorial from './src/components/Tutorial';
 import ViewShot from 'react-native-view-shot';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import AuthScreen from './src/screens/AuthScreen';
 
 // Configure notifications behavior
 Notifications.setNotificationHandler({
@@ -581,6 +583,11 @@ function AppContent() {
   // Safe area insets for proper spacing around system UI (navigation bar, notch, etc.)
   const insets = useSafeAreaInsets();
 
+  // Supabase Auth
+  const { user: supabaseUser, session, loading: authLoading, signOut: supabaseSignOut } = useAuth();
+  const [guestMode, setGuestMode] = useState(null); // null = loading, true = guest, false = require auth
+  const [showAuthScreen, setShowAuthScreen] = useState(false);
+
   // Theme
   const systemColorScheme = useColorScheme();
   const [themePreference, setThemePreference] = useState('system'); // 'system', 'light', 'dark'
@@ -1116,7 +1123,7 @@ function AppContent() {
 
   const loadData = async () => {
     try {
-      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedMidnightSnapshot, storedTheme, storedChangeDisplayMode, storedLargeText, storedSilverMilestone, storedGoldMilestone, storedLastSilverReached, storedLastGoldReached] = await Promise.all([
+      const [silver, gold, silverS, goldS, timestamp, hasSeenTutorial, storedMidnightSnapshot, storedTheme, storedChangeDisplayMode, storedLargeText, storedSilverMilestone, storedGoldMilestone, storedLastSilverReached, storedLastGoldReached, storedGuestMode] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
         AsyncStorage.getItem('stack_silver_spot'),
@@ -1131,6 +1138,7 @@ function AppContent() {
         AsyncStorage.getItem('stack_gold_milestone'),
         AsyncStorage.getItem('stack_last_silver_milestone_reached'),
         AsyncStorage.getItem('stack_last_gold_milestone_reached'),
+        AsyncStorage.getItem('stack_guest_mode'),
       ]);
 
       // Safely parse JSON data with fallbacks
@@ -1174,6 +1182,13 @@ function AppContent() {
       }
       if (storedLastGoldReached) {
         setLastReachedGoldMilestone(parseFloat(storedLastGoldReached));
+      }
+
+      // Load guest mode preference
+      if (storedGuestMode === 'true') {
+        setGuestMode(true);
+      } else {
+        setGuestMode(false);
       }
 
       // Show tutorial if user hasn't seen it
@@ -3915,7 +3930,33 @@ function AppContent() {
   // LOADING & AUTH SCREENS
   // ============================================
 
-  if (isLoading) {
+  // Helper to enable guest mode
+  const enableGuestMode = async () => {
+    setGuestMode(true);
+    try {
+      await AsyncStorage.setItem('stack_guest_mode', 'true');
+    } catch (error) {
+      console.error('Failed to save guest mode:', error);
+    }
+  };
+
+  // Helper to disable guest mode (when user signs in)
+  const disableGuestMode = async () => {
+    setGuestMode(false);
+    try {
+      await AsyncStorage.removeItem('stack_guest_mode');
+    } catch (error) {
+      console.error('Failed to remove guest mode:', error);
+    }
+  };
+
+  // Handle successful auth from AuthScreen
+  const handleAuthSuccess = () => {
+    setShowAuthScreen(false);
+    disableGuestMode();
+  };
+
+  if (isLoading || authLoading || guestMode === null) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.silver} />
@@ -3924,6 +3965,39 @@ function AppContent() {
     );
   }
 
+  // Show AuthScreen if user is not signed in with Supabase AND not in guest mode
+  if (!supabaseUser && !guestMode) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+        <AuthScreen onAuthSuccess={handleAuthSuccess} />
+        {/* Skip for now button */}
+        <View style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          paddingHorizontal: 24,
+          paddingBottom: Platform.OS === 'ios' ? 50 : 30,
+          backgroundColor: colors.background,
+        }}>
+          <TouchableOpacity
+            style={{
+              paddingVertical: 16,
+              alignItems: 'center',
+            }}
+            onPress={enableGuestMode}
+          >
+            <Text style={{ color: colors.muted, fontSize: 15 }}>
+              Continue without signing in
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Show biometric auth screen (Face ID / Touch ID)
   if (!isAuthenticated) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -5130,6 +5204,111 @@ function AppContent() {
                     <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
                   </TouchableOpacity>
                 </>
+              )}
+
+              {/* Account Section */}
+              <SectionHeader title="Account" />
+              <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                {supabaseUser ? (
+                  // Signed in - show email and sign out
+                  <>
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: groupBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderTopLeftRadius: 10,
+                      borderTopRightRadius: 10,
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#fff', fontSize: 14 }}>✓</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Signed In</Text>
+                          <Text style={{ color: colors.muted, fontSize: scaledFonts.small }} numberOfLines={1}>
+                            {supabaseUser.email}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <RowSeparator />
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: groupBg,
+                        paddingVertical: 12,
+                        paddingHorizontal: 16,
+                        minHeight: 44,
+                        borderBottomLeftRadius: 10,
+                        borderBottomRightRadius: 10,
+                      }}
+                      onPress={() => {
+                        Alert.alert(
+                          'Sign Out',
+                          'Are you sure you want to sign out?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Sign Out',
+                              style: 'destructive',
+                              onPress: async () => {
+                                await supabaseSignOut();
+                                // Keep in guest mode after sign out
+                                enableGuestMode();
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: colors.error, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#fff', fontSize: 14 }}>↪</Text>
+                        </View>
+                        <Text style={{ color: colors.error, fontSize: scaledFonts.normal }}>Sign Out</Text>
+                      </View>
+                      <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  // Not signed in - show sign in button
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: groupBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderRadius: 10,
+                    }}
+                    onPress={() => {
+                      // Navigate to auth screen
+                      disableGuestMode();
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#007AFF', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ color: '#fff', fontSize: 14 }}>👤</Text>
+                      </View>
+                      <View>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Sign In or Create Account</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Sync your data across devices</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {!supabaseUser && (
+                <SectionFooter text="Your portfolio data is stored locally on this device. Sign in to enable cloud sync." />
               )}
 
               {/* Gold Features Section */}
@@ -7034,12 +7213,14 @@ function AppContent() {
   );
 }
 
-// Export App wrapped with SafeAreaProvider and ErrorBoundary
+// Export App wrapped with SafeAreaProvider, ErrorBoundary, and AuthProvider
 export default function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );
