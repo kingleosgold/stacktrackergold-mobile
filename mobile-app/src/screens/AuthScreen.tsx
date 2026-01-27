@@ -52,12 +52,14 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     setError(null);
     Keyboard.dismiss();
 
+    const trimmedEmail = email.trim();
+
     // Validation
-    if (!email.trim()) {
+    if (!trimmedEmail) {
       setError('Please enter your email address');
       return;
     }
-    if (!validateEmail(email)) {
+    if (!validateEmail(trimmedEmail)) {
       setError('Please enter a valid email address');
       return;
     }
@@ -73,8 +75,6 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       setError('Passwords do not match');
       return;
     }
-
-    const trimmedEmail = email.trim();
 
     try {
       if (mode === 'signUp') {
