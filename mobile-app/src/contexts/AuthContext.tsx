@@ -1,0 +1,278 @@
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from 'react';
+import { Platform, Alert } from 'react-native';
+import { Session, User, AuthError } from '@supabase/supabase-js';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
+import { supabase } from '../lib/supabase';
+
+// Required for expo-auth-session
+WebBrowser.maybeCompleteAuthSession();
+
+// Types
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  loading: boolean;
+  signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signInWithApple: () => Promise<{ error: Error | null }>;
+  signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
+}
+
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+// Create context
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Google OAuth configuration
+const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS || '';
+const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID || '';
+
+// Provider component
+export function AuthProvider({ children }: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Initialize auth state
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Sign up with email and password
+  const signUp = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      return { error };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Sign in with email and password
+  const signIn = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Sign in with Google
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Get the redirect URL
+      const redirectUrl = AuthSession.makeRedirectUri({
+        scheme: 'com.stacktrackerpro.app',
+        path: 'auth/callback',
+      });
+
+      // Create OAuth URL
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.url) {
+        throw new Error('No OAuth URL returned');
+      }
+
+      // Open browser for OAuth
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        redirectUrl
+      );
+
+      if (result.type === 'success') {
+        // Extract tokens from URL
+        const url = new URL(result.url);
+        const params = new URLSearchParams(url.hash.substring(1));
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+
+        if (accessToken) {
+          // Set session manually
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+          });
+
+          if (sessionError) {
+            throw sessionError;
+          }
+        }
+      } else if (result.type === 'cancel') {
+        return { error: new Error('Sign in cancelled') };
+      }
+
+      return { error: null };
+    } catch (error) {
+      console.error('Google sign in error:', error);
+      return { error: error as Error };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Sign in with Apple
+  const signInWithApple = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Check if Apple Authentication is available
+      const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (!isAvailable) {
+        throw new Error('Apple authentication is not available on this device');
+      }
+
+      // Generate a random nonce for security
+      const rawNonce = Crypto.getRandomBytes(32);
+      const nonce = Array.from(rawNonce)
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+
+      // Hash the nonce with SHA256
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        nonce
+      );
+
+      // Request Apple credential
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+
+      if (!credential.identityToken) {
+        throw new Error('No identity token returned from Apple');
+      }
+
+      // Sign in with Supabase using the Apple token
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+        nonce: nonce,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return { error: null };
+    } catch (error: any) {
+      // Handle user cancellation
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        return { error: new Error('Sign in cancelled') };
+      }
+      console.error('Apple sign in error:', error);
+      return { error: error as Error };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Sign out
+  const signOut = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        Alert.alert('Error', 'Failed to sign out. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Reset password
+  const resetPassword = useCallback(async (email: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'com.stacktrackerpro.app://auth/reset-password',
+      });
+      return { error };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const value: AuthContextType = {
+    user,
+    session,
+    loading,
+    signUp,
+    signIn,
+    signInWithGoogle,
+    signInWithApple,
+    signOut,
+    resetPassword,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// Hook to use auth context
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}
+
+// Export types for use in other files
+export type { AuthContextType, User, Session };
