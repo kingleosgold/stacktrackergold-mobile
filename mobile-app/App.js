@@ -34,6 +34,7 @@ import Tutorial from './src/components/Tutorial';
 import ViewShot from 'react-native-view-shot';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
+import { AppleLogo } from './src/components/icons';
 
 // Configure notifications behavior
 Notifications.setNotificationHandler({
@@ -4028,14 +4029,39 @@ function AppContent() {
         <View style={styles.headerContent}>
           <View style={styles.logo}>
             <Image source={require('./assets/icon.png')} style={{ width: 40, height: 40, borderRadius: 8 }} />
-            <View>
-              <Text style={[styles.logoTitle, { color: colors.text }]}>Stack Tracker Gold</Text>
-              <Text style={[styles.logoSubtitle, { color: colors.muted }]}>Make Stacking Great Again</Text>
-            </View>
+            <Text style={[styles.logoTitle, { color: colors.text }]}>Stack Tracker Gold</Text>
           </View>
-          <TouchableOpacity style={[styles.privacyBadge, { backgroundColor: isDarkMode ? 'rgba(34,197,94,0.15)' : 'rgba(34,197,94,0.1)', borderColor: isDarkMode ? 'rgba(34,197,94,0.3)' : 'rgba(34,197,94,0.2)' }]} onPress={() => setShowPrivacyModal(true)}>
-            <Text style={{ color: colors.success, fontSize: 11 }}>🔒 Private</Text>
-          </TouchableOpacity>
+          {supabaseUser ? (
+            // Signed in - show profile icon that goes to Settings
+            <TouchableOpacity
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+              }}
+              onPress={() => setTab('settings')}
+            >
+              <Text style={{ fontSize: 18 }}>👤</Text>
+            </TouchableOpacity>
+          ) : (
+            // Not signed in - show Sign In button
+            <TouchableOpacity
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                backgroundColor: colors.gold,
+                borderRadius: 20,
+              }}
+              onPress={() => disableGuestMode()}
+            >
+              <Text style={{ color: '#18181b', fontSize: 13, fontWeight: '600' }}>Sign In</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -5289,7 +5315,7 @@ function AppContent() {
                         }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                             <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: isDarkMode ? '#fff' : '#000', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: isDarkMode ? '#000' : '#fff', fontSize: 16 }}></Text>
+                              <AppleLogo size={18} color={isDarkMode ? '#000' : '#fff'} />
                             </View>
                             <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Apple</Text>
                           </View>
