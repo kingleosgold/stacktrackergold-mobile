@@ -74,9 +74,11 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       return;
     }
 
+    const trimmedEmail = email.trim();
+
     try {
       if (mode === 'signUp') {
-        const { error } = await signUp(email, password);
+        const { error } = await signUp(trimmedEmail, password);
         if (error) {
           setError(error.message);
         } else {
@@ -87,7 +89,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           );
         }
       } else {
-        const { error } = await signIn(email, password);
+        const { error } = await signIn(trimmedEmail, password);
         if (error) {
           setError(error.message);
         } else {
@@ -153,7 +155,6 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             <View style={styles.logoSection}>
               <Image source={AppIcon} style={styles.logoImage} />
               <Text style={styles.logoTitle}>Stack Tracker Gold</Text>
-              <Text style={styles.logoSubtitle}>Make Stacking Great Again</Text>
             </View>
 
             {/* Tab Selector */}
@@ -334,11 +335,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: '#e4e4e7',
-    marginBottom: 4,
-  },
-  logoSubtitle: {
-    fontSize: 14,
-    color: '#71717a',
   },
   tabContainer: {
     flexDirection: 'row',

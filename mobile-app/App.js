@@ -584,7 +584,7 @@ function AppContent() {
   const insets = useSafeAreaInsets();
 
   // Supabase Auth
-  const { user: supabaseUser, session, loading: authLoading, signOut: supabaseSignOut } = useAuth();
+  const { user: supabaseUser, session, loading: authLoading, signOut: supabaseSignOut, linkedProviders, linkWithGoogle, linkWithApple } = useAuth();
   const [guestMode, setGuestMode] = useState(null); // null = loading, true = guest, false = require auth
   const [showAuthScreen, setShowAuthScreen] = useState(false);
 
@@ -5210,8 +5210,9 @@ function AppContent() {
               <SectionHeader title="Account" />
               <View style={{ borderRadius: 10, overflow: 'hidden' }}>
                 {supabaseUser ? (
-                  // Signed in - show email and sign out
+                  // Signed in - show email, linked providers, and sign out
                   <>
+                    {/* Email/Account Info */}
                     <View style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -5236,6 +5237,86 @@ function AppContent() {
                       </View>
                     </View>
                     <RowSeparator />
+
+                    {/* Google Provider */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: groupBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: separatorColor }}>
+                          <Text style={{ color: '#4285F4', fontSize: 14, fontWeight: '700' }}>G</Text>
+                        </View>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Google</Text>
+                      </View>
+                      {linkedProviders.google ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ color: colors.success, fontSize: scaledFonts.small }}>Linked</Text>
+                          <Text style={{ color: colors.success, fontSize: 14 }}>✓</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={async () => {
+                            const { error } = await linkWithGoogle();
+                            if (error && error.message !== 'Linking cancelled') {
+                              Alert.alert('Link Failed', error.message);
+                            }
+                          }}
+                          style={{ paddingVertical: 4, paddingHorizontal: 12, backgroundColor: '#4285F4', borderRadius: 6 }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: scaledFonts.small, fontWeight: '600' }}>Link</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <RowSeparator />
+
+                    {/* Apple Provider (iOS only) */}
+                    {Platform.OS === 'ios' && (
+                      <>
+                        <View style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backgroundColor: groupBg,
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          minHeight: 44,
+                        }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: isDarkMode ? '#fff' : '#000', alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: isDarkMode ? '#000' : '#fff', fontSize: 16 }}></Text>
+                            </View>
+                            <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Apple</Text>
+                          </View>
+                          {linkedProviders.apple ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ color: colors.success, fontSize: scaledFonts.small }}>Linked</Text>
+                              <Text style={{ color: colors.success, fontSize: 14 }}>✓</Text>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={async () => {
+                                const { error } = await linkWithApple();
+                                if (error && error.message !== 'Linking cancelled') {
+                                  Alert.alert('Link Failed', error.message);
+                                }
+                              }}
+                              style={{ paddingVertical: 4, paddingHorizontal: 12, backgroundColor: isDarkMode ? '#fff' : '#000', borderRadius: 6 }}
+                            >
+                              <Text style={{ color: isDarkMode ? '#000' : '#fff', fontSize: scaledFonts.small, fontWeight: '600' }}>Link</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <RowSeparator />
+                      </>
+                    )}
+
+                    {/* Sign Out */}
                     <TouchableOpacity
                       style={{
                         flexDirection: 'row',
@@ -5309,6 +5390,9 @@ function AppContent() {
               </View>
               {!supabaseUser && (
                 <SectionFooter text="Your portfolio data is stored locally on this device. Sign in to enable cloud sync." />
+              )}
+              {supabaseUser && (
+                <SectionFooter text="Link additional sign-in methods to access your account from anywhere." />
               )}
 
               {/* Gold Features Section */}
