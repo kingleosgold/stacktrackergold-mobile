@@ -64,6 +64,26 @@ const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'https://stack-track
 // DEALER CSV TEMPLATES
 // ============================================
 const DEALER_TEMPLATES = {
+  'stacktracker': {
+    name: 'Stack Tracker Export',
+    instructions: 'Re-import a CSV previously exported from this app',
+    columnMap: {
+      product: ['product'],
+      metal: ['metal'],
+      quantity: ['qty'],
+      unitPrice: ['unit price'],
+      date: ['date'],
+      dealer: ['source'],
+      ozt: ['ozt'],
+      taxes: ['taxes'],
+      shipping: ['shipping'],
+      spotPrice: ['spot'],
+      premium: ['premium'],
+    },
+    detectPattern: null, // Detected by header fingerprint
+    headerFingerprint: ['metal', 'product', 'source', 'ozt', 'unit price'],
+    autoDealer: null,
+  },
   'generic': {
     name: 'Generic / Custom',
     instructions: 'CSV should have columns: Product Name, Metal Type, OZT, Quantity, Price, Date',
@@ -317,14 +337,35 @@ const detectOztFromName = (productName) => {
 const detectDealerFromHeaders = (headers, fileContent = '') => {
   const headerStr = headers.join(' ').toLowerCase();
   const contentStr = (fileContent || '').toLowerCase();
+  const lowerHeaders = headers.map(h => h.toLowerCase().trim());
 
+  // 1. Check header fingerprints first (exact header-based detection)
+  for (const [key, template] of Object.entries(DEALER_TEMPLATES)) {
+    if (template.headerFingerprint) {
+      const matched = template.headerFingerprint.every(fp =>
+        lowerHeaders.some(h => h === fp || h.includes(fp))
+      );
+      if (matched) return key;
+    }
+  }
+
+  // 2. Check regex detectPattern against headers and filename
   for (const [key, template] of Object.entries(DEALER_TEMPLATES)) {
     if (template.detectPattern && (template.detectPattern.test(headerStr) || template.detectPattern.test(contentStr))) {
       return key;
     }
   }
 
-  return 'generic';
+  // 3. Check if headers match generic column names well enough to skip dealer selection
+  //    Need at least: a product-like column AND (a price-like column OR an ozt-like column)
+  const genericMap = DEALER_TEMPLATES['generic'].columnMap;
+  const hasProduct = genericMap.product.some(name => lowerHeaders.some(h => h.includes(name)));
+  const hasPrice = genericMap.unitPrice.some(name => lowerHeaders.some(h => h.includes(name)));
+  const hasOzt = genericMap.ozt.some(name => lowerHeaders.some(h => h.includes(name)));
+  if (hasProduct && (hasPrice || hasOzt)) return 'generic';
+
+  // 4. Unrecognized format
+  return null;
 };
 
 // ============================================
@@ -3487,15 +3528,15 @@ function AppContent() {
       // Get headers for detection
       const headers = rows[0].map(h => String(h || '').toLowerCase().trim());
 
-      // Try to auto-detect dealer from headers and filename
+      // Try to auto-detect format from headers and filename
       const detectedDealer = detectDealerFromHeaders(headers, file.name);
 
-      if (detectedDealer !== 'generic') {
-        // Auto-detected dealer - process immediately
-        if (__DEV__) console.log(`🏪 Auto-detected dealer: ${DEALER_TEMPLATES[detectedDealer].name}`);
+      if (detectedDealer) {
+        // Auto-detected format - process immediately
+        if (__DEV__) console.log(`🏪 Auto-detected format: ${DEALER_TEMPLATES[detectedDealer].name}`);
         await processSpreadsheetWithDealer(rows, headers, detectedDealer);
       } else {
-        // No dealer detected - show dealer selector
+        // Unrecognized format - show dealer selector
         setPendingImportFile({ rows, headers, fileName: file.name });
         setShowDealerSelector(true);
       }
@@ -3531,10 +3572,14 @@ function AppContent() {
         date: findColumn(template.columnMap.date),
         dealer: findColumn(template.columnMap.dealer || []),
         ozt: findColumn(template.columnMap.ozt || []),
+        taxes: findColumn(template.columnMap.taxes || []),
+        shipping: findColumn(template.columnMap.shipping || []),
+        spotPrice: findColumn(template.columnMap.spotPrice || []),
+        premium: findColumn(template.columnMap.premium || []),
       };
 
       // For dealer-specific templates, also check generic column names as fallback
-      if (dealerKey !== 'generic') {
+      if (dealerKey !== 'generic' && dealerKey !== 'stacktracker') {
         const genericTemplate = DEALER_TEMPLATES['generic'];
         if (colMap.productName === -1) colMap.productName = findColumn(genericTemplate.columnMap.product);
         if (colMap.metal === -1) colMap.metal = findColumn(genericTemplate.columnMap.metal);
@@ -3608,6 +3653,12 @@ function AppContent() {
         const dateRaw = colMap.date !== -1 ? row[colMap.date] : null;
         const datePurchased = dateRaw ? parseDate(String(dateRaw)) : '';
 
+        // Parse optional extra fields (Stack Tracker export has these)
+        const taxes = colMap.taxes !== -1 ? (parseFloat(row[colMap.taxes]) || 0) : 0;
+        const shipping = colMap.shipping !== -1 ? (parseFloat(row[colMap.shipping]) || 0) : 0;
+        const spotPrice = colMap.spotPrice !== -1 ? (parseFloat(row[colMap.spotPrice]) || 0) : 0;
+        const premium = colMap.premium !== -1 ? (parseFloat(row[colMap.premium]) || 0) : 0;
+
         parsedData.push({
           productName,
           metal,
@@ -3616,6 +3667,10 @@ function AppContent() {
           datePurchased,
           source,
           ozt,
+          taxes,
+          shipping,
+          spotPrice,
+          premium,
           autoDetected: {
             metal: colMap.metal === -1 || !row[colMap.metal],
             ozt: colMap.ozt === -1 || !row[colMap.ozt] || parseFloat(row[colMap.ozt]) <= 0,
@@ -3711,10 +3766,10 @@ function AppContent() {
           ozt: item.ozt,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
-          taxes: 0,
-          shipping: 0,
-          spotPrice: 0,
-          premium: 0,
+          taxes: item.taxes || 0,
+          shipping: item.shipping || 0,
+          spotPrice: item.spotPrice || 0,
+          premium: item.premium || 0,
         };
 
         if (item.metal === 'silver') {
@@ -7275,10 +7330,12 @@ function AppContent() {
 
             <ScrollView style={{ padding: 20 }} showsVerticalScrollIndicator={false}>
               <Text style={{ color: colors.muted, marginBottom: 16, fontSize: 14 }}>
-                Select the dealer this CSV export came from. This helps us map the columns correctly and auto-detect product details.
+                We couldn't auto-detect the format. Select the dealer this CSV came from, or choose Generic if unsure.
               </Text>
 
-              {Object.entries(DEALER_TEMPLATES).map(([key, template]) => (
+              {Object.entries(DEALER_TEMPLATES)
+                .filter(([key]) => key !== 'stacktracker') // Stack Tracker format is auto-detected
+                .map(([key, template]) => (
                 <TouchableOpacity
                   key={key}
                   style={[
