@@ -108,7 +108,7 @@ struct MediumWidgetView: View {
                             .foregroundColor(mutedColor)
 
                         Text(formatCurrency(data.portfolioValue))
-                            .font(.system(size: 44, weight: .bold))
+                            .font(.system(size: 48, weight: .bold))
                             .foregroundColor(.white)
                             .minimumScaleFactor(0.5)
                             .lineLimit(1)

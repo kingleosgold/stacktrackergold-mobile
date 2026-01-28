@@ -63,6 +63,10 @@ export const updateWidgetData = async (data) => {
       goldChangePercent: data.goldChangePercent || 0,
       silverChangeAmount: data.silverChangeAmount || 0,
       silverChangePercent: data.silverChangePercent || 0,
+      goldValue: data.goldValue || 0,
+      silverValue: data.silverValue || 0,
+      goldOzt: data.goldOzt || 0,
+      silverOzt: data.silverOzt || 0,
       lastUpdated: new Date().toISOString(),
       hasSubscription: data.hasSubscription || false,
     };
