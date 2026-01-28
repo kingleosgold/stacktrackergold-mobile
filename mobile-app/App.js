@@ -7543,7 +7543,7 @@ function AppContent() {
               )}
               {detailItem.source && (
                 <View style={styles.statRow}>
-                  <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>🏪 Source</Text>
+                  <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Dealer</Text>
                   <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{detailItem.source}</Text>
                 </View>
               )}
@@ -7566,12 +7566,19 @@ function AppContent() {
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               {(() => {
-                // Auto-calculate premium if zero but we have unitPrice and spotPrice
-                let displayPremium = detailItem.premium;
-                if (!displayPremium && detailItem.unitPrice > 0 && detailItem.spotPrice > 0) {
-                  displayPremium = detailItem.unitPrice - (detailItem.spotPrice * detailItem.ozt);
+                // Use saved premium if non-zero, otherwise try to calculate from unitPrice and spotPrice
+                const savedPremium = parseFloat(detailItem.premium) || 0;
+                let displayPremium = savedPremium;
+                const itemSpot = detailItem.spotPrice || 0;
+                // If premium is 0, try to calculate using saved spotPrice or current live spot
+                if (displayPremium === 0 && detailItem.unitPrice > 0 && detailItem.ozt > 0) {
+                  const spotForCalc = itemSpot > 0 ? itemSpot : (detailMetal === 'silver' ? silverSpot : goldSpot);
+                  if (spotForCalc > 0) {
+                    displayPremium = detailItem.unitPrice - (spotForCalc * detailItem.ozt);
+                  }
                 }
-                if (!displayPremium || displayPremium === 0) return null;
+                // Only hide if truly zero or negligible (< $0.01)
+                if (Math.abs(displayPremium) < 0.01) return null;
                 return (
                   <>
                     <View style={styles.statRow}>
