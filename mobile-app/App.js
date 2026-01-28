@@ -473,32 +473,53 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
     );
   }
 
-  // Two segments: use the half-rectangle overlay technique
-  let currentAngle = 0;
-  const segments = nonZeroSegments.map((item) => {
-    const percentage = item.value / total;
-    const angle = percentage * 360;
-    const startAngle = currentAngle;
-    currentAngle += angle;
-    return { ...item, percentage, startAngle, angle };
-  });
+  // Two segments: fill background with first segment, overlay second segment
+  const segments = nonZeroSegments.map((item) => ({
+    ...item,
+    percentage: item.value / total,
+  }));
+
+  // Sort by value descending - larger segment becomes background
+  const sortedSegments = [...segments].sort((a, b) => b.value - a.value);
+  const bgSegment = sortedSegments[0]; // Larger segment (background)
+  const fgSegment = sortedSegments[1]; // Smaller segment (foreground overlay)
+  const fgAngle = fgSegment ? fgSegment.percentage * 360 : 0;
 
   return (
     <View style={{ alignItems: 'center' }}>
-      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', position: 'relative' }}>
-        {segments.map((segment, index) => (
-          <View
-            key={index}
-            style={{
-              position: 'absolute',
-              width: size,
-              height: size,
-              transform: [{ rotate: `${segment.startAngle}deg` }],
-            }}
-          >
-            <View style={{ width: size / 2, height: size, backgroundColor: segment.color }} />
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', position: 'relative', backgroundColor: bgSegment.color }}>
+        {/* Overlay the foreground segment using two half-circles for angles > 180 or one for <= 180 */}
+        {fgSegment && fgAngle <= 180 && (
+          <View style={{ position: 'absolute', width: size, height: size }}>
+            {/* First half covers 0-180, clip to show only the foreground angle */}
+            <View style={{ position: 'absolute', width: size / 2, height: size, left: size / 2, overflow: 'hidden' }}>
+              <View style={{
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: fgSegment.color,
+                transform: [{ translateX: -size / 2 }, { rotate: `${fgAngle - 180}deg` }, { translateX: size / 2 }],
+                transformOrigin: 'center',
+              }} />
+            </View>
           </View>
-        ))}
+        )}
+        {fgSegment && fgAngle > 180 && (
+          <View style={{ position: 'absolute', width: size, height: size }}>
+            {/* For angles > 180, we need both halves */}
+            <View style={{ position: 'absolute', width: size / 2, height: size, left: size / 2, backgroundColor: fgSegment.color }} />
+            <View style={{ position: 'absolute', width: size / 2, height: size, left: 0, overflow: 'hidden' }}>
+              <View style={{
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: fgSegment.color,
+                transform: [{ translateX: size / 2 }, { rotate: `${fgAngle - 180}deg` }, { translateX: -size / 2 }],
+              }} />
+            </View>
+          </View>
+        )}
+        {/* Center hole for donut effect */}
         <View style={{
           position: 'absolute',
           width: size * 0.6,
@@ -850,9 +871,27 @@ function AppContent() {
     }
   };
 
-  // Helper function to format currency with commas
+  // Helper function to format currency with commas (fixed decimals)
   const formatCurrency = (value, decimals = 2) => {
     return value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  };
+
+  // Smart currency formatting: shows decimals only if meaningful
+  // "$100" not "$100.00", but "$100.50" if cents exist
+  const formatSmartCurrency = (value, maxDecimals = 2) => {
+    const rounded = Math.round(value * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
+    if (rounded === Math.floor(rounded)) {
+      return rounded.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    return rounded.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: maxDecimals });
+  };
+
+  // Format quantity with smart decimals and commas
+  const formatQuantity = (value) => {
+    if (value === Math.floor(value)) {
+      return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
   // Helper function to format ounces with smart decimals
@@ -4466,15 +4505,31 @@ function AppContent() {
                 numberOfLines={1}
                 adjustsFontSizeToFit={true}
               >
-                ${totalMeltValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ${formatSmartCurrency(totalMeltValue)}
               </Text>
               <Text
                 style={{ color: totalGainLoss >= 0 ? colors.success : colors.error, fontSize: scaledFonts.medium }}
                 numberOfLines={1}
                 adjustsFontSizeToFit={true}
               >
-                {totalGainLoss >= 0 ? '▲' : '▼'} ${Math.abs(totalGainLoss).toLocaleString(undefined, { minimumFractionDigits: 2 })} ({totalGainLossPct >= 0 ? '+' : ''}{totalGainLossPct.toFixed(1)}%)
+                {totalGainLoss >= 0 ? '▲' : '▼'} ${formatSmartCurrency(Math.abs(totalGainLoss))} ({totalGainLossPct >= 0 ? '+' : ''}{totalGainLossPct.toFixed(1)}%)
               </Text>
+            </View>
+
+            {/* Gold & Silver Value Cards */}
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={[styles.card, { flex: 1, backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Gold</Text>
+                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit={true}>
+                  ${formatSmartCurrency(goldMeltValue)}
+                </Text>
+              </View>
+              <View style={[styles.card, { flex: 1, backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                <Text style={{ color: colors.silver, fontSize: scaledFonts.small, fontWeight: '600' }}>Silver</Text>
+                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700' }} numberOfLines={1} adjustsFontSizeToFit={true}>
+                  ${formatSmartCurrency(silverMeltValue)}
+                </Text>
+              </View>
             </View>
 
             {/* Today's Change */}
@@ -4487,7 +4542,7 @@ function AppContent() {
                     numberOfLines={1}
                     adjustsFontSizeToFit={true}
                   >
-                    {isDailyChangePositive ? '+' : ''}{dailyChange >= 0 ? '' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {isDailyChangePositive ? '+' : ''}{dailyChange >= 0 ? '' : '-'}${formatSmartCurrency(Math.abs(dailyChange))}
                   </Text>
                   <Text
                     style={{ color: isDailyChangePositive ? colors.success : colors.error, fontSize: scaledFonts.medium }}
@@ -4497,7 +4552,7 @@ function AppContent() {
                     {isDailyChangePositive ? '▲' : '▼'} {isDailyChangePositive ? '+' : ''}{dailyChangePct.toFixed(2)}%
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 8 }}>
-                    Baseline: ${midnightBaseline.toLocaleString(undefined, { minimumFractionDigits: 2 })} (@ Ag ${midnightSnapshot?.silverSpot}, Au ${midnightSnapshot?.goldSpot})
+                    Baseline: ${formatSmartCurrency(midnightBaseline)} (@ Ag ${midnightSnapshot?.silverSpot}, Au ${midnightSnapshot?.goldSpot})
                   </Text>
                 </>
               ) : (
@@ -4511,95 +4566,6 @@ function AppContent() {
                 </View>
               )}
             </View>
-
-            {/* Holdings Pie Chart */}
-            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>Holdings Breakdown</Text>
-              <PieChart
-                data={[
-                  { label: 'Gold', value: goldMeltValue, color: colors.gold },
-                  { label: 'Silver', value: silverMeltValue, color: colors.silver },
-                ]}
-                size={140}
-                cardBgColor={colors.cardBg}
-                textColor={colors.text}
-                mutedColor={colors.muted}
-              />
-            </View>
-
-            {/* Gold/Silver Ratio */}
-            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text }]}>Gold/Silver Ratio</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>{goldSilverRatio.toFixed(1)}</Text>
-                <Text style={{ color: colors.muted, marginLeft: 8 }}>:1</Text>
-              </View>
-              <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 8 }}>
-                {goldSilverRatio > 80 ? (
-                  <Text style={{ color: colors.silver }}>HIGH - Silver may be undervalued</Text>
-                ) : goldSilverRatio < 60 ? (
-                  <Text style={{ color: colors.gold }}>LOW - Gold may be undervalued</Text>
-                ) : (
-                  <Text style={{ color: colors.muted }}>Normal range (60-80)</Text>
-                )}
-              </View>
-            </View>
-
-            {/* Quick Stats */}
-            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Quick Stats</Text>
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Silver Holdings</Text>
-                <Text style={[styles.statRowValue, { color: colors.silver, fontSize: scaledFonts.normal }]}>{totalSilverOzt.toFixed(2)} oz</Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Gold Holdings</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>{totalGoldOzt.toFixed(3)} oz</Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Cost Basis</Text>
-                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Premiums Paid</Text>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
-                  {totalPremiumsPct > 0 && (
-                    <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, marginTop: 2 }}>+{totalPremiumsPct.toFixed(1)}%</Text>
-                  )}
-                </View>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Avg Silver Cost</Text>
-                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(avgSilverCostPerOz)}/oz</Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Avg Gold Cost</Text>
-                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(avgGoldCostPerOz)}/oz</Text>
-              </View>
-            </View>
-
-            {/* Milestones - Tappable to Edit */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setTempSilverMilestone(customSilverMilestone?.toString() || '');
-                setTempGoldMilestone(customGoldMilestone?.toString() || '');
-                setShowMilestoneModal(true);
-              }}
-            >
-              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
-                </View>
-                <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${totalSilverOzt.toFixed(0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
-                <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${totalGoldOzt.toFixed(2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
-              </View>
-            </TouchableOpacity>
 
             {/* Live Spot Prices */}
             <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
@@ -4660,8 +4626,6 @@ function AppContent() {
                   )}
                 </View>
               </View>
-
-              {/* Last Updated */}
               <View style={{ marginTop: 8 }}>
                 <Text style={{ color: colors.muted, fontSize: 10, textAlign: 'center' }}>
                   Source: {priceSource}
@@ -4669,6 +4633,80 @@ function AppContent() {
                 </Text>
               </View>
             </View>
+
+            {/* Gold/Silver Ratio */}
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>Gold/Silver Ratio</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>{goldSilverRatio.toFixed(1)}</Text>
+                <Text style={{ color: colors.muted, marginLeft: 8 }}>:1</Text>
+              </View>
+              <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', padding: 12, borderRadius: 8 }}>
+                {goldSilverRatio > 80 ? (
+                  <Text style={{ color: colors.silver }}>HIGH - Silver may be undervalued</Text>
+                ) : goldSilverRatio < 60 ? (
+                  <Text style={{ color: colors.gold }}>LOW - Gold may be undervalued</Text>
+                ) : (
+                  <Text style={{ color: colors.muted }}>Normal range (60-80)</Text>
+                )}
+              </View>
+            </View>
+
+            {/* Quick Stats */}
+            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Quick Stats</Text>
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Silver Holdings</Text>
+                <Text style={[styles.statRowValue, { color: colors.silver, fontSize: scaledFonts.normal }]}>{formatOunces(totalSilverOzt)} oz</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Gold Holdings</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>{totalGoldOzt.toFixed(3)} oz</Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Cost Basis</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${totalCostBasis.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Premiums Paid</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>${totalPremiumsPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                  {totalPremiumsPct > 0 && (
+                    <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, marginTop: 2 }}>+{totalPremiumsPct.toFixed(1)}%</Text>
+                  )}
+                </View>
+              </View>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Avg Silver Cost</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(avgSilverCostPerOz)}/oz</Text>
+              </View>
+              <View style={styles.statRow}>
+                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Avg Gold Cost</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>${formatCurrency(avgGoldCostPerOz)}/oz</Text>
+              </View>
+            </View>
+
+            {/* Milestones - Tappable to Edit */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTempSilverMilestone(customSilverMilestone?.toString() || '');
+                setTempGoldMilestone(customGoldMilestone?.toString() || '');
+                setShowMilestoneModal(true);
+              }}
+            >
+              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
+                </View>
+                <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${formatOunces(totalSilverOzt, 0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
+                <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${formatOunces(totalGoldOzt, 2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
+              </View>
+            </TouchableOpacity>
 
             {/* Share My Stack - Quick Access */}
             {(silverItems.length > 0 || goldItems.length > 0) && (
@@ -4783,6 +4821,14 @@ function AppContent() {
             {/* Show filtered items or both with grouping */}
             {metalTab !== 'both' ? (
               <>
+                {/* Section header for single metal view */}
+                {items.length > 0 && (
+                  <View style={{ backgroundColor: isDarkMode ? (metalTab === 'silver' ? 'rgba(156,163,175,0.1)' : 'rgba(251,191,36,0.1)') : (metalTab === 'silver' ? 'rgba(156,163,175,0.15)' : 'rgba(251,191,36,0.15)'), borderRadius: 8, padding: 12, marginBottom: 12, marginTop: 8 }}>
+                    <Text style={{ color: currentColor, fontWeight: '700', fontSize: scaledFonts.normal }}>
+                      {metalTab.toUpperCase()} ({items.length}) • {formatOunces(items.reduce((sum, i) => sum + i.ozt * i.quantity, 0), metalTab === 'gold' ? 3 : 2)} oz • ${formatSmartCurrency(items.reduce((sum, i) => sum + i.ozt * i.quantity * spot, 0))} melt
+                    </Text>
+                  </View>
+                )}
                 {sortItems(items, metalTab).map((item, index) => {
                   const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
                   const meltValue = item.ozt * item.quantity * spot;
@@ -4802,13 +4848,13 @@ function AppContent() {
                         {item.datePurchased && (
                           <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.tiny, marginBottom: 2 }]}>{formatDateDisplay(item.datePurchased)}</Text>
                         )}
-                        <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity} qty @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                        <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity} qty @ ${formatCurrency(item.unitPrice)} • {formatOunces(item.ozt * item.quantity)} oz</Text>
                         <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>
                           Cost: ${formatCurrency(costBasis)}
                         </Text>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.itemValue, { color: currentColor, fontSize: scaledFonts.medium }]}>${formatCurrency(meltValue)}</Text>
+                        <Text style={[styles.itemValue, { color: currentColor, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)} <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted }}>melt</Text></Text>
                         <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
                           {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
                         </Text>
@@ -4829,10 +4875,10 @@ function AppContent() {
                 {/* Silver Items Group */}
                 {silverItems.length > 0 && (
                   <>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 8 }}>
-                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-                      <Text style={{ color: colors.silver, fontWeight: '600', marginHorizontal: 12, fontSize: scaledFonts.normal }}>SILVER ({silverItems.length})</Text>
-                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                    <View style={{ backgroundColor: isDarkMode ? 'rgba(156,163,175,0.1)' : 'rgba(156,163,175,0.15)', borderRadius: 8, padding: 12, marginBottom: 12, marginTop: 8 }}>
+                      <Text style={{ color: colors.silver, fontWeight: '700', fontSize: scaledFonts.normal }}>
+                        SILVER ({silverItems.length}) • {formatOunces(totalSilverOzt)} oz • ${formatSmartCurrency(silverMeltValue)} melt
+                      </Text>
                     </View>
                     {sortItems(silverItems, 'silver').map((item, index) => {
                       const meltValue = item.ozt * item.quantity * silverSpot;
@@ -4852,13 +4898,13 @@ function AppContent() {
                             {item.datePurchased && (
                               <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.tiny, marginBottom: 2 }]}>{formatDateDisplay(item.datePurchased)}</Text>
                             )}
-                            <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity} qty @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                            <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity} qty @ ${formatCurrency(item.unitPrice)} • {formatOunces(item.ozt * item.quantity)} oz</Text>
                             <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>
                               Cost: ${formatCurrency(costBasis)}
                             </Text>
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.itemValue, { color: colors.silver, fontSize: scaledFonts.medium }]}>${formatCurrency(meltValue)}</Text>
+                            <Text style={[styles.itemValue, { color: colors.silver, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)} <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted }}>melt</Text></Text>
                             <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
                               {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
                             </Text>
@@ -4872,10 +4918,10 @@ function AppContent() {
                 {/* Gold Items Group */}
                 {goldItems.length > 0 && (
                   <>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: silverItems.length > 0 ? 24 : 8 }}>
-                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-                      <Text style={{ color: colors.gold, fontWeight: '600', marginHorizontal: 12, fontSize: scaledFonts.normal }}>GOLD ({goldItems.length})</Text>
-                      <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                    <View style={{ backgroundColor: isDarkMode ? 'rgba(251,191,36,0.1)' : 'rgba(251,191,36,0.15)', borderRadius: 8, padding: 12, marginBottom: 12, marginTop: silverItems.length > 0 ? 24 : 8 }}>
+                      <Text style={{ color: colors.gold, fontWeight: '700', fontSize: scaledFonts.normal }}>
+                        GOLD ({goldItems.length}) • {formatOunces(totalGoldOzt, 3)} oz • ${formatSmartCurrency(goldMeltValue)} melt
+                      </Text>
                     </View>
                     {sortItems(goldItems, 'gold').map((item, index) => {
                       const meltValue = item.ozt * item.quantity * goldSpot;
@@ -4895,13 +4941,13 @@ function AppContent() {
                             {item.datePurchased && (
                               <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.tiny, marginBottom: 2 }]}>{formatDateDisplay(item.datePurchased)}</Text>
                             )}
-                            <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity} qty @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
+                            <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity} qty @ ${formatCurrency(item.unitPrice)} • {formatOunces(item.ozt * item.quantity)} oz</Text>
                             <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>
                               Cost: ${formatCurrency(costBasis)}
                             </Text>
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.itemValue, { color: colors.gold, fontSize: scaledFonts.medium }]}>${formatCurrency(meltValue)}</Text>
+                            <Text style={[styles.itemValue, { color: colors.gold, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)} <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted }}>melt</Text></Text>
                             <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
                               {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
                             </Text>
@@ -5687,6 +5733,38 @@ function AppContent() {
                 <SectionFooter text="Your portfolio data is stored locally on this device. Sign in to enable cloud sync." />
               )}
 
+              {/* Membership Row */}
+              <SectionHeader title="Membership" />
+              <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: groupBg,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  minHeight: 44,
+                  borderRadius: 10,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: hasGoldAccess ? 'rgba(251, 191, 36, 0.2)' : 'rgba(113, 113, 122, 0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 16 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : '🥈'}</Text>
+                    </View>
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>
+                      {hasLifetimeAccess ? 'Lifetime' : hasGold ? 'Gold' : 'Free'}
+                    </Text>
+                  </View>
+                  {!hasGoldAccess && (
+                    <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
+                      <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Upgrade</Text>
+                    </TouchableOpacity>
+                  )}
+                  {hasLifetimeAccess && (
+                    <Text style={{ color: colors.success, fontSize: scaledFonts.small }}>Thank you!</Text>
+                  )}
+                </View>
+              </View>
+
               {/* Gold Features Section */}
               <SectionHeader title="Gold Features" />
               <View style={{ borderRadius: 10, overflow: 'hidden' }}>
@@ -5798,7 +5876,7 @@ function AppContent() {
                       </View>
                     </View>
                     {hasGoldAccess ? (
-                      <Text style={{ color: colors.success, fontSize: scaledFonts.normal }}>Active</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Add from home screen</Text>
                     ) : (
                       <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
                         <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Unlock</Text>
@@ -5830,7 +5908,7 @@ function AppContent() {
                       </View>
                     </View>
                     {hasGoldAccess ? (
-                      <Text style={{ color: colors.success, fontSize: scaledFonts.normal }}>Active</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>In Analytics tab</Text>
                     ) : (
                       <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
                         <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Unlock</Text>
@@ -7398,7 +7476,7 @@ function AppContent() {
               </View>
               <View style={styles.statRow}>
                 <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Total Weight</Text>
-                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{(detailItem.ozt * detailItem.quantity).toFixed(2)} oz</Text>
+                <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{formatOunces(detailItem.ozt * detailItem.quantity)} oz</Text>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
