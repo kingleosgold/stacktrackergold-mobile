@@ -4816,11 +4816,17 @@ function AppContent() {
             {/* Show filtered items or both with grouping */}
             {metalTab !== 'both' ? (
               <>
-                {/* Section header for single metal view */}
+                {/* Section summary card for single metal view */}
                 {items.length > 0 && (
-                  <View style={{ backgroundColor: isDarkMode ? (metalTab === 'silver' ? 'rgba(156,163,175,0.1)' : 'rgba(251,191,36,0.1)') : (metalTab === 'silver' ? 'rgba(156,163,175,0.15)' : 'rgba(251,191,36,0.15)'), borderRadius: 8, padding: 12, marginBottom: 12, marginTop: 8 }}>
-                    <Text style={{ color: currentColor, fontWeight: '700', fontSize: scaledFonts.normal }}>
-                      {metalTab.toUpperCase()} ({items.length}) • {formatOunces(items.reduce((sum, i) => sum + i.ozt * i.quantity, 0), metalTab === 'gold' ? 3 : 2)} oz • ${formatSmartCurrency(items.reduce((sum, i) => sum + i.ozt * i.quantity * spot, 0))} melt
+                  <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 8, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
+                    <Text style={{ color: currentColor, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>
+                      {metalTab === 'silver' ? 'Silver' : 'Gold'} Summary
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
+                      {items.length} {items.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(items.reduce((sum, i) => sum + i.ozt * i.quantity, 0), metalTab === 'gold' ? 3 : 2)} oz
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
+                      Value: ${formatSmartCurrency(items.reduce((sum, i) => sum + i.ozt * i.quantity * spot, 0))}
                     </Text>
                   </View>
                 )}
@@ -4849,7 +4855,8 @@ function AppContent() {
                         </Text>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.itemValue, { color: currentColor, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)} <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted }}>melt</Text></Text>
+                        <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted, marginBottom: 1 }}>Value</Text>
+                        <Text style={[styles.itemValue, { color: currentColor, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)}</Text>
                         <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
                           {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
                         </Text>
@@ -4870,9 +4877,13 @@ function AppContent() {
                 {/* Silver Items Group */}
                 {silverItems.length > 0 && (
                   <>
-                    <View style={{ backgroundColor: isDarkMode ? 'rgba(156,163,175,0.1)' : 'rgba(156,163,175,0.15)', borderRadius: 8, padding: 12, marginBottom: 12, marginTop: 8 }}>
-                      <Text style={{ color: colors.silver, fontWeight: '700', fontSize: scaledFonts.normal }}>
-                        SILVER ({silverItems.length}) • {formatOunces(totalSilverOzt)} oz • ${formatSmartCurrency(silverMeltValue)} melt
+                    <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 8, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
+                      <Text style={{ color: colors.silver, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>Silver Summary</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
+                        {silverItems.length} {silverItems.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(totalSilverOzt)} oz
+                      </Text>
+                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
+                        Value: ${formatSmartCurrency(silverMeltValue)}
                       </Text>
                     </View>
                     {sortItems(silverItems, 'silver').map((item, index) => {
@@ -4899,7 +4910,8 @@ function AppContent() {
                             </Text>
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.itemValue, { color: colors.silver, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)} <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted }}>melt</Text></Text>
+                            <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted, marginBottom: 1 }}>Value</Text>
+                            <Text style={[styles.itemValue, { color: colors.silver, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)}</Text>
                             <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
                               {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
                             </Text>
@@ -4913,9 +4925,13 @@ function AppContent() {
                 {/* Gold Items Group */}
                 {goldItems.length > 0 && (
                   <>
-                    <View style={{ backgroundColor: isDarkMode ? 'rgba(251,191,36,0.1)' : 'rgba(251,191,36,0.15)', borderRadius: 8, padding: 12, marginBottom: 12, marginTop: silverItems.length > 0 ? 24 : 8 }}>
-                      <Text style={{ color: colors.gold, fontWeight: '700', fontSize: scaledFonts.normal }}>
-                        GOLD ({goldItems.length}) • {formatOunces(totalGoldOzt, 3)} oz • ${formatSmartCurrency(goldMeltValue)} melt
+                    <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, marginBottom: 14, marginTop: silverItems.length > 0 ? 24 : 8, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
+                      <Text style={{ color: colors.gold, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>Gold Summary</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
+                        {goldItems.length} {goldItems.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(totalGoldOzt, 3)} oz
+                      </Text>
+                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
+                        Value: ${formatSmartCurrency(goldMeltValue)}
                       </Text>
                     </View>
                     {sortItems(goldItems, 'gold').map((item, index) => {
@@ -4942,7 +4958,8 @@ function AppContent() {
                             </Text>
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.itemValue, { color: colors.gold, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)} <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted }}>melt</Text></Text>
+                            <Text style={{ fontSize: scaledFonts.tiny, color: colors.muted, marginBottom: 1 }}>Value</Text>
+                            <Text style={[styles.itemValue, { color: colors.gold, fontSize: scaledFonts.medium }]}>${formatSmartCurrency(meltValue)}</Text>
                             <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
                               {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
                             </Text>
@@ -7512,7 +7529,7 @@ function AppContent() {
                       </Text>
                     </View>
                     <View style={styles.statRow}>
-                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Current Melt Value</Text>
+                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Current Value</Text>
                       <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: detailMetal === 'silver' ? colors.silver : colors.gold }]}>
                         ${formatCurrency(meltValue)}
                       </Text>
@@ -7591,7 +7608,7 @@ function AppContent() {
           }}
         >
           <Text style={[styles.cardTitle, { marginBottom: 0, color: colors.text }]}>Value (High to Low)</Text>
-          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Highest melt value first</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Highest value first</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -7603,7 +7620,7 @@ function AppContent() {
           }}
         >
           <Text style={[styles.cardTitle, { marginBottom: 0, color: colors.text }]}>Value (Low to High)</Text>
-          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Lowest melt value first</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>Lowest value first</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
