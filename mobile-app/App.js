@@ -761,7 +761,7 @@ function AppContent() {
   const [form, setForm] = useState({
     productName: '', source: '', datePurchased: '', ozt: '',
     quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
-    spotPrice: '', premium: '0',
+    spotPrice: '', premium: '0', costBasis: '',
   });
   const [spotPriceSource, setSpotPriceSource] = useState(null); // Tracks data source for spot price warnings
 
@@ -870,6 +870,14 @@ function AppContent() {
   const calculatePremiumPercent = (premium, unitPrice) => {
     if (unitPrice <= 0) return 0;
     return (premium / unitPrice) * 100;
+  };
+
+  // Helper function to get cost basis for an item (uses custom if set, otherwise calculates)
+  const getItemCostBasis = (item) => {
+    if (item.costBasis && item.costBasis > 0) {
+      return item.costBasis;
+    }
+    return (item.unitPrice * item.quantity) + item.taxes + item.shipping;
   };
 
   // Helper function to parse various date formats into YYYY-MM-DD
@@ -3781,6 +3789,9 @@ function AppContent() {
   const editScannedItem = (index) => {
     const item = scannedItems[index];
 
+    // Calculate default cost basis
+    const defaultCostBasis = (item.unitPrice * item.quantity) + item.taxes + item.shipping;
+
     // Pre-fill form with scanned item data
     setForm({
       productName: item.productName,
@@ -3793,6 +3804,7 @@ function AppContent() {
       shipping: item.shipping.toString(),
       spotPrice: item.spotPrice.toString(),
       premium: item.premium.toString(),
+      costBasis: item.costBasis ? item.costBasis.toString() : defaultCostBasis.toString(),
     });
     setSpotPriceSource(null); // Clear source warning when editing
 
@@ -3811,6 +3823,11 @@ function AppContent() {
   const editImportedItem = (index) => {
     const item = importData[index];
 
+    // Calculate default cost basis
+    const unitPrice = item.unitPrice || 0;
+    const quantity = item.quantity || 1;
+    const defaultCostBasis = unitPrice * quantity;
+
     // Pre-fill form with imported item data
     setForm({
       productName: item.productName || '',
@@ -3823,6 +3840,7 @@ function AppContent() {
       shipping: '0',
       spotPrice: '0',
       premium: '0',
+      costBasis: defaultCostBasis.toString(),
     });
     setSpotPriceSource(null); // Clear source warning when editing
 
@@ -3856,6 +3874,7 @@ function AppContent() {
       unitPrice: parseFloat(form.unitPrice) || 0, taxes: parseFloat(form.taxes) || 0,
       shipping: parseFloat(form.shipping) || 0, spotPrice: parseFloat(form.spotPrice) || 0,
       premium: parseFloat(form.premium) || 0,
+      costBasis: form.costBasis ? parseFloat(form.costBasis) : undefined,
     };
 
     // Check if editing a scanned item
@@ -3965,7 +3984,7 @@ function AppContent() {
     setForm({
       productName: '', source: '', datePurchased: '', ozt: '',
       quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
-      spotPrice: '', premium: '0',
+      spotPrice: '', premium: '0', costBasis: '',
     });
     setEditingItem(null);
     setSpotPriceSource(null);
@@ -4066,11 +4085,14 @@ function AppContent() {
 
   const editItem = (item, metal) => {
     setMetalTab(metal);
+    // Calculate default cost basis if not set
+    const defaultCostBasis = (item.unitPrice * item.quantity) + item.taxes + item.shipping;
     setForm({
       productName: item.productName, source: item.source, datePurchased: item.datePurchased,
       ozt: item.ozt.toString(), quantity: item.quantity.toString(), unitPrice: item.unitPrice.toString(),
       taxes: item.taxes.toString(), shipping: item.shipping.toString(), spotPrice: item.spotPrice.toString(),
       premium: item.premium.toString(),
+      costBasis: item.costBasis ? item.costBasis.toString() : defaultCostBasis.toString(),
     });
     setEditingItem(item);
     setSpotPriceSource(null); // Clear source warning when editing existing item
@@ -4646,6 +4668,11 @@ function AppContent() {
               <>
                 {sortItems(items, metalTab).map((item, index) => {
                   const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
+                  const meltValue = item.ozt * item.quantity * spot;
+                  const costBasis = getItemCostBasis(item);
+                  const gainLoss = meltValue - costBasis;
+                  const gainLossPct = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+                  const isGain = gainLoss >= 0;
                   return (
                     <TouchableOpacity
                       key={item.supabase_id || `${item.id}-${index}`}
@@ -4659,14 +4686,15 @@ function AppContent() {
                           <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.tiny, marginBottom: 2 }]}>📅 {item.datePurchased}</Text>
                         )}
                         <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
-                        <Text style={[styles.itemSubtitle, { color: colors.gold, fontSize: scaledFonts.small }]}>
-                          Premium: ${formatCurrency(item.premium * item.quantity)}
-                          {itemPremiumPct > 0 && <Text style={{ fontSize: scaledFonts.tiny }}> (+{itemPremiumPct.toFixed(1)}%)</Text>}
+                        <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>
+                          Cost: ${formatCurrency(costBasis)}
                         </Text>
                       </View>
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.itemValue, { color: currentColor, fontSize: scaledFonts.medium }]}>${formatCurrency(item.ozt * item.quantity * spot)}</Text>
-                        <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>melt</Text>
+                        <Text style={[styles.itemValue, { color: currentColor, fontSize: scaledFonts.medium }]}>${formatCurrency(meltValue)}</Text>
+                        <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
+                          {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
+                        </Text>
                       </View>
                     </TouchableOpacity>
                   );
@@ -4690,7 +4718,11 @@ function AppContent() {
                       <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
                     </View>
                     {sortItems(silverItems, 'silver').map((item, index) => {
-                      const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
+                      const meltValue = item.ozt * item.quantity * silverSpot;
+                      const costBasis = getItemCostBasis(item);
+                      const gainLoss = meltValue - costBasis;
+                      const gainLossPct = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+                      const isGain = gainLoss >= 0;
                       return (
                         <TouchableOpacity
                           key={item.supabase_id || `silver-${item.id}-${index}`}
@@ -4704,14 +4736,15 @@ function AppContent() {
                               <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.tiny, marginBottom: 2 }]}>📅 {item.datePurchased}</Text>
                             )}
                             <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
-                            <Text style={[styles.itemSubtitle, { color: colors.gold, fontSize: scaledFonts.small }]}>
-                              Premium: ${formatCurrency(item.premium * item.quantity)}
-                              {itemPremiumPct > 0 && <Text style={{ fontSize: scaledFonts.tiny }}> (+{itemPremiumPct.toFixed(1)}%)</Text>}
+                            <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>
+                              Cost: ${formatCurrency(costBasis)}
                             </Text>
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.itemValue, { color: colors.silver, fontSize: scaledFonts.medium }]}>${formatCurrency(item.ozt * item.quantity * silverSpot)}</Text>
-                            <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>melt</Text>
+                            <Text style={[styles.itemValue, { color: colors.silver, fontSize: scaledFonts.medium }]}>${formatCurrency(meltValue)}</Text>
+                            <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
+                              {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
+                            </Text>
                           </View>
                         </TouchableOpacity>
                       );
@@ -4728,7 +4761,11 @@ function AppContent() {
                       <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
                     </View>
                     {sortItems(goldItems, 'gold').map((item, index) => {
-                      const itemPremiumPct = calculatePremiumPercent(item.premium, item.unitPrice);
+                      const meltValue = item.ozt * item.quantity * goldSpot;
+                      const costBasis = getItemCostBasis(item);
+                      const gainLoss = meltValue - costBasis;
+                      const gainLossPct = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+                      const isGain = gainLoss >= 0;
                       return (
                         <TouchableOpacity
                           key={item.supabase_id || `gold-${item.id}-${index}`}
@@ -4742,14 +4779,15 @@ function AppContent() {
                               <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.tiny, marginBottom: 2 }]}>📅 {item.datePurchased}</Text>
                             )}
                             <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>{item.quantity}x @ ${formatCurrency(item.unitPrice)} • {(item.ozt * item.quantity).toFixed(2)} oz</Text>
-                            <Text style={[styles.itemSubtitle, { color: colors.gold, fontSize: scaledFonts.small }]}>
-                              Premium: ${formatCurrency(item.premium * item.quantity)}
-                              {itemPremiumPct > 0 && <Text style={{ fontSize: scaledFonts.tiny }}> (+{itemPremiumPct.toFixed(1)}%)</Text>}
+                            <Text style={[styles.itemSubtitle, { fontSize: scaledFonts.small }]}>
+                              Cost: ${formatCurrency(costBasis)}
                             </Text>
                           </View>
                           <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={[styles.itemValue, { color: colors.gold, fontSize: scaledFonts.medium }]}>${formatCurrency(item.ozt * item.quantity * goldSpot)}</Text>
-                            <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>melt</Text>
+                            <Text style={[styles.itemValue, { color: colors.gold, fontSize: scaledFonts.medium }]}>${formatCurrency(meltValue)}</Text>
+                            <Text style={{ color: isGain ? colors.success : colors.error, fontSize: scaledFonts.small, fontWeight: '600' }}>
+                              {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
+                            </Text>
                           </View>
                         </TouchableOpacity>
                       );
@@ -6271,6 +6309,37 @@ function AppContent() {
                     <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                   </View>
 
+                  {/* Total Cost Basis - editable for adjustments */}
+                  <View style={[styles.card, { backgroundColor: `${colors.success}15`, marginTop: 8 }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <Text style={{ color: colors.success, fontWeight: '600', fontSize: scaledFonts.normal }}>Total Cost Basis</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          // Recalculate from components
+                          const calculated = ((parseFloat(form.unitPrice) || 0) * (parseInt(form.quantity) || 1)) + (parseFloat(form.taxes) || 0) + (parseFloat(form.shipping) || 0);
+                          setForm(p => ({ ...p, costBasis: calculated.toFixed(2) }));
+                        }}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: `${colors.success}30`, borderRadius: 6 }}
+                      >
+                        <Text style={{ color: colors.success, fontSize: scaledFonts.tiny }}>Recalculate</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <FloatingInput
+                      label="Total Cost (adjust if needed)"
+                      value={form.costBasis || (((parseFloat(form.unitPrice) || 0) * (parseInt(form.quantity) || 1)) + (parseFloat(form.taxes) || 0) + (parseFloat(form.shipping) || 0)).toFixed(2)}
+                      onChangeText={v => setForm(p => ({ ...p, costBasis: v }))}
+                      placeholder="0"
+                      keyboardType="decimal-pad"
+                      prefix="$"
+                      colors={colors}
+                      isDarkMode={isDarkMode}
+                      scaledFonts={scaledFonts}
+                    />
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 4 }}>
+                      Edit to adjust for forgotten costs or corrections
+                    </Text>
+                  </View>
+
                   <View style={[styles.card, { backgroundColor: `${colors.gold}15` }]}>
                     <Text style={{ color: colors.gold, fontWeight: '600', marginBottom: 8, fontSize: scaledFonts.normal }}>Premium (Auto-calculated)</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -7202,18 +7271,36 @@ function AppContent() {
                 </View>
               )}
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Total Cost Basis</Text>
-                <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: colors.text }]}>
-                  ${formatCurrency((detailItem.unitPrice * detailItem.quantity) + detailItem.taxes + detailItem.shipping)}
-                </Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Current Melt Value</Text>
-                <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: detailMetal === 'silver' ? colors.silver : colors.gold }]}>
-                  ${formatCurrency(detailItem.ozt * detailItem.quantity * (detailMetal === 'silver' ? silverSpot : goldSpot))}
-                </Text>
-              </View>
+              {(() => {
+                const costBasis = getItemCostBasis(detailItem);
+                const meltValue = detailItem.ozt * detailItem.quantity * (detailMetal === 'silver' ? silverSpot : goldSpot);
+                const gainLoss = meltValue - costBasis;
+                const gainLossPct = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+                const isGain = gainLoss >= 0;
+                return (
+                  <>
+                    <View style={styles.statRow}>
+                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Total Cost Basis</Text>
+                      <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: colors.text }]}>
+                        ${formatCurrency(costBasis)}
+                      </Text>
+                    </View>
+                    <View style={styles.statRow}>
+                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Current Melt Value</Text>
+                      <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, color: detailMetal === 'silver' ? colors.silver : colors.gold }]}>
+                        ${formatCurrency(meltValue)}
+                      </Text>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    <View style={styles.statRow}>
+                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.normal, fontWeight: '600' }]}>Gain/Loss</Text>
+                      <Text style={[styles.statRowValue, { fontSize: scaledFonts.medium, fontWeight: '700', color: isGain ? colors.success : colors.error }]}>
+                        {isGain ? '+' : ''}{formatCurrency(gainLoss)} ({isGain ? '+' : ''}{gainLossPct.toFixed(1)}%)
+                      </Text>
+                    </View>
+                  </>
+                );
+              })()}
             </View>
 
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>

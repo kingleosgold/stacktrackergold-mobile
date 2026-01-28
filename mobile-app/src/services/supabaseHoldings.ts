@@ -13,6 +13,7 @@ export interface LocalHolding {
   shipping: number;
   spotPrice: number;
   premium: number;
+  costBasis?: number; // Optional: manually adjusted total cost basis
 }
 
 // Supabase holding structure
@@ -41,6 +42,7 @@ interface HoldingNotes {
   shipping?: number;
   spot_price?: number;
   premium?: number;
+  cost_basis?: number;
 }
 
 // Convert local holding to Supabase format
@@ -57,6 +59,7 @@ export function localToSupabase(
     shipping: holding.shipping || undefined,
     spot_price: holding.spotPrice || undefined,
     premium: holding.premium || undefined,
+    cost_basis: holding.costBasis || undefined,
   };
 
   return {
@@ -97,6 +100,7 @@ export function supabaseToLocal(holding: SupabaseHolding): LocalHolding {
     shipping: notesData.shipping || 0,
     spotPrice: notesData.spot_price || 0,
     premium: notesData.premium || 0,
+    costBasis: notesData.cost_basis,
   };
 }
 
@@ -177,6 +181,7 @@ export async function updateHolding(
       shipping: holding.shipping || undefined,
       spot_price: holding.spotPrice || undefined,
       premium: holding.premium || undefined,
+      cost_basis: holding.costBasis || undefined,
     };
 
     const updateData = {
