@@ -336,11 +336,13 @@ export async function syncLocalToSupabase(
   }
 }
 
-// Full sync: merge local and remote, preferring remote for conflicts
+// Full sync: Supabase is source of truth when signed in
+// Only uploads local holdings if Supabase is empty (first-time migration)
 export async function fullSync(
   userId: string,
   localSilver: LocalHolding[],
-  localGold: LocalHolding[]
+  localGold: LocalHolding[],
+  isFirstSync: boolean = false
 ): Promise<{
   silverItems: LocalHolding[];
   goldItems: LocalHolding[];
@@ -348,25 +350,45 @@ export async function fullSync(
   error: Error | null;
 }> {
   try {
-    // First, upload any local items that don't exist in cloud
-    const { syncedCount, error: syncError } = await syncLocalToSupabase(
-      userId,
-      localSilver,
-      localGold
-    );
-
-    if (syncError) {
-      console.warn('Sync to cloud had errors:', syncError);
-    }
-
-    // Then fetch all holdings from cloud (now includes newly synced)
-    const { silverItems, goldItems, error: fetchError } = await fetchHoldings(userId);
+    // First, fetch what's in Supabase (source of truth)
+    const { silverItems: remoteSilver, goldItems: remoteGold, error: fetchError } = await fetchHoldings(userId);
 
     if (fetchError) throw fetchError;
 
+    const hasRemoteData = remoteSilver.length > 0 || remoteGold.length > 0;
+    const hasLocalData = localSilver.length > 0 || localGold.length > 0;
+
+    // If this is first sync AND Supabase is empty AND we have local data,
+    // migrate local holdings to Supabase
+    let syncedCount = 0;
+    if (isFirstSync && !hasRemoteData && hasLocalData) {
+      console.log('First sync with empty Supabase - migrating local holdings...');
+      const { syncedCount: uploaded, error: syncError } = await syncLocalToSupabase(
+        userId,
+        localSilver,
+        localGold
+      );
+
+      if (syncError) {
+        console.warn('Migration to cloud had errors:', syncError);
+      } else {
+        syncedCount = uploaded;
+        // Re-fetch after migration to get the items with supabase_ids
+        const { silverItems: newSilver, goldItems: newGold } = await fetchHoldings(userId);
+        return {
+          silverItems: newSilver,
+          goldItems: newGold,
+          syncedToCloud: syncedCount,
+          error: null,
+        };
+      }
+    }
+
+    // Return Supabase holdings as source of truth
+    // This REPLACES local holdings, not merges
     return {
-      silverItems,
-      goldItems,
+      silverItems: remoteSilver,
+      goldItems: remoteGold,
       syncedToCloud: syncedCount,
       error: null,
     };

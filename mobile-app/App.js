@@ -1498,12 +1498,21 @@ function AppContent() {
     setSyncError(null);
 
     try {
-      if (__DEV__) console.log('Starting Supabase holdings sync...');
+      // Check if this user has ever synced before (for first-time migration)
+      const syncKey = `stack_synced_${supabaseUser.id}`;
+      const hasEverSynced = await AsyncStorage.getItem(syncKey);
+      const isFirstSync = !hasEverSynced;
 
+      if (__DEV__) console.log(`Starting Supabase holdings sync... (firstSync: ${isFirstSync})`);
+
+      // fullSync will:
+      // - If first sync AND Supabase empty: migrate local holdings to Supabase
+      // - Otherwise: just fetch from Supabase (source of truth)
       const { silverItems: remoteSilver, goldItems: remoteGold, syncedToCloud, error } = await fullSync(
         supabaseUser.id,
         silverItems,
-        goldItems
+        goldItems,
+        isFirstSync
       );
 
       if (error) {
@@ -1511,13 +1520,15 @@ function AppContent() {
         setSyncError(error.message);
         return false;
       } else {
-        // Update local state with synced data
-        // Always update, even if arrays are empty (user might have deleted all items)
+        // Mark that this user has synced at least once
+        await AsyncStorage.setItem(syncKey, 'true');
+
+        // Replace local state with Supabase data (Supabase is source of truth)
         setSilverItems(remoteSilver);
         setGoldItems(remoteGold);
 
         if (__DEV__) {
-          console.log(`Supabase sync complete: ${syncedToCloud} items uploaded, ${remoteSilver.length} silver, ${remoteGold.length} gold loaded`);
+          console.log(`Supabase sync complete: ${syncedToCloud} items migrated, ${remoteSilver.length} silver, ${remoteGold.length} gold from cloud`);
         }
       }
 
