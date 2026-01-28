@@ -49,7 +49,9 @@
       "WebFetch(domain:www.goldapi.io)",
       "Bash(dir \"C:\\\\Users\\\\Jon\\\\Developer\\\\stack-tracker-pro\\\\backend\\\\data\")",
       "Bash(git hash-object:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ]
   }
 }

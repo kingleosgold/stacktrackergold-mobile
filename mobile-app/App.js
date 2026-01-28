@@ -4711,7 +4711,7 @@ function AppContent() {
               </View>
               <View style={styles.statRow}>
                 <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Gold Holdings</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>{totalGoldOzt.toFixed(3)} oz</Text>
+                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>{formatOunces(totalGoldOzt, 3)} oz</Text>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
               <View style={styles.statRow}>
@@ -4738,48 +4738,6 @@ function AppContent() {
               </View>
             </View>
 
-            {/* Milestones - Tappable to Edit */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setTempSilverMilestone(customSilverMilestone?.toString() || '');
-                setTempGoldMilestone(customGoldMilestone?.toString() || '');
-                setShowMilestoneModal(true);
-              }}
-            >
-              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
-                </View>
-                <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${formatOunces(totalSilverOzt, 0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
-                <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${formatOunces(totalGoldOzt, 2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
-              </View>
-            </TouchableOpacity>
-
-            {/* Share My Stack - Quick Access */}
-            {(silverItems.length > 0 || goldItems.length > 0) && (
-              <TouchableOpacity
-                style={[styles.card, {
-                  backgroundColor: colors.cardBg,
-                  borderColor: colors.gold,
-                  borderWidth: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingVertical: 14,
-                  gap: 8,
-                }]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowSharePreview(true);
-                }}
-              >
-                <Text style={{ fontSize: scaledFonts.medium }}>📸</Text>
-                <Text style={{ color: colors.gold, fontSize: scaledFonts.normal, fontWeight: '600' }}>Share My Stack</Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
 
@@ -4929,18 +4887,40 @@ function AppContent() {
               </>
             ) : (
               <>
+                {/* Summary Cards Side by Side */}
+                {(silverItems.length > 0 || goldItems.length > 0) && (
+                  <View style={{ flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 14 }}>
+                    {silverItems.length > 0 && (
+                      <View style={{ flex: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
+                        <Text style={{ color: colors.silver, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>Silver Summary</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
+                          {silverItems.length} {silverItems.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(totalSilverOzt)} oz
+                        </Text>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
+                          Value: ${formatSmartCurrency(silverMeltValue)}
+                        </Text>
+                      </View>
+                    )}
+                    {goldItems.length > 0 && (
+                      <View style={{ flex: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
+                        <Text style={{ color: colors.gold, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>Gold Summary</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
+                          {goldItems.length} {goldItems.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(totalGoldOzt, 3)} oz
+                        </Text>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
+                          Value: ${formatSmartCurrency(goldMeltValue)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 {/* Silver Items Group */}
                 {silverItems.length > 0 && (
                   <>
-                    <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 8, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
-                      <Text style={{ color: colors.silver, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>Silver Summary</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
-                        {silverItems.length} {silverItems.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(totalSilverOzt)} oz
-                      </Text>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
-                        Value: ${formatSmartCurrency(silverMeltValue)}
-                      </Text>
-                    </View>
+                    <Text style={{ color: colors.silver, fontWeight: '700', fontSize: scaledFonts.small, marginBottom: 8, marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Silver ({silverItems.length})
+                    </Text>
                     {sortItems(silverItems, 'silver').map((item, index) => {
                       const meltValue = item.ozt * item.quantity * silverSpot;
                       const costBasis = getItemCostBasis(item);
@@ -4980,15 +4960,9 @@ function AppContent() {
                 {/* Gold Items Group */}
                 {goldItems.length > 0 && (
                   <>
-                    <View style={{ backgroundColor: isDarkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 12, padding: 14, marginBottom: 14, marginTop: silverItems.length > 0 ? 24 : 8, borderWidth: 1, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }}>
-                      <Text style={{ color: colors.gold, fontWeight: '700', fontSize: scaledFonts.normal, marginBottom: 4 }}>Gold Summary</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginBottom: 2 }}>
-                        {goldItems.length} {goldItems.length === 1 ? 'purchase' : 'purchases'} • {formatOunces(totalGoldOzt, 3)} oz
-                      </Text>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
-                        Value: ${formatSmartCurrency(goldMeltValue)}
-                      </Text>
-                    </View>
+                    <Text style={{ color: colors.gold, fontWeight: '700', fontSize: scaledFonts.small, marginBottom: 8, marginTop: silverItems.length > 0 ? 24 : 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+                      Gold ({goldItems.length})
+                    </Text>
                     {sortItems(goldItems, 'gold').map((item, index) => {
                       const meltValue = item.ozt * item.quantity * goldSpot;
                       const costBasis = getItemCostBasis(item);
@@ -5066,6 +5040,49 @@ function AppContent() {
               <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>📤 Export CSV</Text>
               <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Download holdings spreadsheet</Text>
             </TouchableOpacity>
+
+            {/* Stack Milestones - Tappable to Edit */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTempSilverMilestone(customSilverMilestone?.toString() || '');
+                setTempGoldMilestone(customGoldMilestone?.toString() || '');
+                setShowMilestoneModal(true);
+              }}
+            >
+              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
+                </View>
+                <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${formatOunces(totalSilverOzt, 0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
+                <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${formatOunces(totalGoldOzt, 2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Share My Stack */}
+            {(silverItems.length > 0 || goldItems.length > 0) && (
+              <TouchableOpacity
+                style={[styles.card, {
+                  backgroundColor: colors.cardBg,
+                  borderColor: colors.gold,
+                  borderWidth: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: 14,
+                  gap: 8,
+                }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowSharePreview(true);
+                }}
+              >
+                <Text style={{ fontSize: scaledFonts.medium }}>📸</Text>
+                <Text style={{ color: colors.gold, fontSize: scaledFonts.normal, fontWeight: '600' }}>Share My Stack</Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
 
@@ -7548,16 +7565,28 @@ function AppContent() {
                 <Text style={[styles.statRowValue, { color: colors.text, fontSize: scaledFonts.normal }]}>{formatOunces(detailItem.ozt * detailItem.quantity)} oz</Text>
               </View>
               <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Premium (per unit)</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>${formatCurrency(detailItem.premium)}</Text>
-              </View>
-              <View style={styles.statRow}>
-                <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Total Premium</Text>
-                <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>
-                  ${formatCurrency(detailItem.premium * detailItem.quantity)}
-                </Text>
-              </View>
+              {(() => {
+                // Auto-calculate premium if zero but we have unitPrice and spotPrice
+                let displayPremium = detailItem.premium;
+                if (!displayPremium && detailItem.unitPrice > 0 && detailItem.spotPrice > 0) {
+                  displayPremium = detailItem.unitPrice - (detailItem.spotPrice * detailItem.ozt);
+                }
+                if (!displayPremium || displayPremium === 0) return null;
+                return (
+                  <>
+                    <View style={styles.statRow}>
+                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Premium (per unit)</Text>
+                      <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>${formatCurrency(displayPremium)}</Text>
+                    </View>
+                    <View style={styles.statRow}>
+                      <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Total Premium</Text>
+                      <Text style={[styles.statRowValue, { color: colors.gold, fontSize: scaledFonts.normal }]}>
+                        ${formatCurrency(displayPremium * detailItem.quantity)}
+                      </Text>
+                    </View>
+                  </>
+                );
+              })()}
               {detailItem.taxes > 0 && (
                 <View style={styles.statRow}>
                   <Text style={[styles.statRowLabel, { fontSize: scaledFonts.small }]}>Taxes</Text>
