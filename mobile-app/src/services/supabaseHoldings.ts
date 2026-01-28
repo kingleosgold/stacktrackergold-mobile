@@ -16,6 +16,7 @@ export interface LocalHolding {
 }
 
 // Supabase holding structure
+// Note: Extra fields (local_id, source, taxes, shipping, spot_price, premium) are stored as JSON in notes
 export interface SupabaseHolding {
   id: string;
   user_id: string;
@@ -26,18 +27,20 @@ export interface SupabaseHolding {
   quantity: number;
   purchase_price: number; // unitPrice
   purchase_date: string | null;
-  notes: string | null;
-  metadata: {
-    local_id?: number;
-    source?: string;
-    taxes?: number;
-    shipping?: number;
-    spot_price?: number;
-    premium?: number;
-  } | null;
+  notes: string | null; // JSON string containing extra fields
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+// Extra data stored in notes as JSON
+interface HoldingNotes {
+  local_id?: number;
+  source?: string;
+  taxes?: number;
+  shipping?: number;
+  spot_price?: number;
+  premium?: number;
 }
 
 // Convert local holding to Supabase format
@@ -46,6 +49,16 @@ export function localToSupabase(
   metal: 'silver' | 'gold',
   userId: string
 ): Omit<SupabaseHolding, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> {
+  // Store extra fields in notes as JSON
+  const notesData: HoldingNotes = {
+    local_id: holding.id,
+    source: holding.source || undefined,
+    taxes: holding.taxes || undefined,
+    shipping: holding.shipping || undefined,
+    spot_price: holding.spotPrice || undefined,
+    premium: holding.premium || undefined,
+  };
+
   return {
     user_id: userId,
     metal,
@@ -55,33 +68,35 @@ export function localToSupabase(
     quantity: holding.quantity,
     purchase_price: holding.unitPrice,
     purchase_date: holding.datePurchased || null,
-    notes: null,
-    metadata: {
-      local_id: holding.id,
-      source: holding.source || undefined,
-      taxes: holding.taxes || undefined,
-      shipping: holding.shipping || undefined,
-      spot_price: holding.spotPrice || undefined,
-      premium: holding.premium || undefined,
-    },
+    notes: JSON.stringify(notesData),
   };
 }
 
 // Convert Supabase holding to local format
 export function supabaseToLocal(holding: SupabaseHolding): LocalHolding {
-  const metadata = holding.metadata || {};
+  // Parse extra fields from notes JSON
+  let notesData: HoldingNotes = {};
+  if (holding.notes) {
+    try {
+      notesData = JSON.parse(holding.notes);
+    } catch (e) {
+      // notes might be plain text, not JSON
+      console.warn('Could not parse notes as JSON:', holding.notes);
+    }
+  }
+
   return {
-    id: metadata.local_id || Date.now(),
-    productName: holding.type,
-    source: metadata.source || '',
+    id: notesData.local_id || Date.now(),
+    productName: holding.type || '',
+    source: notesData.source || '',
     datePurchased: holding.purchase_date || '',
-    ozt: holding.weight,
-    quantity: holding.quantity,
-    unitPrice: holding.purchase_price,
-    taxes: metadata.taxes || 0,
-    shipping: metadata.shipping || 0,
-    spotPrice: metadata.spot_price || 0,
-    premium: metadata.premium || 0,
+    ozt: holding.weight || 0,
+    quantity: holding.quantity || 1,
+    unitPrice: holding.purchase_price || 0,
+    taxes: notesData.taxes || 0,
+    shipping: notesData.shipping || 0,
+    spotPrice: notesData.spot_price || 0,
+    premium: notesData.premium || 0,
   };
 }
 
@@ -154,6 +169,16 @@ export async function updateHolding(
   metal: 'silver' | 'gold'
 ): Promise<{ data: SupabaseHolding | null; error: Error | null }> {
   try {
+    // Store extra fields in notes as JSON
+    const notesData: HoldingNotes = {
+      local_id: holding.id,
+      source: holding.source || undefined,
+      taxes: holding.taxes || undefined,
+      shipping: holding.shipping || undefined,
+      spot_price: holding.spotPrice || undefined,
+      premium: holding.premium || undefined,
+    };
+
     const updateData = {
       type: holding.productName,
       weight: holding.ozt,
@@ -161,14 +186,7 @@ export async function updateHolding(
       purchase_price: holding.unitPrice,
       purchase_date: holding.datePurchased || null,
       metal,
-      metadata: {
-        local_id: holding.id,
-        source: holding.source || undefined,
-        taxes: holding.taxes || undefined,
-        shipping: holding.shipping || undefined,
-        spot_price: holding.spotPrice || undefined,
-        premium: holding.premium || undefined,
-      },
+      notes: JSON.stringify(notesData),
       updated_at: new Date().toISOString(),
     };
 
@@ -207,7 +225,7 @@ export async function deleteHolding(
   }
 }
 
-// Find holding by local_id in metadata
+// Find holding by local_id in notes JSON
 export async function findHoldingByLocalId(
   userId: string,
   localId: number,
@@ -223,10 +241,16 @@ export async function findHoldingByLocalId(
 
     if (error) throw error;
 
-    // Search for matching local_id in metadata
-    const match = (data || []).find((h: SupabaseHolding) =>
-      h.metadata?.local_id === localId
-    );
+    // Search for matching local_id in notes JSON
+    const match = (data || []).find((h: SupabaseHolding) => {
+      if (!h.notes) return false;
+      try {
+        const notesData = JSON.parse(h.notes);
+        return notesData.local_id === localId;
+      } catch (e) {
+        return false;
+      }
+    });
 
     return match || null;
   } catch (err) {
@@ -252,17 +276,24 @@ export async function syncLocalToSupabase(
     // Get existing holdings to avoid duplicates
     const { data: existingHoldings, error: fetchError } = await supabase
       .from('holdings')
-      .select('metadata')
+      .select('notes')
       .eq('user_id', userId)
       .is('deleted_at', null);
 
     if (fetchError) throw fetchError;
 
-    // Build set of existing local_ids
+    // Build set of existing local_ids (stored in notes JSON)
     const existingLocalIds = new Set<number>();
     (existingHoldings || []).forEach((h: any) => {
-      if (h.metadata?.local_id) {
-        existingLocalIds.add(h.metadata.local_id);
+      if (h.notes) {
+        try {
+          const notesData = JSON.parse(h.notes);
+          if (notesData.local_id) {
+            existingLocalIds.add(notesData.local_id);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
       }
     });
 

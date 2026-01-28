@@ -1474,53 +1474,75 @@ function AppContent() {
     if (isAuthenticated && dataLoaded) saveData('stack_gold', goldItems);
   }, [goldItems, isAuthenticated, dataLoaded]);
 
-  // Supabase Holdings Sync - sync when user signs in
-  useEffect(() => {
-    const syncWithSupabase = async () => {
-      // Only sync if:
-      // 1. User is signed in with Supabase
-      // 2. Data has been loaded from local storage
-      // 3. Haven't synced yet this session
-      if (!supabaseUser || !dataLoaded || hasSyncedOnce) return;
+  // Manual sync function - can be called on pull-to-refresh or button press
+  const syncHoldingsWithSupabase = async (force = false) => {
+    // Only sync if user is signed in and data is loaded
+    if (!supabaseUser || !dataLoaded) {
+      if (__DEV__) console.log('Sync skipped: user not signed in or data not loaded');
+      return false;
+    }
 
-      setIsSyncing(true);
-      setSyncError(null);
+    // Skip if already syncing
+    if (isSyncing) {
+      if (__DEV__) console.log('Sync skipped: already syncing');
+      return false;
+    }
 
-      try {
-        if (__DEV__) console.log('Starting Supabase holdings sync...');
+    // Skip if already synced (unless forced)
+    if (hasSyncedOnce && !force) {
+      if (__DEV__) console.log('Sync skipped: already synced this session (use force=true to override)');
+      return false;
+    }
 
-        const { silverItems: remoteSilver, goldItems: remoteGold, syncedToCloud, error } = await fullSync(
-          supabaseUser.id,
-          silverItems,
-          goldItems
-        );
+    setIsSyncing(true);
+    setSyncError(null);
 
-        if (error) {
-          console.error('Supabase sync error:', error);
-          setSyncError(error.message);
-        } else {
-          // Update local state with synced data
-          if (remoteSilver.length > 0 || remoteGold.length > 0) {
-            setSilverItems(remoteSilver);
-            setGoldItems(remoteGold);
-          }
+    try {
+      if (__DEV__) console.log('Starting Supabase holdings sync...');
 
-          if (__DEV__) {
-            console.log(`Supabase sync complete: ${syncedToCloud} items uploaded, ${remoteSilver.length} silver, ${remoteGold.length} gold loaded`);
-          }
+      const { silverItems: remoteSilver, goldItems: remoteGold, syncedToCloud, error } = await fullSync(
+        supabaseUser.id,
+        silverItems,
+        goldItems
+      );
+
+      if (error) {
+        console.error('Supabase sync error:', error);
+        setSyncError(error.message);
+        return false;
+      } else {
+        // Update local state with synced data
+        // Always update, even if arrays are empty (user might have deleted all items)
+        setSilverItems(remoteSilver);
+        setGoldItems(remoteGold);
+
+        if (__DEV__) {
+          console.log(`Supabase sync complete: ${syncedToCloud} items uploaded, ${remoteSilver.length} silver, ${remoteGold.length} gold loaded`);
         }
-
-        setHasSyncedOnce(true);
-      } catch (err) {
-        console.error('Supabase sync failed:', err);
-        setSyncError(err.message || 'Sync failed');
-      } finally {
-        setIsSyncing(false);
       }
-    };
 
-    syncWithSupabase();
-  }, [supabaseUser, dataLoaded, hasSyncedOnce]);
+      setHasSyncedOnce(true);
+      return true;
+    } catch (err) {
+      console.error('Supabase sync failed:', err);
+      setSyncError(err.message || 'Sync failed');
+      return false;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Supabase Holdings Sync - sync on app load when user is already signed in
+  useEffect(() => {
+    // Only run auto-sync if:
+    // 1. User is signed in with Supabase
+    // 2. Data has been loaded from local storage
+    // 3. Haven't synced yet this session
+    if (supabaseUser && dataLoaded && !hasSyncedOnce && !isSyncing) {
+      if (__DEV__) console.log('Auto-sync triggered: user signed in, data loaded');
+      syncHoldingsWithSupabase();
+    }
+  }, [supabaseUser, dataLoaded, hasSyncedOnce, isSyncing]);
 
   // Reset sync flag when user signs out
   useEffect(() => {
@@ -2929,7 +2951,16 @@ function AppContent() {
   const onRefreshDashboard = async () => {
     setIsRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await fetchSpotPrices();
+
+    // Fetch spot prices and sync holdings in parallel
+    const promises = [fetchSpotPrices()];
+
+    // Also sync holdings if user is signed in
+    if (supabaseUser) {
+      promises.push(syncHoldingsWithSupabase(true)); // force=true to re-sync
+    }
+
+    await Promise.all(promises);
     setIsRefreshing(false);
   };
 
@@ -4244,10 +4275,14 @@ function AppContent() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={
-          (tab === 'dashboard' || tab === 'analytics') ? (
+          (tab === 'dashboard' || tab === 'analytics' || tab === 'holdings') ? (
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={tab === 'dashboard' ? onRefreshDashboard : onRefreshAnalytics}
+              onRefresh={
+                tab === 'dashboard' ? onRefreshDashboard :
+                tab === 'holdings' ? onRefreshDashboard : // Use same handler - syncs holdings and prices
+                onRefreshAnalytics
+              }
               tintColor={colors.gold}
               colors={[colors.gold]}
             />
