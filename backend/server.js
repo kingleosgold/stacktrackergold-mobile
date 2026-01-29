@@ -1896,7 +1896,14 @@ app.get('/privacy', (req, res) => {
     <div class="principle">
       <h3><span class="icon">💰</span> Third-Party Services</h3>
       <p>
-        We use <strong>MetalPriceAPI</strong> and <strong>GoldAPI.io</strong> for live spot prices—these requests contain no personal data. Subscriptions are managed by <strong>RevenueCat</strong> and processed through the Apple App Store. We do not directly handle payment information.
+        We use the following third-party services to power the app:
+      </p>
+      <p>
+        <strong>MetalPriceAPI</strong> &amp; <strong>GoldAPI.io</strong> — Live spot prices. These requests contain no personal data.<br>
+        <strong>RevenueCat</strong> — Subscription management. Receives an anonymous user ID only.<br>
+        <strong>Supabase</strong> — Cloud database for account sync and portfolio snapshots. Data is stored securely with row-level security.<br>
+        <strong>Expo</strong> — Push notifications for price alerts. Receives only a device push token.<br>
+        <strong>Apple App Store</strong> — Payment processing. We never see your payment details.
       </p>
     </div>
 
@@ -2082,9 +2089,10 @@ app.get('/terms', (req, res) => {
     <p>You agree to:</p>
     <ul>
       <li>Use the App only for lawful purposes</li>
-      <li>Provide accurate information when using the App's features</li>
+      <li>Verify the accuracy of all portfolio data, including AI-scanned receipt results — you are solely responsible for ensuring your holdings data is correct</li>
       <li>Not attempt to reverse engineer, modify, or exploit the App</li>
       <li>Not use the App to store or process illegal content</li>
+      <li>Maintain the security of your device and account credentials</li>
     </ul>
 
     <h2>4. Data and Privacy</h2>
@@ -2094,25 +2102,36 @@ app.get('/terms', (req, res) => {
 
     <h2>5. Subscriptions and Payments</h2>
     <p>
-      Stack Tracker Pro offers both free and premium subscription tiers. Premium subscriptions ("Gold") are processed through Apple App Store or Google Play Store. Subscription terms, pricing, and cancellation policies are governed by the respective app store's terms.
+      Stack Tracker Pro offers a free tier and premium "Gold" subscriptions with the following pricing:
     </p>
     <ul>
-      <li>Subscriptions automatically renew unless cancelled before the renewal date</li>
-      <li>You can manage and cancel subscriptions through your device's app store settings</li>
-      <li>Refunds are handled according to Apple App Store or Google Play Store policies</li>
+      <li><strong>Gold Monthly:</strong> $4.99/month — auto-renews monthly</li>
+      <li><strong>Gold Yearly:</strong> $39.99/year — auto-renews annually</li>
+      <li><strong>Lifetime:</strong> $79.99 — one-time purchase, never expires</li>
+    </ul>
+    <p>
+      All subscriptions are processed through the Apple App Store. Subscription terms:
+    </p>
+    <ul>
+      <li>Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period</li>
+      <li>Your Apple ID account will be charged for renewal within 24 hours prior to the end of the current period</li>
+      <li>You can manage and cancel subscriptions in your device's Settings → Apple ID → Subscriptions</li>
+      <li>Refunds are handled according to Apple App Store policies</li>
+      <li>Free trial periods, if offered, will automatically convert to a paid subscription unless cancelled</li>
     </ul>
 
     <h2>6. Disclaimer of Warranties</h2>
     <p>
-      The App is provided "as is" without warranties of any kind. We do not guarantee:
+      The App is provided <strong>"as is" and "as available"</strong> without warranties of any kind, whether express or implied. We do not guarantee:
     </p>
     <ul>
-      <li>The accuracy of spot prices (prices are sourced from third-party APIs)</li>
-      <li>The accuracy of AI receipt scanning results</li>
+      <li>The accuracy, completeness, or timeliness of spot prices (prices are sourced from third-party APIs and may be delayed)</li>
+      <li>The accuracy of AI receipt scanning results — always verify scanned data before saving</li>
       <li>Uninterrupted or error-free operation of the App</li>
+      <li>That portfolio valuations reflect actual market value of your holdings</li>
     </ul>
     <p>
-      <strong>Stack Tracker Pro is not a financial advisor.</strong> The App is for informational and tracking purposes only. Always verify important financial information independently.
+      <strong>Stack Tracker Pro is not a financial advisor, broker, or dealer.</strong> The App is for personal informational and tracking purposes only. It does not provide investment advice, tax guidance, or financial recommendations. Always verify important financial information independently and consult qualified professionals for financial decisions.
     </p>
 
     <h2>7. Limitation of Liability</h2>
