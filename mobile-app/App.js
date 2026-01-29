@@ -729,7 +729,7 @@ function AppContent() {
   // Format: { silverOzt, goldOzt, silverSpot, goldSpot, date, timestamp }
 
   // Entitlements
-  const [hasGold, setHasGold] = useState(false);
+  const [hasGold, setHasGold] = useState(__DEV__ ? true : false); // DEV: bypasses Gold check
   const [subscriptionLoading, setSubscriptionLoading] = useState(true); // Don't show upgrade prompts until loaded
 
   // Server-side scan tracking
@@ -1749,34 +1749,33 @@ function AppContent() {
   // Register for push notifications (for price alerts)
   const registerForPushNotifications = async () => {
     try {
-      // Check if device (not simulator)
-      if (!Constants.isDevice) {
-        console.log('📱 Push notifications require a physical device');
-        return null;
-      }
-
       // Check existing permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      console.log('📱 [Notifications] Current permission status:', existingStatus);
       let finalStatus = existingStatus;
 
       // Request permission if not granted
       if (existingStatus !== 'granted') {
+        console.log('📱 [Notifications] Requesting permission...');
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
+        console.log('📱 [Notifications] Permission result:', finalStatus);
       }
 
       if (finalStatus !== 'granted') {
-        console.log('📱 Push notification permission not granted');
+        console.log('📱 [Notifications] Permission not granted, finalStatus:', finalStatus);
         return null;
       }
 
       // Get Expo push token
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      console.log('📱 [Notifications] Getting push token, projectId:', projectId);
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: Constants.expoConfig?.extra?.eas?.projectId,
+        projectId,
       });
 
       const token = tokenData.data;
-      console.log('📱 Expo Push Token:', token);
+      console.log('📱 [Notifications] Push Token:', token);
 
       // Configure for iOS
       if (Platform.OS === 'ios') {
@@ -1790,7 +1789,7 @@ function AppContent() {
 
       return token;
     } catch (error) {
-      console.error('❌ Push notification registration error:', error);
+      console.error('❌ [Notifications] Registration error:', error);
       return null;
     }
   };
@@ -1899,16 +1898,15 @@ function AppContent() {
     }
   }, [revenueCatUserId, hasGold, hasLifetimeAccess]);
 
-  // Fetch price alerts when user has Gold/Lifetime access
+  // Load price alerts and ATH preferences from local storage
   useEffect(() => {
-    if (revenueCatUserId && (hasGold || hasLifetimeAccess)) {
+    if (hasGold || hasLifetimeAccess) {
       fetchPriceAlerts();
-      // Load ATH alert preferences
       AsyncStorage.getItem('stack_ath_alerts').then(val => {
         if (val) try { setAthAlerts(JSON.parse(val)); } catch (e) {}
       });
     }
-  }, [revenueCatUserId, hasGold, hasLifetimeAccess]);
+  }, [hasGold, hasLifetimeAccess]);
 
   // Daily Snapshot: Check if it's a new day and update midnight snapshot
   // Stores oz counts and spot prices so we can recalculate baseline when items change
@@ -2166,26 +2164,35 @@ function AppContent() {
 
   // ============================================
   // PRICE ALERTS (Gold/Lifetime Feature)
+  // All alert preferences stored locally in AsyncStorage.
+  // TODO: Backend implementation needed:
+  //   - Sync alert preferences to Supabase (user_preferences or price_alerts table)
+  //   - Backend cron job compares cached spot prices against user targets
+  //   - Send push notifications via Expo when conditions are met
+  //   - ATH alerts: track all-time highs and notify when exceeded
+  //   - Custom alerts: check if price crosses targetPrice in specified direction
   // ============================================
 
-  // Fetch user's price alerts
+  // Load price alerts from AsyncStorage
   const fetchPriceAlerts = async () => {
-    if (!revenueCatUserId) return;
-    if (!hasGold && !hasLifetimeAccess) return; // Only for premium users
-
-    setAlertsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/alerts/${encodeURIComponent(revenueCatUserId)}`);
-      const data = await response.json();
-
-      if (data.success) {
-        setPriceAlerts(data.alerts || []);
-        if (__DEV__) console.log(`🔔 Loaded ${data.alerts?.length || 0} price alerts`);
+      const val = await AsyncStorage.getItem('stack_price_alerts');
+      if (val) {
+        const parsed = JSON.parse(val);
+        setPriceAlerts(parsed);
+        if (__DEV__) console.log(`🔔 Loaded ${parsed.length} price alerts from local storage`);
       }
     } catch (error) {
-      console.error('❌ Error fetching price alerts:', error);
-    } finally {
-      setAlertsLoading(false);
+      console.error('❌ Error loading price alerts:', error);
+    }
+  };
+
+  // Save price alerts to AsyncStorage
+  const savePriceAlerts = async (alerts) => {
+    try {
+      await AsyncStorage.setItem('stack_price_alerts', JSON.stringify(alerts));
+    } catch (error) {
+      console.error('❌ Error saving price alerts:', error);
     }
   };
 
@@ -2196,66 +2203,44 @@ function AppContent() {
     setAthAlerts(updated);
     try {
       await AsyncStorage.setItem('stack_ath_alerts', JSON.stringify(updated));
-      // TODO: Sync ATH preferences to backend so it can trigger push notifications
-      // POST to /api/alerts/ath with { userId: revenueCatUserId, metal, enabled: updated[metal], pushToken: expoPushToken }
     } catch (error) {
       console.error('Failed to save ATH alert preference:', error);
     }
   };
 
-  // Create a new price alert
+  // Create a new custom price alert (local only)
   const createPriceAlert = async () => {
-    if (!revenueCatUserId) {
-      Alert.alert('Error', 'Unable to create alert. Please try again.');
-      return;
-    }
-
     const targetPrice = parseFloat(newAlert.targetPrice);
     if (isNaN(targetPrice) || targetPrice <= 0) {
       Alert.alert('Invalid Price', 'Please enter a valid target price.');
       return;
     }
 
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: revenueCatUserId,
-          metal: newAlert.metal,
-          targetPrice: targetPrice,
-          direction: newAlert.direction,
-          pushToken: expoPushToken,
-        }),
-      });
+    const alert = {
+      id: Date.now().toString(),
+      metal: newAlert.metal,
+      direction: newAlert.direction,
+      targetPrice: targetPrice,
+      createdAt: new Date().toISOString(),
+    };
 
-      const data = await response.json();
+    const updated = [alert, ...priceAlerts];
+    setPriceAlerts(updated);
+    await savePriceAlerts(updated);
 
-      if (data.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setPriceAlerts(prev => [data.alert, ...prev]);
-        setShowAddAlertModal(false);
-        setNewAlert({ metal: 'silver', targetPrice: '', direction: 'above' });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setNewAlert({ metal: 'silver', targetPrice: '', direction: 'above' });
 
-        Alert.alert(
-          'Alert Created',
-          `You'll be notified when ${newAlert.metal === 'gold' ? 'gold' : 'silver'} goes ${newAlert.direction} $${targetPrice}/oz.`
-        );
-      } else {
-        Alert.alert('Error', data.error || 'Failed to create alert');
-      }
-    } catch (error) {
-      console.error('❌ Error creating price alert:', error);
-      Alert.alert('Error', 'Failed to create alert. Please try again.');
-    }
+    Alert.alert(
+      'Alert Created',
+      `You'll be notified when ${newAlert.metal === 'gold' ? 'gold' : 'silver'} goes ${newAlert.direction} $${targetPrice.toFixed(2)}/oz.`
+    );
   };
 
-  // Delete a price alert
+  // Delete a price alert (local only)
   const deletePriceAlert = async (alertId) => {
-    if (!revenueCatUserId) return;
-
     Alert.alert(
       'Delete Alert',
       'Are you sure you want to delete this price alert?',
@@ -2265,23 +2250,11 @@ function AppContent() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            try {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-              const response = await fetch(
-                `${API_BASE_URL}/api/alerts/${alertId}?userId=${encodeURIComponent(revenueCatUserId)}`,
-                { method: 'DELETE' }
-              );
-
-              const data = await response.json();
-
-              if (data.success) {
-                setPriceAlerts(prev => prev.filter(a => a.id !== alertId));
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              }
-            } catch (error) {
-              console.error('❌ Error deleting price alert:', error);
-            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const updated = priceAlerts.filter(a => a.id !== alertId);
+            setPriceAlerts(updated);
+            await savePriceAlerts(updated);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
         },
       ]
@@ -5680,6 +5653,13 @@ function AppContent() {
 
           return (
             <View style={{ flex: 1, backgroundColor: settingsBg, marginHorizontal: -20, marginTop: -20, paddingHorizontal: 16, paddingTop: 8 }}>
+              {/* DEV MODE indicator */}
+              {__DEV__ && (
+                <View style={{ backgroundColor: '#EF4444', borderRadius: 8, padding: 10, marginBottom: 8, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>DEV MODE — Gold features unlocked</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, marginTop: 2 }}>Remove __DEV__ bypass before production build</Text>
+                </View>
+              )}
               {/* Upgrade to Gold - prominent at top for free users */}
               {!hasGold && !hasLifetimeAccess && (
                 <>
@@ -5875,8 +5855,8 @@ function AppContent() {
                     <View>
                       <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Price Alerts</Text>
                       {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny }}>GOLD</Text>}
-                      {hasGoldAccess && priceAlerts.filter(a => a.active).length > 0 && (
-                        <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{priceAlerts.filter(a => a.active).length} active</Text>
+                      {hasGoldAccess && priceAlerts.length > 0 && (
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{priceAlerts.length} active</Text>
                       )}
                     </View>
                   </View>
@@ -5968,11 +5948,11 @@ function AppContent() {
               )}
 
               {/* Active Price Alerts - show if user has Gold and has alerts */}
-              {hasGoldAccess && priceAlerts.filter(a => a.active).length > 0 && (
+              {hasGoldAccess && priceAlerts.length > 0 && (
                 <>
                   <SectionHeader title="Active Alerts" />
                   <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                    {priceAlerts.filter(a => a.active).map((alert, index, arr) => (
+                    {priceAlerts.map((alert, index, arr) => (
                       <View key={alert.id}>
                         <View style={{
                           flexDirection: 'row',
@@ -6000,7 +5980,7 @@ function AppContent() {
                             </View>
                             <View>
                               <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>
-                                {alert.metal === 'gold' ? 'Gold' : 'Silver'} {alert.direction === 'above' ? 'above' : 'below'} ${parseFloat(alert.target_price).toFixed(2)}
+                                {alert.metal === 'gold' ? 'Gold' : 'Silver'} {alert.direction === 'above' ? 'above' : 'below'} ${parseFloat(alert.targetPrice).toFixed(2)}
                               </Text>
                             </View>
                           </View>
@@ -7120,9 +7100,68 @@ function AppContent() {
         </TouchableOpacity>
 
         {!expoPushToken && (
-          <Text style={{ color: colors.error, fontSize: 11, textAlign: 'center', marginTop: 12 }}>
-            Push notifications not enabled. Enable notifications in Settings to receive alerts.
-          </Text>
+          <View style={{ marginTop: 16, alignItems: 'center' }}>
+            <Text style={{ color: colors.error, fontSize: 12, textAlign: 'center', marginBottom: 10 }}>
+              Push notifications not enabled. Tap below to allow notifications.
+            </Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#FF9500',
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                borderRadius: 8,
+              }}
+              onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                const token = await registerForPushNotifications();
+                if (token) {
+                  setExpoPushToken(token);
+                  Alert.alert('Notifications Enabled', 'You will now receive price alert notifications.');
+                } else {
+                  Alert.alert('Notifications Blocked', 'Please enable notifications for Stack Tracker in your iOS Settings app.', [
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Enable Notifications</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Saved Alerts List */}
+        {priceAlerts.length > 0 && (
+          <View style={{ marginTop: 24 }}>
+            <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 16 }} />
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginBottom: 12 }}>Your Alerts</Text>
+            {priceAlerts.map((alert) => (
+              <View key={alert.id} style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingVertical: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <View style={{
+                    width: 28, height: 28, borderRadius: 6,
+                    backgroundColor: alert.metal === 'gold' ? 'rgba(251,191,36,0.2)' : 'rgba(156,163,175,0.2)',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: alert.metal === 'gold' ? '#fbbf24' : '#9ca3af' }} />
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: 14 }}>
+                    {alert.metal === 'gold' ? 'Gold' : 'Silver'} {alert.direction === 'above' ? 'above' : 'below'} ${parseFloat(alert.targetPrice).toFixed(2)}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => deletePriceAlert(alert.id)} style={{ padding: 4 }}>
+                  <Text style={{ color: colors.error, fontSize: 13 }}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
         )}
       </ModalWrapper>
 
