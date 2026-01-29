@@ -1824,7 +1824,12 @@ function AppContent() {
       if (__DEV__) console.log('📋 RevenueCat User ID:', userId);
       if (__DEV__) console.log('🏆 Has Gold:', isGold, 'Has Lifetime:', isLifetime);
 
-      setHasGold(isGold);
+      if (__DEV__) {
+        // In dev mode, keep hasGold true regardless of RevenueCat
+        setHasGold(true);
+      } else {
+        setHasGold(isGold);
+      }
       setHasLifetimeAccess(isLifetime);
       setRevenueCatUserId(userId);
 
@@ -2621,7 +2626,13 @@ function AppContent() {
     const cache = snapshotsCacheRef.current;
     if (cache.primaryData && cache.primaryData.length > 0) {
       const filtered = filterSnapshotsByRange(cache.primaryData, range);
-      setAnalyticsSnapshots(filtered);
+      // If filter returned empty but we have data, use all cached data as fallback
+      if (filtered.length === 0 && range !== '1D') {
+        if (__DEV__) console.log(`📊 Range ${range}: 0 points after filter, using all ${cache.primaryData.length} points`);
+        setAnalyticsSnapshots(cache.primaryData);
+      } else {
+        setAnalyticsSnapshots(filtered);
+      }
       if (__DEV__) console.log(`📊 Range ${range}: ${filtered.length} points`);
     }
   };
@@ -2633,7 +2644,6 @@ function AppContent() {
    */
   const fetchAnalyticsSnapshots = async (forceRefresh = false) => {
     if (!hasGold && !hasLifetimeAccess) return;
-    if (!revenueCatUserId) return;
 
     const cache = snapshotsCacheRef.current;
 
@@ -2654,114 +2664,77 @@ function AppContent() {
     analyticsAbortRef.current = controller;
 
     setAnalyticsLoading(true);
+    const hasHoldings = silverItems.length > 0 || goldItems.length > 0;
+
     try {
-      // Add timeout
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      let apiSnapshots = [];
 
-      // Always fetch ALL data - we filter client-side
-      const response = await fetch(
-        `${API_BASE_URL}/api/snapshots/${encodeURIComponent(revenueCatUserId)}?range=ALL`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
+      // Only fetch from API if we have a userId
+      if (revenueCatUserId) {
+        try {
+          // Add timeout
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      // Check if this request was aborted
-      if (controller.signal.aborted) {
-        if (__DEV__) console.log('📊 Analytics fetch aborted');
-        return;
-      }
+          // Always fetch ALL data - we filter client-side
+          const response = await fetch(
+            `${API_BASE_URL}/api/snapshots/${encodeURIComponent(revenueCatUserId)}?range=ALL`,
+            { signal: controller.signal }
+          );
+          clearTimeout(timeoutId);
 
-      const data = await response.json();
+          if (controller.signal.aborted) return;
 
-      // Double-check we weren't aborted while parsing JSON
-      if (controller.signal.aborted) return;
+          const data = await response.json();
+          if (controller.signal.aborted) return;
 
-      if (data.success) {
-        const hasHoldings = silverItems.length > 0 || goldItems.length > 0;
-        const apiSnapshots = data.snapshots || [];
-
-        // Save current snapshot if user has holdings (don't await)
-        if (hasHoldings) {
-          saveDailySnapshot().catch(err => console.log('Snapshot save error:', err.message));
-        }
-
-        // Always calculate historical data when user has holdings
-        // This ensures we have data going back to earliest purchase dates
-        // Note: The calculation function handles its own time limits and returns partial results
-        let calculatedData = null;
-        if (hasHoldings) {
-          try {
-            console.log('📊 Calculating historical data from holdings...');
-            calculatedData = await calculateHistoricalPortfolioData('ALL');
-
-            if (controller.signal.aborted) return;
-
-            console.log(`📊 Calculated ${calculatedData?.length || 0} historical points`);
-          } catch (histError) {
-            if (controller.signal.aborted) return;
-            console.log('⚠️ Historical calculation failed:', histError.message);
+          if (data.success) {
+            apiSnapshots = data.snapshots || [];
+            // Save current snapshot if user has holdings (don't await)
+            if (hasHoldings) {
+              saveDailySnapshot().catch(err => console.log('Snapshot save error:', err.message));
+            }
           }
+        } catch (apiError) {
+          if (apiError.name === 'AbortError' || controller.signal.aborted) return;
+          console.log('⚠️ API snapshot fetch failed:', apiError.message);
         }
-
-        // Determine which data source to use:
-        // - Use calculated data if it has more historical coverage
-        // - Fall back to API snapshots if calculation failed
-        // - Use today's fallback if nothing else works
-        let finalData = [];
-        const apiOldestDate = apiSnapshots.length > 0 ? apiSnapshots[0]?.date : null;
-        const calcOldestDate = calculatedData?.length > 0 ? calculatedData[0]?.date : null;
-
-        if (calculatedData && calculatedData.length > 0) {
-          // Use calculated data if it goes back further or API has no data
-          if (!apiOldestDate || (calcOldestDate && calcOldestDate < apiOldestDate)) {
-            finalData = calculatedData;
-            if (__DEV__) console.log(`📊 Using calculated data (oldest: ${calcOldestDate}) over API (oldest: ${apiOldestDate})`);
-          } else {
-            finalData = apiSnapshots;
-            if (__DEV__) console.log(`📊 Using API snapshots (oldest: ${apiOldestDate})`);
-          }
-        } else if (apiSnapshots.length > 0) {
-          finalData = apiSnapshots;
-          if (__DEV__) console.log(`📊 Using API snapshots only (${apiSnapshots.length} points)`);
-        } else if (hasHoldings) {
-          // Fallback: show today's data only
-          finalData = [{
-            date: new Date().toISOString().split('T')[0],
-            total_value: totalMeltValue,
-            gold_value: totalGoldOzt * goldSpot,
-            silver_value: totalSilverOzt * silverSpot,
-            gold_oz: totalGoldOzt,
-            silver_oz: totalSilverOzt,
-            gold_spot: goldSpot,
-            silver_spot: silverSpot,
-          }];
-          if (__DEV__) console.log('📊 Using today-only fallback');
-        }
-
-        // Store the chosen data source
-        cache.primaryData = finalData;
-        cache.fetched = true;
-
-        // Apply current range filter
-        const filtered = filterSnapshotsByRange(finalData, analyticsRange);
-        setAnalyticsSnapshots(filtered);
-        if (__DEV__) console.log(`📊 Final: ${finalData.length} total points, ${filtered.length} shown for ${analyticsRange}`);
       } else {
-        // API returned but not successful - show empty state
-        if (__DEV__) console.log('⚠️ Analytics API returned unsuccessful response');
-        setAnalyticsSnapshots([]);
-      }
-    } catch (error) {
-      // Don't log or set state for aborted requests
-      if (error.name === 'AbortError' || controller.signal.aborted) {
-        if (__DEV__) console.log('📊 Analytics fetch aborted');
-        return;
+        if (__DEV__) console.log('📊 No revenueCatUserId, skipping API fetch - using local calculation');
       }
 
-      console.error('❌ Error fetching analytics:', error.message);
-      // On error, show today's data as fallback if user has holdings
-      if (silverItems.length > 0 || goldItems.length > 0) {
-        const todayData = [{
+      // Calculate historical data from holdings + historical spot prices
+      let calculatedData = null;
+      if (hasHoldings) {
+        try {
+          console.log('📊 Calculating historical data from holdings...');
+          calculatedData = await calculateHistoricalPortfolioData('ALL');
+          if (controller.signal.aborted) return;
+          console.log(`📊 Calculated ${calculatedData?.length || 0} historical points`);
+        } catch (histError) {
+          if (controller.signal.aborted) return;
+          console.log('⚠️ Historical calculation failed:', histError.message);
+        }
+      }
+
+      // Determine best data source
+      let finalData = [];
+      const apiOldestDate = apiSnapshots.length > 0 ? apiSnapshots[0]?.date : null;
+      const calcOldestDate = calculatedData?.length > 0 ? calculatedData[0]?.date : null;
+
+      if (calculatedData && calculatedData.length > 0) {
+        if (!apiOldestDate || (calcOldestDate && calcOldestDate < apiOldestDate)) {
+          finalData = calculatedData;
+          if (__DEV__) console.log(`📊 Using calculated data (oldest: ${calcOldestDate}) over API (oldest: ${apiOldestDate})`);
+        } else {
+          finalData = apiSnapshots;
+          if (__DEV__) console.log(`📊 Using API snapshots (oldest: ${apiOldestDate})`);
+        }
+      } else if (apiSnapshots.length > 0) {
+        finalData = apiSnapshots;
+        if (__DEV__) console.log(`📊 Using API snapshots only (${apiSnapshots.length} points)`);
+      } else if (hasHoldings) {
+        // Fallback: show today's data only
+        finalData = [{
           date: new Date().toISOString().split('T')[0],
           total_value: totalMeltValue,
           gold_value: totalGoldOzt * goldSpot,
@@ -2771,12 +2744,26 @@ function AppContent() {
           gold_spot: goldSpot,
           silver_spot: silverSpot,
         }];
-        setAnalyticsSnapshots(todayData);
-      } else {
-        setAnalyticsSnapshots([]);
+        if (__DEV__) console.log('📊 Using today-only fallback');
       }
+
+      // Store and apply
+      cache.primaryData = finalData;
+      cache.fetched = true;
+
+      const filtered = filterSnapshotsByRange(finalData, analyticsRange);
+      if (filtered.length === 0 && analyticsRange !== '1D' && finalData.length > 0) {
+        setAnalyticsSnapshots(finalData);
+      } else {
+        setAnalyticsSnapshots(filtered);
+      }
+      if (__DEV__) console.log(`📊 Final: ${finalData.length} total points, ${filtered.length} shown for ${analyticsRange}`);
+    } catch (error) {
+      if (error.name === 'AbortError' || controller.signal.aborted) return;
+      console.error('❌ Error in analytics fetch:', error.message);
+      cache.fetched = true;
+      setAnalyticsSnapshots([]);
     } finally {
-      // Only set loading false if this is still the active request
       if (!controller.signal.aborted) {
         setAnalyticsLoading(false);
       }
@@ -2796,8 +2783,8 @@ function AppContent() {
     // Early exit if not on analytics tab
     if (tab !== 'analytics') return;
 
-    // Need userId and subscription to fetch
-    if (!revenueCatUserId || (!hasGold && !hasLifetimeAccess)) {
+    // Need subscription access (but NOT revenueCatUserId - we can calculate locally without it)
+    if (!hasGold && !hasLifetimeAccess) {
       if (__DEV__) console.log('📊 Analytics: waiting for subscription info...', { revenueCatUserId: !!revenueCatUserId, hasGold, hasLifetimeAccess });
       return;
     }
@@ -2823,7 +2810,7 @@ function AppContent() {
         analyticsAbortRef.current.abort();
       }
     };
-  }, [tab, revenueCatUserId, hasGold, hasLifetimeAccess]); // Removed analyticsRange - handled by filter
+  }, [tab, revenueCatUserId, hasGold, hasLifetimeAccess]); // revenueCatUserId still triggers re-run when it becomes available
 
   // Apply filter when range changes (instant, no API call)
   useEffect(() => {
@@ -4742,6 +4729,12 @@ function AppContent() {
               </View>
             </View>
 
+            {/* Export CSV */}
+            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={exportCSV}>
+              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>📤 Export CSV</Text>
+              <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Download holdings spreadsheet</Text>
+            </TouchableOpacity>
+
           </>
         )}
 
@@ -5018,79 +5011,106 @@ function AppContent() {
         {/* TOOLS TAB */}
         {tab === 'tools' && (
           <>
-            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowSpeculationModal(true)}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🔮 Speculation Tool</Text>
-              <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>What if silver hits $100? What if gold hits $10,000?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowJunkCalcModal(true)}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🧮 Junk Silver Calculator</Text>
-              <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Calculate melt value of constitutional silver</Text>
-            </TouchableOpacity>
-
-            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Break-Even Analysis</Text>
-              <View style={{ backgroundColor: `${colors.silver}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver: ${formatCurrency(silverBreakeven)}/oz needed</Text>
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{silverSpot >= silverBreakeven ? 'Profitable!' : `Need +$${formatCurrency(silverBreakeven - silverSpot)}`}</Text>
+            {!hasGoldAccess ? (
+              /* Gold Lock Screen for non-Gold users */
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
+                <Text style={{ fontSize: 48, marginBottom: 16 }}>🔒</Text>
+                <Text style={{ color: colors.gold, fontSize: scaledFonts.xlarge, fontWeight: '700', marginBottom: 8, textAlign: 'center' }}>
+                  Unlock Tools
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: scaledFonts.normal, textAlign: 'center', marginBottom: 24, paddingHorizontal: 40, lineHeight: 22 }}>
+                  Get access to Price Alerts, Speculation Tool, Junk Silver Calculator, Stack Milestones, and more
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: colors.gold,
+                    paddingVertical: 14,
+                    paddingHorizontal: 32,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowPaywallModal(true);
+                  }}
+                >
+                  <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.medium }}>Upgrade to Gold</Text>
+                </TouchableOpacity>
               </View>
-              <View style={{ backgroundColor: `${colors.gold}22`, padding: 12, borderRadius: 8 }}>
-                <Text style={{ color: colors.gold, fontSize: scaledFonts.normal }}>Gold: ${formatCurrency(goldBreakeven)}/oz needed</Text>
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{goldSpot >= goldBreakeven ? 'Profitable!' : `Need +$${formatCurrency(goldBreakeven - goldSpot)}`}</Text>
-              </View>
-            </View>
+            ) : (
+              <>
+                {/* Price Alerts */}
+                <TouchableOpacity
+                  style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowAddAlertModal(true);
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🔔 Price Alerts</Text>
+                    {priceAlerts.length > 0 && (
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{priceAlerts.length} active</Text>
+                    )}
+                  </View>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Set alerts for gold and silver price targets</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={exportCSV}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>📤 Export CSV</Text>
-              <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Download holdings spreadsheet</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowSpeculationModal(true)}>
+                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🔮 Speculation Tool</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>What if silver hits $100? What if gold hits $10,000?</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPremiumAnalysisModal(true); }}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Premium Analysis</Text>
-              <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>View premiums paid across your holdings</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowJunkCalcModal(true)}>
+                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🧮 Junk Silver Calculator</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Calculate melt value of constitutional silver</Text>
+                </TouchableOpacity>
 
-            {/* Stack Milestones - Tappable to Edit */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setTempSilverMilestone(customSilverMilestone?.toString() || '');
-                setTempGoldMilestone(customGoldMilestone?.toString() || '');
-                setShowMilestoneModal(true);
-              }}
-            >
-              <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
-                </View>
-                <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${formatOunces(totalSilverOzt, 0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
-                <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${formatOunces(totalGoldOzt, 2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
-              </View>
-            </TouchableOpacity>
+                {/* Stack Milestones - Tappable to Edit */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setTempSilverMilestone(customSilverMilestone?.toString() || '');
+                    setTempGoldMilestone(customGoldMilestone?.toString() || '');
+                    setShowMilestoneModal(true);
+                  }}
+                >
+                  <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
+                    </View>
+                    <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${formatOunces(totalSilverOzt, 0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
+                    <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${formatOunces(totalGoldOzt, 2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
+                  </View>
+                </TouchableOpacity>
 
-            {/* Share My Stack */}
-            {(silverItems.length > 0 || goldItems.length > 0) && (
-              <TouchableOpacity
-                style={[styles.card, {
-                  backgroundColor: colors.cardBg,
-                  borderColor: colors.gold,
-                  borderWidth: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingVertical: 14,
-                  gap: 8,
-                }]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowSharePreview(true);
-                }}
-              >
-                <Text style={{ fontSize: scaledFonts.medium }}>📸</Text>
-                <Text style={{ color: colors.gold, fontSize: scaledFonts.normal, fontWeight: '600' }}>Share My Stack</Text>
-              </TouchableOpacity>
+                {/* Share My Stack */}
+                {(silverItems.length > 0 || goldItems.length > 0) && (
+                  <TouchableOpacity
+                    style={[styles.card, {
+                      backgroundColor: colors.cardBg,
+                      borderColor: colors.gold,
+                      borderWidth: 1,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 14,
+                      gap: 8,
+                    }]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setShowSharePreview(true);
+                    }}
+                  >
+                    <Text style={{ fontSize: scaledFonts.medium }}>📸</Text>
+                    <Text style={{ color: colors.gold, fontSize: scaledFonts.normal, fontWeight: '600' }}>Share My Stack</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </>
         )}
@@ -5333,11 +5353,9 @@ function AppContent() {
                         {analyticsSnapshots.length === 0
                           ? (silverItems.length === 0 && goldItems.length === 0
                             ? 'Add some holdings to see your portfolio analytics!'
-                            : (!revenueCatUserId
-                              ? 'Initializing...'
-                              : (analyticsLoading
-                                ? 'Loading historical data...'
-                                : 'Pull down to refresh')))
+                            : (analyticsLoading
+                              ? 'Loading historical data...'
+                              : 'Pull down to refresh'))
                           : 'Need at least 2 data points to show a chart.'}
                       </Text>
                     </View>
@@ -5520,6 +5538,25 @@ function AppContent() {
                     Historical values are calculated from your holdings and past spot prices. Daily snapshots are saved automatically.
                   </Text>
                 </View>
+
+                {/* Break-Even Analysis */}
+                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Break-Even Analysis</Text>
+                  <View style={{ backgroundColor: `${colors.silver}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
+                    <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver: ${formatCurrency(silverBreakeven)}/oz needed</Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{silverSpot >= silverBreakeven ? 'Profitable!' : `Need +$${formatCurrency(silverBreakeven - silverSpot)}`}</Text>
+                  </View>
+                  <View style={{ backgroundColor: `${colors.gold}22`, padding: 12, borderRadius: 8 }}>
+                    <Text style={{ color: colors.gold, fontSize: scaledFonts.normal }}>Gold: ${formatCurrency(goldBreakeven)}/oz needed</Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{goldSpot >= goldBreakeven ? 'Profitable!' : `Need +$${formatCurrency(goldBreakeven - goldSpot)}`}</Text>
+                  </View>
+                </View>
+
+                {/* Premium Analysis */}
+                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPremiumAnalysisModal(true); }}>
+                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Premium Analysis</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>View premiums paid across your holdings</Text>
+                </TouchableOpacity>
               </>
               </View>
 
@@ -5836,49 +5873,6 @@ function AppContent() {
                   </>
                 )}
 
-                {/* Price Alerts */}
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  backgroundColor: groupBg,
-                  paddingVertical: 12,
-                  paddingHorizontal: 16,
-                  minHeight: 44,
-                  borderTopLeftRadius: Platform.OS !== 'ios' ? 10 : 0,
-                  borderTopRightRadius: Platform.OS !== 'ios' ? 10 : 0,
-                }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#FF9500', alignItems: 'center', justifyContent: 'center' }}>
-                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#fff' }} />
-                    </View>
-                    <View>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Price Alerts</Text>
-                      {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny }}>GOLD</Text>}
-                      {hasGoldAccess && priceAlerts.length > 0 && (
-                        <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{priceAlerts.length} active</Text>
-                      )}
-                    </View>
-                  </View>
-                  {hasGoldAccess ? (
-                    <TouchableOpacity
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setShowAddAlertModal(true);
-                      }}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                    >
-                      <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Manage</Text>
-                      <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
-                      <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Unlock</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <RowSeparator />
-
                 {/* Home Screen Widget - iOS only */}
                 {Platform.OS === 'ios' && (
                   <View style={{
@@ -5921,8 +5915,7 @@ function AppContent() {
                     paddingVertical: 12,
                     paddingHorizontal: 16,
                     minHeight: 44,
-                    borderBottomLeftRadius: 10,
-                    borderBottomRightRadius: 10,
+                    borderRadius: 10,
                   }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#34C759', alignItems: 'center', justifyContent: 'center' }}>
@@ -5945,54 +5938,6 @@ function AppContent() {
               </View>
               {Platform.OS === 'ios' && hasGoldAccess && iCloudSyncEnabled && (
                 <SectionFooter text={lastSyncTime ? `Last synced ${new Date(lastSyncTime).toLocaleString()}` : 'Syncs automatically when you add or edit holdings'} />
-              )}
-
-              {/* Active Price Alerts - show if user has Gold and has alerts */}
-              {hasGoldAccess && priceAlerts.length > 0 && (
-                <>
-                  <SectionHeader title="Active Alerts" />
-                  <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                    {priceAlerts.map((alert, index, arr) => (
-                      <View key={alert.id}>
-                        <View style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          backgroundColor: groupBg,
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          minHeight: 44,
-                          borderTopLeftRadius: index === 0 ? 10 : 0,
-                          borderTopRightRadius: index === 0 ? 10 : 0,
-                          borderBottomLeftRadius: index === arr.length - 1 ? 10 : 0,
-                          borderBottomRightRadius: index === arr.length - 1 ? 10 : 0,
-                        }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                            <View style={{
-                              width: 30, height: 30, borderRadius: 6,
-                              backgroundColor: alert.metal === 'gold' ? 'rgba(251,191,36,0.2)' : 'rgba(156,163,175,0.2)',
-                              alignItems: 'center', justifyContent: 'center'
-                            }}>
-                              <View style={{
-                                width: 12, height: 12, borderRadius: 6,
-                                backgroundColor: alert.metal === 'gold' ? '#fbbf24' : '#9ca3af',
-                              }} />
-                            </View>
-                            <View>
-                              <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>
-                                {alert.metal === 'gold' ? 'Gold' : 'Silver'} {alert.direction === 'above' ? 'above' : 'below'} ${parseFloat(alert.targetPrice).toFixed(2)}
-                              </Text>
-                            </View>
-                          </View>
-                          <TouchableOpacity onPress={() => deletePriceAlert(alert.id)} style={{ padding: 4 }}>
-                            <Text style={{ color: colors.error, fontSize: scaledFonts.normal }}>Remove</Text>
-                          </TouchableOpacity>
-                        </View>
-                        {index < arr.length - 1 && <RowSeparator />}
-                      </View>
-                    ))}
-                  </View>
-                </>
               )}
 
               {/* Appearance Section */}

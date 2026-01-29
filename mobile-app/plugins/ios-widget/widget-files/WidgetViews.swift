@@ -290,16 +290,18 @@ struct LargeWidgetView: View {
                         // Silver spot
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Silver (Ag)")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(silverColor)
                             Text(formatSpotPrice(data.silverSpot))
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.white)
+                                .minimumScaleFactor(0.7)
+                                .lineLimit(1)
                             HStack(spacing: 2) {
                                 Text(data.silverChangeAmount >= 0 ? "▲" : "▼")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .font(.system(size: 9, weight: .bold))
                                 Text(formatPercent(data.silverChangePercent))
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundColor(changeColor(data.silverChangeAmount))
                         }
@@ -308,16 +310,18 @@ struct LargeWidgetView: View {
                         // Gold spot
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Gold (Au)")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(goldAccent)
                             Text(formatSpotPrice(data.goldSpot))
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.white)
+                                .minimumScaleFactor(0.7)
+                                .lineLimit(1)
                             HStack(spacing: 2) {
                                 Text(data.goldChangeAmount >= 0 ? "▲" : "▼")
-                                    .font(.system(size: 8, weight: .bold))
+                                    .font(.system(size: 9, weight: .bold))
                                 Text(formatPercent(data.goldChangePercent))
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundColor(changeColor(data.goldChangeAmount))
                         }
