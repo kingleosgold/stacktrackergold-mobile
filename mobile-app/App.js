@@ -719,6 +719,7 @@ function AppContent() {
   const [detailMetal, setDetailMetal] = useState(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showBenefitsScreen, setShowBenefitsScreen] = useState(false);
 
   // Sort State
   const [sortBy, setSortBy] = useState('date-newest'); // date-newest, date-oldest, value-high, value-low, metal, name
@@ -5697,39 +5698,6 @@ function AppContent() {
                   <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 10, marginTop: 2 }}>Remove __DEV__ bypass before production build</Text>
                 </View>
               )}
-              {/* Upgrade to Gold - prominent at top for free users */}
-              {!hasGold && !hasLifetimeAccess && (
-                <>
-                  <SectionHeader title="" />
-                  <TouchableOpacity
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      backgroundColor: groupBg,
-                      paddingVertical: 14,
-                      paddingHorizontal: 16,
-                      borderRadius: 10,
-                    }}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      setShowPaywallModal(true);
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: 'rgba(251, 191, 36, 0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 16 }}>👑</Text>
-                      </View>
-                      <View>
-                        <Text style={{ color: colors.gold, fontSize: scaledFonts.normal, fontWeight: '600' }}>Upgrade to Gold</Text>
-                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Unlock all premium features</Text>
-                      </View>
-                    </View>
-                    <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-
               {/* Account Section */}
               <SectionHeader title="Account" />
               <View style={{ borderRadius: 10, overflow: 'hidden' }}>
@@ -5796,7 +5764,7 @@ function AppContent() {
                 <SectionFooter text="Your portfolio data is stored locally on this device. Sign in to enable cloud sync." />
               )}
 
-              {/* Membership Row */}
+              {/* Membership Section */}
               <SectionHeader title="Membership" />
               <View style={{ borderRadius: 10, overflow: 'hidden' }}>
                 <View style={{
@@ -5807,14 +5775,15 @@ function AppContent() {
                   paddingVertical: 12,
                   paddingHorizontal: 16,
                   minHeight: 44,
-                  borderRadius: 10,
+                  borderTopLeftRadius: 10,
+                  borderTopRightRadius: 10,
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: hasGoldAccess ? 'rgba(251, 191, 36, 0.2)' : 'rgba(113, 113, 122, 0.2)', alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ fontSize: 16 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : '🥈'}</Text>
                     </View>
-                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>
-                      {hasLifetimeAccess ? 'Lifetime' : hasGold ? 'Gold' : 'Free'}
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>
+                      {hasLifetimeAccess ? 'Lifetime Member' : hasGold ? 'Gold Member' : 'Free'}
                     </Text>
                   </View>
                   {!hasGoldAccess && (
@@ -5826,56 +5795,9 @@ function AppContent() {
                     <Text style={{ color: colors.success, fontSize: scaledFonts.small }}>Thank you!</Text>
                   )}
                 </View>
-              </View>
-
-              {/* Gold Features Section */}
-              <SectionHeader title="Gold Features" />
-              <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                {/* iCloud Sync - iOS only */}
-                {Platform.OS === 'ios' && (
-                  <>
-                    <View style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      backgroundColor: groupBg,
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                      minHeight: 44,
-                      borderTopLeftRadius: 10,
-                      borderTopRightRadius: 10,
-                    }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#007AFF', alignItems: 'center', justifyContent: 'center' }}>
-                          <View style={{ width: 12, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
-                        </View>
-                        <View>
-                          <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>iCloud Sync</Text>
-                          {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny }}>GOLD</Text>}
-                        </View>
-                      </View>
-                      {hasGoldAccess ? (
-                        <Switch
-                          value={iCloudSyncEnabled}
-                          onValueChange={(value) => toggleiCloudSync(value)}
-                          disabled={!iCloudAvailable}
-                          trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
-                          thumbColor="#fff"
-                          ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
-                        />
-                      ) : (
-                        <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
-                          <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Unlock</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    <RowSeparator />
-                  </>
-                )}
-
-                {/* Home Screen Widget - iOS only */}
-                {Platform.OS === 'ios' && (
-                  <View style={{
+                <RowSeparator />
+                <TouchableOpacity
+                  style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -5885,59 +5807,52 @@ function AppContent() {
                     minHeight: 44,
                     borderBottomLeftRadius: 10,
                     borderBottomRightRadius: 10,
-                  }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#5856D6', alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ color: '#fff', fontSize: 14 }}>📱</Text>
-                      </View>
-                      <View>
-                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Home Screen Widget</Text>
-                        {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny }}>GOLD</Text>}
-                      </View>
-                    </View>
-                    {hasGoldAccess ? (
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Add from home screen</Text>
-                    ) : (
-                      <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
-                        <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Unlock</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-
-                {/* Analytics - show for non-iOS or at end */}
-                {Platform.OS !== 'ios' && (
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundColor: groupBg,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    minHeight: 44,
-                    borderRadius: 10,
-                  }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#34C759', alignItems: 'center', justifyContent: 'center' }}>
-                        <View style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#fff' }} />
-                      </View>
-                      <View>
-                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Portfolio Analytics</Text>
-                        {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny }}>GOLD</Text>}
-                      </View>
-                    </View>
-                    {hasGoldAccess ? (
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>In Analytics tab</Text>
-                    ) : (
-                      <TouchableOpacity onPress={() => setShowPaywallModal(true)}>
-                        <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Unlock</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
+                  }}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowBenefitsScreen(true);
+                  }}
+                >
+                  <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>See Benefits</Text>
+                  <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
+                </TouchableOpacity>
               </View>
-              {Platform.OS === 'ios' && hasGoldAccess && iCloudSyncEnabled && (
-                <SectionFooter text={lastSyncTime ? `Last synced ${new Date(lastSyncTime).toLocaleString()}` : 'Syncs automatically when you add or edit holdings'} />
+
+              {/* iCloud Sync toggle - iOS Gold users only */}
+              {Platform.OS === 'ios' && hasGoldAccess && (
+                <>
+                  <SectionHeader title="Sync" />
+                  <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: groupBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderRadius: 10,
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#007AFF', alignItems: 'center', justifyContent: 'center' }}>
+                          <View style={{ width: 12, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />
+                        </View>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>iCloud Sync</Text>
+                      </View>
+                      <Switch
+                        value={iCloudSyncEnabled}
+                        onValueChange={(value) => toggleiCloudSync(value)}
+                        disabled={!iCloudAvailable}
+                        trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
+                        thumbColor="#fff"
+                        ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
+                      />
+                    </View>
+                  </View>
+                  {iCloudSyncEnabled && (
+                    <SectionFooter text={lastSyncTime ? `Last synced ${new Date(lastSyncTime).toLocaleString()}` : 'Syncs automatically when you add or edit holdings'} />
+                  )}
+                </>
               )}
 
               {/* Appearance Section */}
@@ -6043,42 +5958,8 @@ function AppContent() {
               </View>
               <SectionFooter text="Backups include all holdings and settings. Export to Files, iCloud Drive, or any storage." />
 
-              {/* Share & Social Section */}
-              <SectionHeader title="Share" />
-              <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                <TouchableOpacity
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundColor: groupBg,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    minHeight: 44,
-                    borderRadius: 10,
-                  }}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowSharePreview(true);
-                  }}
-                  disabled={silverItems.length === 0 && goldItems.length === 0}
-                  activeOpacity={0.6}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: '#FF2D55', alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ color: '#fff', fontSize: 14 }}>📸</Text>
-                    </View>
-                    <View>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Share My Stack</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Create a shareable portfolio image</Text>
-                    </View>
-                  </View>
-                  <Text style={{ color: chevronColor, fontSize: 18, fontWeight: '600' }}>›</Text>
-                </TouchableOpacity>
-              </View>
-
               {/* Actions Section */}
-              <SectionHeader title="Actions" />
+              <SectionHeader title="Help & Info" />
               <View style={{ borderRadius: 10, overflow: 'hidden' }}>
                 <SettingsRow
                   label="Refresh Spot Prices"
@@ -6088,18 +5969,11 @@ function AppContent() {
                 />
                 <RowSeparator />
                 <SettingsRow
-                  label="View Help Guide"
+                  label="Help Guide"
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setShowHelpModal(true);
                   }}
-                  isFirst={false}
-                  isLast={false}
-                />
-                <RowSeparator />
-                <SettingsRow
-                  label="Privacy Info"
-                  onPress={() => setShowPrivacyModal(true)}
                   isFirst={false}
                   isLast={true}
                 />
@@ -6151,43 +6025,13 @@ function AppContent() {
                 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Version</Text>
-                    <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>1.2.0</Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>1.3.0</Text>
                   </View>
                 </View>
                 <RowSeparator />
-                {hasLifetimeAccess && (
-                  <>
-                    <View style={{
-                      backgroundColor: groupBg,
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                    }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Subscription</Text>
-                        <Text style={{ color: colors.success, fontSize: scaledFonts.normal, fontWeight: '600' }}>Lifetime</Text>
-                      </View>
-                    </View>
-                    <RowSeparator />
-                  </>
-                )}
-                {hasGold && !hasLifetimeAccess && (
-                  <>
-                    <View style={{
-                      backgroundColor: groupBg,
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                    }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Subscription</Text>
-                        <Text style={{ color: colors.gold, fontSize: scaledFonts.normal, fontWeight: '600' }}>Gold</Text>
-                      </View>
-                    </View>
-                    <RowSeparator />
-                  </>
-                )}
                 <SettingsRow
                   label="Privacy Policy"
-                  onPress={() => Linking.openURL('https://stack-tracker-pro-production.up.railway.app/privacy')}
+                  onPress={() => setShowPrivacyModal(true)}
                   isFirst={false}
                   isLast={false}
                 />
@@ -6199,7 +6043,7 @@ function AppContent() {
                   isLast={true}
                 />
               </View>
-              <SectionFooter text="Stack Tracker Gold - Your data is encrypted and secure. We never sell your data to third parties." />
+              <SectionFooter text="Stack Tracker Gold - Your data is stored securely and never shared or sold to third parties." />
 
               {/* Advanced Section */}
               <SectionHeader title="Advanced" />
@@ -6347,6 +6191,107 @@ function AppContent() {
           hasLifetime={hasLifetimeAccess}
           colors={colors}
         />
+      </Modal>
+
+      {/* Benefits Screen */}
+      <Modal visible={showBenefitsScreen} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={{ flex: 1, backgroundColor: isDarkMode ? '#000000' : '#f2f2f7' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: isDarkMode ? '#38383a' : '#c6c6c8' }}>
+            <TouchableOpacity onPress={() => setShowBenefitsScreen(false)}>
+              <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Done</Text>
+            </TouchableOpacity>
+            <Text style={{ color: colors.text, fontSize: scaledFonts.medium, fontWeight: '700' }}>
+              {hasLifetimeAccess ? 'Lifetime Benefits' : hasGold ? 'Gold Benefits' : 'Membership'}
+            </Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <ScrollView style={{ flex: 1, padding: 16 }}>
+            {/* Current plan header */}
+            <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+              <Text style={{ fontSize: 48, marginBottom: 12 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : '🥈'}</Text>
+              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 4 }}>
+                {hasLifetimeAccess ? 'Lifetime Member' : hasGold ? 'Gold Member' : 'Free Plan'}
+              </Text>
+              {hasLifetimeAccess && <Text style={{ color: colors.success, fontSize: scaledFonts.normal }}>Thank you for your support!</Text>}
+            </View>
+
+            {/* Free features - always shown */}
+            <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, fontWeight: '400', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4, letterSpacing: 0.5 }}>
+              {hasGoldAccess ? 'Everything Included' : 'Free Features'}
+            </Text>
+            <View style={{ backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
+              {[
+                { icon: '📊', label: 'Live gold & silver spot prices' },
+                { icon: '📝', label: 'Manual holdings entry' },
+                { icon: '📸', label: 'AI receipt scanning (5/month)' },
+                { icon: '📤', label: 'Export CSV & manual backup' },
+                { icon: '🌙', label: 'Dark mode & accessibility' },
+              ].map((item, i, arr) => (
+                <View key={i}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 }}>
+                    <Text style={{ fontSize: 18 }}>{item.icon}</Text>
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal, flex: 1 }}>{item.label}</Text>
+                    <Text style={{ color: colors.success, fontSize: 16 }}>✓</Text>
+                  </View>
+                  {i < arr.length - 1 && <View style={{ height: 0.5, backgroundColor: isDarkMode ? '#38383a' : '#c6c6c8', marginLeft: 50 }} />}
+                </View>
+              ))}
+            </View>
+
+            {/* Gold features */}
+            <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, fontWeight: '400', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4, letterSpacing: 0.5 }}>
+              {hasGoldAccess ? 'Gold Features' : 'Upgrade to Gold'}
+            </Text>
+            <View style={{ backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
+              {[
+                { icon: '📸', label: 'Unlimited receipt scans' },
+                { icon: '🔔', label: 'Price alerts & all-time high alerts' },
+                { icon: '📈', label: 'Portfolio analytics with charts' },
+                { icon: '🔮', label: 'What If scenarios & speculation tool' },
+                { icon: '🧮', label: 'Junk silver calculator' },
+                { icon: '💰', label: 'Break-even & premium analysis' },
+                { icon: '🏆', label: 'Stack milestones & Share My Stack' },
+                { icon: '☁️', label: 'Cloud sync across devices' },
+                ...(Platform.OS === 'ios' ? [{ icon: '📱', label: 'Home screen widgets' }] : []),
+              ].map((item, i, arr) => (
+                <View key={i}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 }}>
+                    <Text style={{ fontSize: 18 }}>{item.icon}</Text>
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal, flex: 1 }}>{item.label}</Text>
+                    {hasGoldAccess ? (
+                      <Text style={{ color: colors.success, fontSize: 16 }}>✓</Text>
+                    ) : (
+                      <Text style={{ color: colors.gold, fontSize: 14 }}>🔒</Text>
+                    )}
+                  </View>
+                  {i < arr.length - 1 && <View style={{ height: 0.5, backgroundColor: isDarkMode ? '#38383a' : '#c6c6c8', marginLeft: 50 }} />}
+                </View>
+              ))}
+            </View>
+
+            {/* Upgrade button for free users */}
+            {!hasGoldAccess && (
+              <TouchableOpacity
+                style={{
+                  backgroundColor: colors.gold,
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  marginBottom: 20,
+                }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setShowBenefitsScreen(false);
+                  setTimeout(() => setShowPaywallModal(true), 300);
+                }}
+              >
+                <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.medium }}>Upgrade to Gold</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
 
       {/* ADD/EDIT MODAL - Custom with sticky save button */}
@@ -6766,23 +6711,23 @@ function AppContent() {
         isDarkMode={isDarkMode}
       >
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.success }]}>What We Do</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Store data locally on YOUR device (when not signed in)</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Sync securely to the cloud (when signed in)</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Encrypt all data in transit and at rest</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Process receipt images in memory only</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Delete images immediately after scanning</Text>
+          <Text style={[styles.cardTitle, { color: colors.success }]}>How We Protect Your Data</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Your portfolio data is stored securely on our servers for sync and backup</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• All data is encrypted in transit and at rest</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Guest mode keeps data only on your device</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Receipt images are processed in memory and deleted immediately after scanning</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Analytics snapshots are stored to power your portfolio charts</Text>
         </View>
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.error }]}>What We DON'T Do</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Sell your data to third parties</Text>
+          <Text style={[styles.cardTitle, { color: colors.error }]}>What We Never Do</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Sell or share your data with third parties</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Share your information with advertisers</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Track your browsing or behavior</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Access your data without permission</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Track your browsing or behavior outside the app</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Access your portfolio data for any purpose other than providing the service</Text>
         </View>
         <View style={[styles.card, { backgroundColor: `${colors.success}22` }]}>
           <Text style={{ color: colors.success, fontWeight: '600' }}>Your Data, Your Control</Text>
-          <Text style={{ color: colors.muted, fontStyle: 'italic' }}>"Your data is encrypted and secure. Use locally or sync across devices - you decide."</Text>
+          <Text style={{ color: colors.muted, fontStyle: 'italic' }}>"Your data is private and secure. We store it only to power your experience - never to sell or share."</Text>
         </View>
       </ModalWrapper>
 
@@ -6799,6 +6744,7 @@ function AppContent() {
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Add purchases manually by tapping "+" on the Holdings tab</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Or use AI Receipt Scanner to automatically extract data from receipts</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Pull down on the Dashboard to refresh live spot prices</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Export your holdings as CSV from the Dashboard</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
@@ -6816,58 +6762,53 @@ function AppContent() {
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Portfolio Analytics</Text>
+            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Tools</Text>
             <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
               <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
             </View>
           </View>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Track your portfolio value over time with interactive charts</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• View cost basis analysis and unrealized P/L</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• See premium analysis and holdings breakdown</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Select time ranges: 1W, 1M, 3M, 6M, 1Y, or All Time</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Price Alerts — Get notified when gold or silver hits your target price</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• All-Time High Alerts — Be the first to know when spot prices set new records</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• What If Scenarios — See portfolio value at hypothetical spot prices</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Junk Silver Calculator — Calculate melt value of constitutional silver</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Stack Milestones — Set and track oz goals for your stack</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Share My Stack — Create a shareable image of your portfolio</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Share My Stack</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Create a beautiful image of your portfolio to share</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Tap "Share My Stack" on the Dashboard tab</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Shows total value, oz breakdown, and milestones</Text>
-          <Text style={[styles.privacyItem, { color: colors.muted, marginTop: 4, fontSize: scaledFonts.small }]}>Perfect for sharing with fellow stackers!</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Analytics</Text>
+            <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
+            </View>
+          </View>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Portfolio value charts (1D, 1W, 1M, 3M, 1Y, All Time)</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Cost basis analysis and unrealized P/L</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Break-Even Analysis — See what spot price you need to break even</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Premium Analysis — View premiums paid across your holdings</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Holdings breakdown with pie chart</Text>
         </View>
 
         {Platform.OS === 'ios' && (
           <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Home Screen Widgets</Text>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Add widgets to see your stack at a glance</Text>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Long-press your home screen → tap "+"</Text>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Search for "Stack Tracker Gold"</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Home Screen Widgets</Text>
+              <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
+              </View>
+            </View>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• See your portfolio value, spot prices, and daily changes at a glance</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Long-press your home screen → tap "+" → search "Stack Tracker Gold"</Text>
             <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Choose small, medium, or large widget size</Text>
           </View>
         )}
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Your Data</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Not signed in: Data stored locally on your device</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Signed in: Data syncs securely to the cloud</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use "Backup" to export to iCloud Drive, Google Drive, etc.</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use "Restore" to import a backup on any device</Text>
-          <View style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)', padding: 10, borderRadius: 8, marginTop: 8 }}>
-            <Text style={{ color: colors.success, fontSize: scaledFonts.small, fontWeight: '600' }}>Sign in to automatically sync across devices!</Text>
-          </View>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Using Multiple Devices</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Cloud Sync (signed in users)</Text>
-          <Text style={[styles.privacyItem, { paddingLeft: 12, marginTop: 4, color: colors.text, fontSize: scaledFonts.small }]}>Sign in with the same account on all devices to sync automatically</Text>
-          <Text style={[styles.privacyItem, { marginTop: 12, color: colors.text, fontSize: scaledFonts.small }]}>• Manual Backup/Restore (all users)</Text>
-          <Text style={[styles.privacyItem, { paddingLeft: 12, marginTop: 4, color: colors.muted, fontSize: scaledFonts.small }]}>Export/import for offline backup or one-time transfers</Text>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Export CSV</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Export your portfolio as a CSV spreadsheet</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Great for records, tax prep, or other tools</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Your Data & Cloud Sync</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Sign in to sync your portfolio across devices automatically</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Guest mode keeps everything local on your device</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use Backup/Restore for manual exports to iCloud Drive, Google Drive, etc.</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Export CSV from the Dashboard for spreadsheets and tax prep</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
