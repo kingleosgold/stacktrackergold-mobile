@@ -409,17 +409,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  // Reset password
+  // Reset password (does not use context loading state - callers manage their own)
   const resetPassword = useCallback(async (email: string) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'stacktrackergold://auth/reset-password',
-      });
-      return { error };
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'stacktrackergold://auth/reset-password',
+    });
+    return { error };
   }, []);
 
   const value: AuthContextType = {
