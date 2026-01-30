@@ -414,7 +414,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'stacktrackerpro://auth/reset-password',
+        redirectTo: 'stacktrackergold://auth/reset-password',
       });
       return { error };
     } finally {

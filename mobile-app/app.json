@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "primaryColor": "#fbbf24",
-    "scheme": "stacktrackerpro",
+    "scheme": "stacktrackergold",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
