@@ -75,6 +75,7 @@ const DEALER_TEMPLATES = {
       quantity: ['qty'],
       unitPrice: ['unit price'],
       date: ['date'],
+      time: ['time'],
       dealer: ['source'],
       ozt: ['ozt'],
       taxes: ['taxes'],
@@ -3631,6 +3632,7 @@ function AppContent() {
         quantity: findColumn(template.columnMap.quantity),
         unitPrice: findColumn(template.columnMap.unitPrice),
         date: findColumn(template.columnMap.date),
+        time: findColumn(template.columnMap.time || []),
         dealer: findColumn(template.columnMap.dealer || []),
         ozt: findColumn(template.columnMap.ozt || []),
         taxes: findColumn(template.columnMap.taxes || []),
@@ -3713,6 +3715,8 @@ function AppContent() {
         const unitPrice = colMap.unitPrice !== -1 ? (parseFloat(row[colMap.unitPrice]) || 0) : 0;
         const dateRaw = colMap.date !== -1 ? row[colMap.date] : null;
         const datePurchased = dateRaw ? parseDate(String(dateRaw)) : '';
+        const timeRaw = colMap.time !== -1 ? row[colMap.time] : null;
+        const timePurchased = timeRaw ? String(timeRaw).trim() : '';
 
         // Parse optional extra fields (Stack Tracker export has these)
         const taxes = colMap.taxes !== -1 ? (parseFloat(row[colMap.taxes]) || 0) : 0;
@@ -3726,6 +3730,7 @@ function AppContent() {
           quantity,
           unitPrice,
           datePurchased,
+          timePurchased,
           source,
           ozt,
           taxes,
