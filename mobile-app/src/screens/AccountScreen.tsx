@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { ProfileIcon, GoogleLogo, AppleLogo } from '../components/icons';
+import { logoutRevenueCat } from '../utils/entitlements';
 
 interface AccountScreenProps {
   onClose: () => void;
@@ -62,6 +63,16 @@ export default function AccountScreen({
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            try {
+              // Log out from RevenueCat first (resets to anonymous device ID)
+              await logoutRevenueCat();
+              console.log('✅ Logged out from RevenueCat');
+            } catch (error) {
+              console.error('RevenueCat logout failed (non-fatal):', error);
+              // Continue with Supabase sign out even if RevenueCat fails
+            }
+            
+            // Sign out from Supabase
             await signOut();
             onSignOut();
           },
