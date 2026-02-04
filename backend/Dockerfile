@@ -21,6 +21,7 @@ COPY supabaseClient.js ./
 COPY data/ ./data/
 COPY scrapers/ ./scrapers/
 COPY services/ ./services/
+COPY middleware/ ./middleware/
 
 # Security: No writable volumes needed (we never store data)
 # The app runs entirely in memory
