@@ -107,11 +107,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signUp = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
+      // Add 30-second timeout for network issues
+      const signUpPromise = supabase.auth.signUp({
         email,
         password,
       });
-      return { error };
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign up timed out. Please check your internet connection and try again.')), 30000)
+      );
+
+      const result = await Promise.race([signUpPromise, timeoutPromise]) as any;
+      return { error: result.error };
+    } catch (error: any) {
+      return { error: error as AuthError };
     } finally {
       setLoading(false);
     }
@@ -121,11 +130,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = useCallback(async (email: string, password: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Add 30-second timeout for network issues
+      const signInPromise = supabase.auth.signInWithPassword({
         email,
         password,
       });
-      return { error };
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign in timed out. Please check your internet connection and try again.')), 30000)
+      );
+
+      const result = await Promise.race([signInPromise, timeoutPromise]) as any;
+      return { error: result.error };
+    } catch (error: any) {
+      return { error: error as AuthError };
     } finally {
       setLoading(false);
     }
@@ -159,11 +177,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error('No OAuth URL returned');
       }
 
-      // Open browser for OAuth
-      const result = await WebBrowser.openAuthSessionAsync(
+      // Open browser for OAuth with 60-second timeout protection
+      const browserPromise = WebBrowser.openAuthSessionAsync(
         data.url,
         redirectUrl
       );
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign in timed out after 60 seconds. Please try again.')), 60000)
+      );
+
+      const result = await Promise.race([browserPromise, timeoutPromise]) as any;
 
       if (result.type === 'success') {
         // Extract tokens from URL
@@ -185,10 +209,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } else if (result.type === 'cancel') {
         return { error: new Error('Sign in cancelled') };
+      } else if (result.type === 'dismiss') {
+        return { error: new Error('Sign in cancelled') };
       }
 
       return { error: null };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Google sign in error:', error);
       return { error: error as Error };
     } finally {
@@ -219,14 +245,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
         nonce
       );
 
-      // Request Apple credential
-      const credential = await AppleAuthentication.signInAsync({
+      // Request Apple credential with 60-second timeout protection
+      const credentialPromise = AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
         nonce: hashedNonce,
       });
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign in timed out after 60 seconds. Please try again.')), 60000)
+      );
+
+      const credential = await Promise.race([credentialPromise, timeoutPromise]) as any;
 
       if (!credential.identityToken) {
         throw new Error('No identity token returned from Apple');

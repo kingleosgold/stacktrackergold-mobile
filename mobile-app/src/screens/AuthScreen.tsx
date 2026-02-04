@@ -43,11 +43,28 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [showStuckAlert, setShowStuckAlert] = useState(false);
 
   // Check Apple auth availability
   React.useEffect(() => {
     AppleAuthentication.isAvailableAsync().then(setIsAppleAvailable);
   }, []);
+
+  // Safety timeout: Show "stuck" alert after 30 seconds of loading
+  React.useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    
+    if (loading) {
+      setShowStuckAlert(false);
+      timer = setTimeout(() => {
+        setShowStuckAlert(true);
+      }, 30000); // 30 seconds
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [loading]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -359,6 +376,41 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                 We never sell your data to third parties.
               </Text>
             </View>
+
+            {/* Stuck Alert - shown after 30 seconds of loading */}
+            {loading && showStuckAlert && (
+              <View style={{
+                backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                borderWidth: 1,
+                borderColor: 'rgba(251, 191, 36, 0.3)',
+                borderRadius: 12,
+                padding: 16,
+                marginTop: 16,
+              }}>
+                <Text style={{ color: '#fbbf24', fontSize: 15, fontWeight: '600', marginBottom: 8 }}>
+                  Taking longer than expected...
+                </Text>
+                <Text style={{ color: '#a1a1aa', fontSize: 13, marginBottom: 12, lineHeight: 18 }}>
+                  Sign in is taking longer than usual. This could be due to a slow internet connection.
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: '#fbbf24',
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    alignItems: 'center',
+                  }}
+                  onPress={() => {
+                    setShowStuckAlert(false);
+                    setError('Sign in timed out. Please try again.');
+                  }}
+                >
+                  <Text style={{ color: '#18181b', fontSize: 14, fontWeight: '600' }}>
+                    Cancel and Try Again
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
