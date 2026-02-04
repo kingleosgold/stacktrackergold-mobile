@@ -1903,7 +1903,17 @@ function AppContent() {
 
           console.log('🔧 Initializing RevenueCat...');
 
-          const initialized = await initializePurchases(apiKey);
+          // Pass Supabase user ID to tie subscriptions to user account (not device)
+          // If guest mode, pass null (uses anonymous device ID)
+          const appUserId = supabaseUser?.id || null;
+          
+          if (appUserId) {
+            console.log('👤 RevenueCat: Tying subscription to user account:', appUserId.substring(0, 8) + '...');
+          } else if (guestMode) {
+            console.log('🕶️ RevenueCat: Guest mode - using anonymous device ID');
+          }
+
+          const initialized = await initializePurchases(apiKey, appUserId);
           if (initialized) {
             // Additional delay before checking entitlements
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -1923,7 +1933,7 @@ function AppContent() {
     }, 500); // 500ms delay to let UI settle
 
     return () => clearTimeout(timeoutId);
-  }, [isAuthenticated]); // Run when isAuthenticated changes
+  }, [isAuthenticated, supabaseUser?.id, guestMode]); // Re-run when user changes
 
   // Register background fetch for iOS (keeps widget data fresh when app is closed)
   useEffect(() => {
