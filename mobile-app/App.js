@@ -26,7 +26,7 @@ import * as XLSX from 'xlsx';
 import * as Notifications from 'expo-notifications';
 import * as StoreReview from 'expo-store-review';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
-import { initializePurchases, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
+import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import { registerBackgroundFetch, getBackgroundFetchStatus } from './src/utils/backgroundTasks';
 import { LineChart } from 'react-native-chart-kit';
@@ -1855,6 +1855,14 @@ function AppContent() {
 
           const initialized = await initializePurchases(apiKey, appUserId);
           if (initialized) {
+            // Log in to RevenueCat to transfer anonymous purchases to authenticated user
+            if (appUserId) {
+              try {
+                await loginRevenueCat(appUserId);
+              } catch (error) {
+                console.error('RevenueCat login failed (non-fatal):', error?.message || error);
+              }
+            }
             // Additional delay before checking entitlements
             await new Promise(resolve => setTimeout(resolve, 100));
             await checkEntitlements();
