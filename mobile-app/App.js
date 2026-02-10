@@ -733,6 +733,14 @@ function AppContent() {
   const [analyticsRange, setAnalyticsRange] = useState('1M');
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+  // Spot Price History State
+  const [spotHistoryRange, setSpotHistoryRange] = useState('1Y');
+  const [spotHistoryData, setSpotHistoryData] = useState(null);
+  const [spotHistoryLoading, setSpotHistoryLoading] = useState(false);
+  const [spotHistoryError, setSpotHistoryError] = useState(null);
+  const [spotHistoryShowGold, setSpotHistoryShowGold] = useState(true);
+  const [spotHistoryShowSilver, setSpotHistoryShowSilver] = useState(true);
+
   // Share My Stack
   const shareViewRef = useRef(null);
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
@@ -758,6 +766,9 @@ function AppContent() {
   // We fetch once and filter client-side by range
   // primaryData = the chosen data source with best historical coverage
   const snapshotsCacheRef = useRef({ primaryData: null, fetched: false });
+
+  // Spot price history cache - keyed by range to avoid re-fetching
+  const spotHistoryCacheRef = useRef({});
 
   // Form State
   const [form, setForm] = useState({
@@ -2780,6 +2791,45 @@ function AppContent() {
   };
 
   /**
+   * Fetch spot price history for the Spot Price History chart.
+   * Uses cache to avoid re-fetching when switching between ranges.
+   */
+  const fetchSpotPriceHistory = async (range) => {
+    const cached = spotHistoryCacheRef.current[range];
+    const cacheMaxAge = ['1M', '3M'].includes(range) ? 15 * 60 * 1000 : 60 * 60 * 1000;
+
+    if (cached && (Date.now() - cached.fetchedAt) < cacheMaxAge) {
+      setSpotHistoryData({ data: cached.data, range });
+      return;
+    }
+
+    setSpotHistoryLoading(true);
+    setSpotHistoryError(null);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/spot-price-history?range=${range}&maxPoints=60`
+      );
+      const result = await response.json();
+
+      if (result.success && result.data && result.data.length > 0) {
+        spotHistoryCacheRef.current[range] = {
+          data: result.data,
+          fetchedAt: Date.now(),
+        };
+        setSpotHistoryData({ data: result.data, range });
+      } else {
+        setSpotHistoryError('Historical data not available for this range');
+      }
+    } catch (error) {
+      console.log('Spot price history fetch error:', error.message);
+      setSpotHistoryError('Failed to load price history');
+    } finally {
+      setSpotHistoryLoading(false);
+    }
+  };
+
+  /**
    * Fetch portfolio snapshots for analytics charts
    * Fetches ALL data once and caches it - subsequent range changes filter client-side
    * If user has holdings but no snapshots, calculates historical data
@@ -2961,6 +3011,13 @@ function AppContent() {
       applyRangeFilter(analyticsRange);
     }
   }, [analyticsRange]);
+
+  // Fetch spot price history when range changes or tab becomes active
+  useEffect(() => {
+    if (tab === 'analytics' && (hasGold || hasLifetimeAccess)) {
+      fetchSpotPriceHistory(spotHistoryRange);
+    }
+  }, [tab, spotHistoryRange, hasGold, hasLifetimeAccess]);
 
   // ============================================
   // CLOUD BACKUP
@@ -5563,6 +5620,202 @@ function AppContent() {
                               ? 'Loading historical data...'
                               : 'Pull down to refresh'))
                           : 'Need at least 2 data points to show a chart.'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Spot Price History */}
+                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>
+                    Spot Price History
+                  </Text>
+
+                  {/* Metal Toggle Buttons */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+                        backgroundColor: spotHistoryShowGold ? '#D4A843' : (isDarkMode ? '#27272a' : '#f4f4f5'),
+                        borderWidth: 1, borderColor: spotHistoryShowGold ? '#D4A843' : colors.border,
+                      }}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        if (!spotHistoryShowGold || spotHistoryShowSilver) setSpotHistoryShowGold(!spotHistoryShowGold);
+                      }}
+                    >
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#D4A843', marginRight: 6 }} />
+                      <Text style={{ color: spotHistoryShowGold ? '#000' : colors.text, fontWeight: '600', fontSize: scaledFonts.small }}>Gold</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
+                        backgroundColor: spotHistoryShowSilver ? '#C0C0C0' : (isDarkMode ? '#27272a' : '#f4f4f5'),
+                        borderWidth: 1, borderColor: spotHistoryShowSilver ? '#C0C0C0' : colors.border,
+                      }}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        if (spotHistoryShowGold || !spotHistoryShowSilver) setSpotHistoryShowSilver(!spotHistoryShowSilver);
+                      }}
+                    >
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#C0C0C0', marginRight: 6 }} />
+                      <Text style={{ color: spotHistoryShowSilver ? '#000' : colors.text, fontWeight: '600', fontSize: scaledFonts.small }}>Silver</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Time Range Selector */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    {['1M', '3M', '6M', '1Y', '5Y', 'ALL'].map((r) => (
+                      <TouchableOpacity
+                        key={r}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
+                          backgroundColor: spotHistoryRange === r ? colors.gold : (isDarkMode ? '#27272a' : '#f4f4f5'),
+                        }}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSpotHistoryRange(r);
+                        }}
+                      >
+                        <Text style={{
+                          color: spotHistoryRange === r ? '#000' : colors.text,
+                          fontWeight: spotHistoryRange === r ? '600' : '400',
+                          fontSize: scaledFonts.small,
+                        }}>
+                          {r === 'ALL' ? 'All' : r}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Chart */}
+                  {spotHistoryLoading ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                      <ActivityIndicator size="small" color={colors.gold} />
+                      <Text style={{ color: colors.muted, marginTop: 8, fontSize: scaledFonts.normal }}>Loading price history...</Text>
+                    </View>
+                  ) : spotHistoryError ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                      <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>{spotHistoryError}</Text>
+                    </View>
+                  ) : spotHistoryData && spotHistoryData.data.length > 1 ? (() => {
+                    const rawData = spotHistoryData.data;
+                    const showBoth = spotHistoryShowGold && spotHistoryShowSilver;
+                    const usePercent = showBoth;
+
+                    // Build X-axis labels (~7 labels max)
+                    const labelStep = Math.max(1, Math.floor(rawData.length / 6));
+                    const chartLabels = rawData.map((pt, i) => {
+                      if (i % labelStep !== 0 && i !== rawData.length - 1) return '';
+                      const d = new Date(pt.date + 'T12:00:00');
+                      if (spotHistoryRange === 'ALL' || spotHistoryRange === '5Y') {
+                        return `${d.getFullYear()}`;
+                      } else if (spotHistoryRange === '1Y') {
+                        return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
+                      } else {
+                        return `${d.getMonth() + 1}/${d.getDate()}`;
+                      }
+                    });
+
+                    // Build datasets
+                    const datasets = [];
+                    const baseGold = rawData[0].gold;
+                    const baseSilver = rawData[0].silver;
+
+                    if (spotHistoryShowGold) {
+                      datasets.push({
+                        data: rawData.map(pt => usePercent
+                          ? ((pt.gold - baseGold) / baseGold) * 100
+                          : pt.gold
+                        ),
+                        color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
+                        strokeWidth: 2,
+                      });
+                    }
+
+                    if (spotHistoryShowSilver) {
+                      datasets.push({
+                        data: rawData.map(pt => usePercent
+                          ? ((pt.silver - baseSilver) / baseSilver) * 100
+                          : pt.silver
+                        ),
+                        color: (opacity = 1) => `rgba(192, 192, 192, ${opacity})`,
+                        strokeWidth: 2,
+                      });
+                    }
+
+                    const lastGold = rawData[rawData.length - 1].gold;
+                    const lastSilver = rawData[rawData.length - 1].silver;
+                    const goldPctChange = ((lastGold - baseGold) / baseGold) * 100;
+                    const silverPctChange = ((lastSilver - baseSilver) / baseSilver) * 100;
+
+                    return (
+                      <>
+                        <LineChart
+                          key={`spot-${spotHistoryRange}-${spotHistoryShowGold}-${spotHistoryShowSilver}`}
+                          data={{ labels: chartLabels, datasets }}
+                          width={SCREEN_WIDTH - 48}
+                          height={200}
+                          yAxisLabel={usePercent ? '' : '$'}
+                          yAxisSuffix={usePercent ? '%' : ''}
+                          chartConfig={{
+                            backgroundColor: colors.cardBg,
+                            backgroundGradientFrom: colors.cardBg,
+                            backgroundGradientTo: colors.cardBg,
+                            decimalPlaces: 0,
+                            color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
+                            labelColor: () => colors.muted,
+                            style: { borderRadius: 8 },
+                            propsForDots: { r: '0' },
+                            propsForBackgroundLines: {
+                              strokeDasharray: '',
+                              stroke: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                            },
+                            formatYLabel: (value) => {
+                              const num = parseFloat(value);
+                              if (usePercent) return `${num >= 0 ? '+' : ''}${num.toFixed(0)}`;
+                              if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+                              if (num >= 1000) return `${(num / 1000).toFixed(0)}k`;
+                              return num.toFixed(0);
+                            },
+                          }}
+                          fromZero={false}
+                          segments={4}
+                          bezier
+                          style={{ borderRadius: 8 }}
+                        />
+
+                        {/* Current Price Summary */}
+                        <View style={{ marginTop: 12, paddingHorizontal: 4 }}>
+                          {usePercent && (
+                            <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginBottom: 6 }}>
+                              % change from {new Date(rawData[0].date + 'T12:00:00').toLocaleDateString()}
+                            </Text>
+                          )}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            {spotHistoryShowGold && (
+                              <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>
+                                Gold: ${formatCurrency(lastGold)}
+                                {showBoth ? ` (${goldPctChange >= 0 ? '+' : ''}${goldPctChange.toFixed(1)}%)` : ''}
+                              </Text>
+                            )}
+                            {spotHistoryShowSilver && (
+                              <Text style={{ color: '#C0C0C0', fontSize: scaledFonts.small, fontWeight: '600' }}>
+                                Silver: ${formatCurrency(lastSilver)}
+                                {showBoth ? ` (${silverPctChange >= 0 ? '+' : ''}${silverPctChange.toFixed(1)}%)` : ''}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      </>
+                    );
+                  })() : (
+                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                      <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>
+                        Historical data not available for this range
                       </Text>
                     </View>
                   )}

@@ -932,6 +932,164 @@ app.post('/api/historical-spot-batch', async (req, res) => {
 });
 
 // ============================================
+// SPOT PRICE HISTORY (for charting)
+// ============================================
+
+/**
+ * GET /api/spot-price-history
+ * Returns sampled historical gold/silver prices optimized for mobile charts.
+ * Query params:
+ *   range: 1M|3M|6M|1Y|5Y|ALL (default: 1Y)
+ *   maxPoints: max data points to return (default: 60, max: 200)
+ */
+app.get('/api/spot-price-history', async (req, res) => {
+  try {
+    const { range = '1Y', maxPoints = '60' } = req.query;
+    const maxPts = Math.min(parseInt(maxPoints) || 60, 200);
+
+    const now = new Date();
+    let startDate;
+
+    switch (range.toUpperCase()) {
+      case '1M':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        break;
+      case '3M':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        break;
+      case '6M':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+        break;
+      case '1Y':
+        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        break;
+      case '5Y':
+        startDate = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+        break;
+      case 'ALL':
+        startDate = new Date(1915, 0, 1);
+        break;
+      default:
+        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    }
+
+    const startStr = startDate.toISOString().split('T')[0];
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    let allPoints = [];
+
+    if (!historicalData.loaded) {
+      return res.status(503).json({ success: false, error: 'Historical data not loaded yet' });
+    }
+
+    // For short ranges, use daily keys; for long ranges, use first-of-month
+    if (['1M', '3M', '6M'].includes(range.toUpperCase())) {
+      // Daily resolution from historicalData
+      const dates = Object.keys(historicalData.gold)
+        .filter(d => d >= startStr && d <= todayStr)
+        .sort();
+
+      for (const date of dates) {
+        const g = historicalData.gold[date];
+        const s = historicalData.silver[date];
+        if (g && s) {
+          allPoints.push({ date, gold: g, silver: s });
+        }
+      }
+
+      // Overlay price_log for recent data (more accurate than monthly averages)
+      if (isSupabaseAvailable()) {
+        try {
+          const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+          const { data: logData } = await getSupabase()
+            .from('price_log')
+            .select('timestamp, gold_price, silver_price')
+            .gte('timestamp', thirtyDaysAgo + 'T00:00:00')
+            .order('timestamp', { ascending: true });
+
+          if (logData && logData.length > 0) {
+            // Group by date, take first entry per day
+            const dailyPrices = {};
+            for (const row of logData) {
+              const d = row.timestamp.split('T')[0];
+              if (!dailyPrices[d]) {
+                dailyPrices[d] = { gold: parseFloat(row.gold_price), silver: parseFloat(row.silver_price) };
+              }
+            }
+            // Override matching points with more accurate price_log data
+            for (const pt of allPoints) {
+              if (dailyPrices[pt.date]) {
+                pt.gold = dailyPrices[pt.date].gold;
+                pt.silver = dailyPrices[pt.date].silver;
+              }
+            }
+            // Add any price_log dates not already in allPoints
+            for (const [d, prices] of Object.entries(dailyPrices)) {
+              if (d >= startStr && d <= todayStr && !allPoints.find(p => p.date === d)) {
+                allPoints.push({ date: d, gold: prices.gold, silver: prices.silver });
+              }
+            }
+          }
+        } catch (err) {
+          console.log('price_log overlay failed:', err.message);
+        }
+      }
+    } else {
+      // Monthly resolution: use first-of-month keys
+      const monthKeys = Object.keys(historicalData.gold)
+        .filter(d => d.endsWith('-01') && d >= startStr && d <= todayStr)
+        .sort();
+
+      for (const date of monthKeys) {
+        const g = historicalData.gold[date];
+        const s = historicalData.silver[date];
+        if (g && s) {
+          allPoints.push({ date, gold: g, silver: s });
+        }
+      }
+    }
+
+    // Append current spot as final point
+    if (spotPriceCache.prices.gold > 0 && spotPriceCache.prices.silver > 0) {
+      allPoints.push({
+        date: todayStr,
+        gold: spotPriceCache.prices.gold,
+        silver: spotPriceCache.prices.silver,
+      });
+    }
+
+    // Deduplicate by date (keep last entry per date)
+    const byDate = {};
+    for (const pt of allPoints) {
+      byDate[pt.date] = pt;
+    }
+    allPoints = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Sample down to maxPoints using evenly-spaced selection
+    let sampled = allPoints;
+    if (allPoints.length > maxPts) {
+      sampled = [];
+      const step = (allPoints.length - 1) / (maxPts - 1);
+      for (let i = 0; i < maxPts - 1; i++) {
+        sampled.push(allPoints[Math.round(i * step)]);
+      }
+      sampled.push(allPoints[allPoints.length - 1]);
+    }
+
+    res.json({
+      success: true,
+      range: range.toUpperCase(),
+      totalPoints: allPoints.length,
+      sampledPoints: sampled.length,
+      data: sampled,
+    });
+  } catch (error) {
+    console.error('Spot price history error:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch spot price history' });
+  }
+});
+
+// ============================================
 // SCAN USAGE TRACKING (Server-Side with /tmp/ persistence)
 // ============================================
 
