@@ -89,7 +89,7 @@ const path = require('path');
 
 // Import web scraper for live spot prices and historical prices
 const { scrapeGoldSilverPrices, fetchHistoricalPrices, areMarketsClosed, saveFridayClose, getFridayClose } = require(path.join(__dirname, 'scrapers', 'gold-silver-scraper.js'));
-const { checkPriceAlerts, startPriceAlertChecker } = require(path.join(__dirname, 'services', 'priceAlertChecker.js'));
+const { checkPriceAlerts, startPriceAlertChecker, getLastCheckInfo } = require(path.join(__dirname, 'services', 'priceAlertChecker.js'));
 
 // Import historical price services
 const { isSupabaseAvailable, getSupabase } = require('./supabaseClient');
@@ -445,6 +445,57 @@ app.get('/api/debug/api-usage', (req, res) => {
 });
 
 /**
+ * Debug endpoint - push notification system status
+ */
+app.get('/api/debug/push-status', async (req, res) => {
+  try {
+    const { lastCheckTime, lastCheckStats } = getLastCheckInfo();
+    let alertCount = 0;
+    let tokenCount = 0;
+
+    if (isSupabaseAvailable()) {
+      const sb = getSupabase();
+      const { count: ac } = await sb.from('price_alerts').select('*', { count: 'exact', head: true }).eq('enabled', true).eq('triggered', false);
+      const { count: tc } = await sb.from('push_tokens').select('*', { count: 'exact', head: true });
+      alertCount = ac || 0;
+      tokenCount = tc || 0;
+    }
+
+    res.json({
+      envVars: {
+        SUPABASE_URL: !!process.env.SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+      },
+      supabaseAvailable: isSupabaseAvailable(),
+      lastCheckTime,
+      lastCheckStats,
+      activeAlerts: alertCount,
+      registeredTokens: tokenCount,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Debug endpoint - manually trigger one price alert check cycle
+ */
+app.post('/api/debug/trigger-alert-check', async (req, res) => {
+  try {
+    console.log('🔧 Manual alert check triggered via debug endpoint');
+    const stats = await checkPriceAlerts(spotPriceCache.prices);
+    res.json({
+      success: true,
+      pricesUsed: spotPriceCache.prices,
+      stats,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Debug endpoint - check historical data
  */
 app.get('/api/historical-debug', async (req, res) => {
@@ -549,6 +600,8 @@ app.get('/api/historical-spot', async (req, res) => {
         time: time || null,
         gold: spotPriceCache.prices.gold,
         silver: spotPriceCache.prices.silver,
+        platinum: spotPriceCache.prices.platinum || null,
+        palladium: spotPriceCache.prices.palladium || null,
         granularity: 'current',
         source: 'current-spot',
         note: 'Future date requested, using current spot price'
@@ -559,7 +612,7 @@ app.get('/api/historical-spot', async (req, res) => {
     const month = String(requestedDate.getMonth() + 1).padStart(2, '0');
     const monthKey = `${year}-${month}`;
 
-    let goldPrice, silverPrice, granularity, source;
+    let goldPrice, silverPrice, platinumPrice, palladiumPrice, granularity, source;
     let dailyRange = null;
     let note = null;
 
@@ -605,9 +658,11 @@ app.get('/api/historical-spot', async (req, res) => {
         if (loggedPrice) {
           goldPrice = loggedPrice.gold;
           silverPrice = loggedPrice.silver;
+          platinumPrice = loggedPrice.platinum || null;
+          palladiumPrice = loggedPrice.palladium || null;
           granularity = time ? 'minute' : 'logged_daily';
           source = 'price_log';
-          console.log(`   ✅ Found in price_log: Gold $${goldPrice}, Silver $${silverPrice}`);
+          console.log(`   ✅ Found in price_log: Gold $${goldPrice}, Silver $${silverPrice}, Pt $${platinumPrice}, Pd $${palladiumPrice}`);
         }
       }
 
@@ -747,6 +802,16 @@ app.get('/api/historical-spot', async (req, res) => {
     goldPrice = Math.round(goldPrice * 100) / 100;
     silverPrice = Math.round(silverPrice * 100) / 100;
 
+    // For platinum/palladium: use logged data if available, otherwise fall back to current spot
+    if (!platinumPrice && spotPriceCache.prices.platinum) {
+      platinumPrice = spotPriceCache.prices.platinum;
+    }
+    if (!palladiumPrice && spotPriceCache.prices.palladium) {
+      palladiumPrice = spotPriceCache.prices.palladium;
+    }
+    if (platinumPrice) platinumPrice = Math.round(platinumPrice * 100) / 100;
+    if (palladiumPrice) palladiumPrice = Math.round(palladiumPrice * 100) / 100;
+
     // Build response
     const response = {
       success: true,
@@ -754,6 +819,8 @@ app.get('/api/historical-spot', async (req, res) => {
       time: time || null,
       gold: goldPrice,
       silver: silverPrice,
+      platinum: platinumPrice || null,
+      palladium: palladiumPrice || null,
       granularity,
       source
     };
@@ -769,9 +836,9 @@ app.get('/api/historical-spot', async (req, res) => {
     }
 
     // If specific metal requested, also include just that price for backwards compatibility
-    if (metal === 'gold' || metal === 'silver') {
+    if (metal === 'gold' || metal === 'silver' || metal === 'platinum' || metal === 'palladium') {
       response.metal = metal;
-      response.price = metal === 'gold' ? goldPrice : silverPrice;
+      response.price = metal === 'gold' ? goldPrice : metal === 'silver' ? silverPrice : metal === 'platinum' ? platinumPrice : palladiumPrice;
     }
 
     console.log(`   📊 Response: ${granularity} from ${source}`);

@@ -5,21 +5,33 @@
  * and sends push notifications when alerts are triggered
  */
 
-const { createClient } = require('@supabase/supabase-js');
+const { supabase, isSupabaseAvailable } = require('../supabaseClient');
 const { sendPushNotification, isValidExpoPushToken } = require('./expoPushNotifications');
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Startup diagnostics
+console.log('🔔 [AlertChecker] Initializing...');
+console.log('   SUPABASE_URL set:', !!process.env.SUPABASE_URL);
+console.log('   SUPABASE_SERVICE_ROLE_KEY set:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+console.log('   SUPABASE_ANON_KEY set:', !!process.env.SUPABASE_ANON_KEY);
+console.log('   Supabase client available:', isSupabaseAvailable());
 
-let supabase = null;
-
-// Initialize Supabase client (only if configured)
-if (supabaseUrl && supabaseServiceKey) {
-  supabase = createClient(supabaseUrl, supabaseServiceKey);
-  console.log('✅ Price Alert Checker: Supabase client initialized');
+// Run a connection test on startup
+if (isSupabaseAvailable()) {
+  (async () => {
+    try {
+      const { count: alertCount } = await supabase.from('price_alerts').select('*', { count: 'exact', head: true }).eq('enabled', true).eq('triggered', false);
+      const { count: tokenCount } = await supabase.from('push_tokens').select('*', { count: 'exact', head: true });
+      console.log(`   ✅ Supabase connection OK — ${alertCount || 0} active alerts, ${tokenCount || 0} push tokens`);
+    } catch (err) {
+      console.error('   ❌ Supabase connection test failed:', err.message);
+    }
+  })();
 } else {
-  console.log('⚠️  Price Alert Checker: Supabase not configured, alerts disabled');
+  console.log('   ⚠️  Price alert checker disabled (no Supabase client)');
 }
+
+let lastCheckTime = null;
+let lastCheckStats = null;
 
 /**
  * Check all active price alerts and send notifications for triggered alerts
@@ -28,7 +40,7 @@ if (supabaseUrl && supabaseServiceKey) {
  * @returns {Promise<object>} Summary of checks and notifications sent
  */
 async function checkPriceAlerts(currentPrices) {
-  if (!supabase) {
+  if (!isSupabaseAvailable()) {
     console.log('⏭️  Skipping price alert check (Supabase not configured)');
     return { checked: 0, triggered: 0, sent: 0, errors: 0 };
   }
@@ -181,6 +193,9 @@ async function checkPriceAlerts(currentPrices) {
     console.log(`✅ Price alert check complete in ${duration}ms`);
     console.log(`   Stats: ${stats.checked} checked, ${stats.triggered} triggered, ${stats.sent} sent, ${stats.errors} errors`);
 
+    lastCheckTime = new Date().toISOString();
+    lastCheckStats = stats;
+
     return stats;
   } catch (error) {
     console.error('❌ Price alert check failed:', error.message);
@@ -197,7 +212,7 @@ async function checkPriceAlerts(currentPrices) {
  * @param {string} errorMessage - Error message if notification failed
  */
 async function markAlertTriggered(alertId, triggeredPrice, notificationSent, errorMessage) {
-  if (!supabase) return;
+  if (!isSupabaseAvailable()) return;
 
   try {
     const { error } = await supabase
@@ -228,7 +243,7 @@ async function markAlertTriggered(alertId, triggeredPrice, notificationSent, err
  * @param {object} result - Result from sendPushNotification
  */
 async function logNotification(alert, pushToken, actualPrice, result) {
-  if (!supabase) return;
+  if (!isSupabaseAvailable()) return;
 
   try {
     const { error } = await supabase
@@ -269,7 +284,7 @@ function capitalizeFirstLetter(string) {
  * @returns {NodeJS.Timer} Interval handle
  */
 function startPriceAlertChecker(getPricesCallback) {
-  if (!supabase) {
+  if (!isSupabaseAvailable()) {
     console.log('⚠️  Price alert checker not started (Supabase not configured)');
     return null;
   }
@@ -295,7 +310,12 @@ function startPriceAlertChecker(getPricesCallback) {
   return interval;
 }
 
+function getLastCheckInfo() {
+  return { lastCheckTime, lastCheckStats };
+}
+
 module.exports = {
   checkPriceAlerts,
   startPriceAlertChecker,
+  getLastCheckInfo,
 };

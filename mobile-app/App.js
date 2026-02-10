@@ -30,6 +30,7 @@ import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitl
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import { registerBackgroundFetch, getBackgroundFetchStatus } from './src/utils/backgroundTasks';
 import { LineChart } from 'react-native-chart-kit';
+import Svg, { Path, Circle } from 'react-native-svg';
 import GoldPaywall from './src/components/GoldPaywall';
 import Tutorial from './src/components/Tutorial';
 import ViewShot from 'react-native-view-shot';
@@ -433,74 +434,61 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
     percentage: total > 0 ? item.value / total : 0,
   }));
 
-  // Special case: single segment (100%) - just show a solid circle
-  if (nonZeroSegments.length === 1) {
-    const segment = nonZeroSegments[0];
-    return (
-      <View style={{ alignItems: 'center' }}>
-        <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: segment.color, position: 'relative' }}>
-          <View style={{
-            position: 'absolute',
-            width: size * 0.6,
-            height: size * 0.6,
-            borderRadius: size * 0.3,
-            backgroundColor: cardBgColor || '#1a1a2e',
-            top: size * 0.2,
-            left: size * 0.2,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}>
-            <Text style={{ color: textColor || '#fff', fontWeight: '700', fontSize: 14 }}>
-              ${(total / 1000).toFixed(1)}k
-            </Text>
-          </View>
-        </View>
-        <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
-          {allSegments.map((seg, index) => (
-            <View key={index} style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: seg.color, marginRight: 6 }} />
-              <Text style={{ color: mutedColor || '#a1a1aa', fontSize: 12 }}>{seg.label} {(seg.percentage * 100).toFixed(0)}%</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  }
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size / 2;
+  const innerR = size * 0.3; // donut hole
 
-  // Two segments: use the half-rectangle overlay technique
+  // Build SVG arc paths for each segment
+  const polarToCartesian = (centerX, centerY, radius, angleDeg) => {
+    const angleRad = ((angleDeg - 90) * Math.PI) / 180;
+    return {
+      x: centerX + radius * Math.cos(angleRad),
+      y: centerY + radius * Math.sin(angleRad),
+    };
+  };
+
+  const arcPath = (startAngle, endAngle) => {
+    const outerStart = polarToCartesian(cx, cy, outerR, endAngle);
+    const outerEnd = polarToCartesian(cx, cy, outerR, startAngle);
+    const innerStart = polarToCartesian(cx, cy, innerR, endAngle);
+    const innerEnd = polarToCartesian(cx, cy, innerR, startAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    return [
+      `M ${outerStart.x} ${outerStart.y}`,
+      `A ${outerR} ${outerR} 0 ${largeArc} 0 ${outerEnd.x} ${outerEnd.y}`,
+      `L ${innerEnd.x} ${innerEnd.y}`,
+      `A ${innerR} ${innerR} 0 ${largeArc} 1 ${innerStart.x} ${innerStart.y}`,
+      'Z',
+    ].join(' ');
+  };
+
   let currentAngle = 0;
   const segments = nonZeroSegments.map((item) => {
-    const percentage = item.value / total;
-    const angle = percentage * 360;
+    const sweep = (item.value / total) * 360;
     const startAngle = currentAngle;
-    currentAngle += angle;
-    return { ...item, percentage, startAngle, angle };
+    currentAngle += sweep;
+    return { ...item, startAngle, sweep };
   });
 
   return (
     <View style={{ alignItems: 'center' }}>
-      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', position: 'relative' }}>
-        {segments.map((segment, index) => (
-          <View
-            key={index}
-            style={{
-              position: 'absolute',
-              width: size,
-              height: size,
-              transform: [{ rotate: `${segment.startAngle}deg` }],
-            }}
-          >
-            <View style={{ width: size / 2, height: size, backgroundColor: segment.color }} />
-          </View>
-        ))}
+      <View style={{ width: size, height: size }}>
+        <Svg width={size} height={size}>
+          {segments.length === 1 ? (
+            <>
+              <Circle cx={cx} cy={cy} r={outerR} fill={segments[0].color} />
+              <Circle cx={cx} cy={cy} r={innerR} fill={cardBgColor || '#1a1a2e'} />
+            </>
+          ) : (
+            segments.map((seg, i) => (
+              <Path key={i} d={arcPath(seg.startAngle, seg.startAngle + seg.sweep)} fill={seg.color} />
+            ))
+          )}
+        </Svg>
         <View style={{
           position: 'absolute',
-          width: size * 0.6,
-          height: size * 0.6,
-          borderRadius: size * 0.3,
-          backgroundColor: cardBgColor || '#1a1a2e',
-          top: size * 0.2,
-          left: size * 0.2,
+          top: 0, left: 0, right: 0, bottom: 0,
           justifyContent: 'center',
           alignItems: 'center',
         }}>
@@ -509,11 +497,11 @@ const PieChart = ({ data, size = 150, cardBgColor, textColor, mutedColor }) => {
           </Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
-        {allSegments.map((segment, index) => (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 12, gap: 16 }}>
+        {allSegments.map((seg, index) => (
           <View key={index} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: segment.color, marginRight: 6 }} />
-            <Text style={{ color: mutedColor || '#a1a1aa', fontSize: 12 }}>{segment.label} {(segment.percentage * 100).toFixed(0)}%</Text>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: seg.color, marginRight: 6 }} />
+            <Text style={{ color: mutedColor || '#a1a1aa', fontSize: 12 }}>{seg.label} {(seg.percentage * 100).toFixed(0)}%</Text>
           </View>
         ))}
       </View>
@@ -533,6 +521,202 @@ const ProgressBar = ({ value, max, color, label }) => {
         <View style={{ height: 8, width: `${percentage}%`, backgroundColor: color, borderRadius: 4 }} />
       </View>
     </View>
+  );
+};
+
+// ============================================
+// WHEEL PICKER (scroll-based picker column)
+// ============================================
+const WHEEL_ITEM_HEIGHT = 44;
+const WHEEL_VISIBLE_ITEMS = 5;
+
+const WheelPicker = ({ items, selectedIndex, onSelect, width = 80 }) => {
+  const flatListRef = useRef(null);
+  const isScrolling = useRef(false);
+
+  // Pad items with empty slots for centering
+  const padding = Math.floor(WHEEL_VISIBLE_ITEMS / 2);
+  const paddedItems = [
+    ...Array(padding).fill({ label: '', value: null }),
+    ...items,
+    ...Array(padding).fill({ label: '', value: null }),
+  ];
+
+  useEffect(() => {
+    if (flatListRef.current && !isScrolling.current) {
+      flatListRef.current.scrollToOffset({
+        offset: selectedIndex * WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    }
+  }, [selectedIndex]);
+
+  return (
+    <View style={{ height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS, width, overflow: 'hidden' }}>
+      <FlatList
+        ref={flatListRef}
+        data={paddedItems}
+        keyExtractor={(_, i) => i.toString()}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={WHEEL_ITEM_HEIGHT}
+        decelerationRate="fast"
+        bounces={false}
+        getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
+        onScrollBeginDrag={() => { isScrolling.current = true; }}
+        onMomentumScrollEnd={(e) => {
+          isScrolling.current = false;
+          const idx = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT);
+          if (idx >= 0 && idx < items.length && idx !== selectedIndex) {
+            onSelect(idx);
+          }
+        }}
+        renderItem={({ item, index }) => {
+          const realIndex = index - padding;
+          const isSelected = realIndex === selectedIndex;
+          return (
+            <View style={{ height: WHEEL_ITEM_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{
+                fontSize: isSelected ? 20 : 16,
+                fontWeight: isSelected ? '700' : '400',
+                color: item.value === null ? 'transparent' : (isSelected ? '#fff' : 'rgba(255,255,255,0.35)'),
+              }}>
+                {item.label}
+              </Text>
+            </View>
+          );
+        }}
+      />
+      {/* Center highlight */}
+      <View pointerEvents="none" style={{
+        position: 'absolute',
+        top: WHEEL_ITEM_HEIGHT * padding,
+        left: 0, right: 0,
+        height: WHEEL_ITEM_HEIGHT,
+        borderTopWidth: 1, borderBottomWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.4)',
+        backgroundColor: 'rgba(251, 191, 36, 0.08)',
+      }} />
+    </View>
+  );
+};
+
+const DatePickerModal = ({ visible, onClose, onConfirm, initialDate }) => {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 50 }, (_, i) => currentYear - 49 + i);
+
+  // Parse initial date
+  const parsed = initialDate ? new Date(initialDate + 'T00:00:00') : new Date();
+  const [monthIdx, setMonthIdx] = useState(parsed.getMonth());
+  const [dayIdx, setDayIdx] = useState(parsed.getDate() - 1);
+  const [yearIdx, setYearIdx] = useState(years.indexOf(parsed.getFullYear()) >= 0 ? years.indexOf(parsed.getFullYear()) : years.length - 1);
+
+  // Reset when opened with new initial date
+  useEffect(() => {
+    if (visible) {
+      const p = initialDate ? new Date(initialDate + 'T00:00:00') : new Date();
+      setMonthIdx(p.getMonth());
+      setDayIdx(p.getDate() - 1);
+      setYearIdx(years.indexOf(p.getFullYear()) >= 0 ? years.indexOf(p.getFullYear()) : years.length - 1);
+    }
+  }, [visible]);
+
+  const daysInMonth = new Date(years[yearIdx], monthIdx + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  // Clamp day if month/year changed
+  const clampedDayIdx = Math.min(dayIdx, daysInMonth - 1);
+
+  const monthItems = months.map((m, i) => ({ label: m, value: i }));
+  const dayItems = days.map(d => ({ label: String(d), value: d }));
+  const yearItems = years.map(y => ({ label: String(y), value: y }));
+
+  const handleConfirm = () => {
+    const y = years[yearIdx];
+    const m = String(monthIdx + 1).padStart(2, '0');
+    const d = String(clampedDayIdx + 1).padStart(2, '0');
+    onConfirm(`${y}-${m}-${d}`);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <TouchableWithoutFeedback>
+            <View style={{ backgroundColor: '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
+                <TouchableOpacity onPress={onClose}>
+                  <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Select Date</Text>
+                <TouchableOpacity onPress={handleConfirm}>
+                  <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '600' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', paddingVertical: 8 }}>
+                <WheelPicker items={monthItems} selectedIndex={monthIdx} onSelect={setMonthIdx} width={80} />
+                <WheelPicker items={dayItems} selectedIndex={clampedDayIdx} onSelect={setDayIdx} width={60} />
+                <WheelPicker items={yearItems} selectedIndex={yearIdx} onSelect={setYearIdx} width={80} />
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+};
+
+const TimePickerModal = ({ visible, onClose, onConfirm, initialTime }) => {
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = Array.from({ length: 60 }, (_, i) => i);
+
+  // Parse initial time
+  const parts = (initialTime || '').split(':');
+  const [hourIdx, setHourIdx] = useState(parts.length === 2 ? parseInt(parts[0]) || 0 : 12);
+  const [minuteIdx, setMinuteIdx] = useState(parts.length === 2 ? parseInt(parts[1]) || 0 : 0);
+
+  useEffect(() => {
+    if (visible) {
+      const p = (initialTime || '').split(':');
+      setHourIdx(p.length === 2 ? parseInt(p[0]) || 0 : 12);
+      setMinuteIdx(p.length === 2 ? parseInt(p[1]) || 0 : 0);
+    }
+  }, [visible]);
+
+  const hourItems = hours.map(h => ({ label: String(h).padStart(2, '0'), value: h }));
+  const minuteItems = minutes.map(m => ({ label: String(m).padStart(2, '0'), value: m }));
+
+  const handleConfirm = () => {
+    const h = String(hourIdx).padStart(2, '0');
+    const m = String(minuteIdx).padStart(2, '0');
+    onConfirm(`${h}:${m}`);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <TouchableWithoutFeedback>
+            <View style={{ backgroundColor: '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
+                <TouchableOpacity onPress={onClose}>
+                  <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Select Time</Text>
+                <TouchableOpacity onPress={handleConfirm}>
+                  <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '600' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8 }}>
+                <WheelPicker items={hourItems} selectedIndex={hourIdx} onSelect={setHourIdx} width={70} />
+                <Text style={{ color: '#fff', fontSize: 24, fontWeight: '700', marginHorizontal: 4 }}>:</Text>
+                <WheelPicker items={minuteItems} selectedIndex={minuteIdx} onSelect={setMinuteIdx} width={70} />
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
   );
 };
 
@@ -680,6 +864,8 @@ function AppContent() {
   const [detailMetal, setDetailMetal] = useState(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showBenefitsScreen, setShowBenefitsScreen] = useState(false);
 
   // Sort State
@@ -1847,10 +2033,15 @@ function AppContent() {
         });
 
         const result = await response.json();
-        console.log('✅ [Notifications] Push token registered with backend:', result);
+        if (!response.ok) {
+          console.error('❌ [Notifications] Backend rejected push token:', result);
+          console.warn('Push notifications may not work for price alerts');
+        } else {
+          console.log('✅ [Notifications] Push token registered with backend:', result);
+        }
       } catch (backendError) {
         console.error('❌ [Notifications] Failed to register token with backend:', backendError);
-        // Don't fail the whole registration if backend sync fails
+        console.warn('Push notifications for price alerts may not work — token sync failed');
       }
 
       return token;
@@ -3477,9 +3668,11 @@ function AppContent() {
           granularity: data.granularity,
           dailyRange: data.dailyRange ? data.dailyRange[metalKey] : null,
           note: data.note,
-          // Also return full response for both metals if needed
+          // Also return full response for all metals if needed
           gold: data.gold,
-          silver: data.silver
+          silver: data.silver,
+          platinum: data.platinum,
+          palladium: data.palladium,
         };
       }
     } catch (error) {
@@ -4391,8 +4584,12 @@ function AppContent() {
   const savePurchase = () => {
     Keyboard.dismiss();
 
-    if (!form.productName || !form.unitPrice) {
-      Alert.alert('Required Fields', 'Please enter product name and unit price.');
+    const missing = [];
+    if (!form.productName) missing.push('Product Name');
+    if (!form.ozt || parseFloat(form.ozt) <= 0) missing.push('OZT per unit');
+    if (!form.unitPrice || parseFloat(form.unitPrice) <= 0) missing.push('Unit Price');
+    if (missing.length > 0) {
+      Alert.alert('Required Fields', `Please enter: ${missing.join(', ')}`);
       return;
     }
 
@@ -7200,8 +7397,14 @@ function AppContent() {
                   <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
                   <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 2 }}><FloatingInput label="Date (YYYY-MM-DD)" value={form.datePurchased} onChangeText={handleDateChange} placeholder="2025-12-25" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Time (HH:MM)" value={form.timePurchased} onChangeText={handleTimeChange} placeholder="14:30" keyboardType="numbers-and-punctuation" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <TouchableOpacity style={{ flex: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border }} onPress={() => { Keyboard.dismiss(); setShowDatePicker(true); }}>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginBottom: 2 }}>Date</Text>
+                      <Text style={{ color: form.datePurchased ? colors.text : colors.muted, fontSize: scaledFonts.normal }}>{form.datePurchased || 'Tap to select'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={{ flex: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border }} onPress={() => { Keyboard.dismiss(); setShowTimePicker(true); }}>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginBottom: 2 }}>Time</Text>
+                      <Text style={{ color: form.timePurchased ? colors.text : colors.muted, fontSize: scaledFonts.normal }}>{form.timePurchased || 'Optional'}</Text>
+                    </TouchableOpacity>
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -7338,6 +7541,26 @@ function AppContent() {
             </KeyboardAvoidingView>
           </View>
       </Modal>
+
+      {/* DATE/TIME PICKER MODALS */}
+      <DatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        initialDate={form.datePurchased}
+        onConfirm={(date) => {
+          setShowDatePicker(false);
+          handleDateChange(date);
+        }}
+      />
+      <TimePickerModal
+        visible={showTimePicker}
+        onClose={() => setShowTimePicker(false)}
+        initialTime={form.timePurchased}
+        onConfirm={(time) => {
+          setShowTimePicker(false);
+          handleTimeChange(time);
+        }}
+      />
 
       {/* SPECULATION MODAL */}
       <ModalWrapper
