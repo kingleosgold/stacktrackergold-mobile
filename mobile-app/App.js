@@ -5163,12 +5163,13 @@ function AppContent() {
           <>
             {/* Segmented Control Filter */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{
+              <View style={{
                 flex: 1,
+                flexDirection: 'row',
                 backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                 borderRadius: 10,
                 padding: 3,
-              }} contentContainerStyle={{ flexDirection: 'row' }}>
+              }}>
                 {[
                   { key: 'silver', label: 'Silver', color: colors.silver, bgActive: isDarkMode ? 'rgba(156,163,175,0.25)' : '#fff' },
                   { key: 'gold', label: 'Gold', color: colors.gold, bgActive: isDarkMode ? 'rgba(251,191,36,0.2)' : '#fff' },
@@ -5180,9 +5181,7 @@ function AppContent() {
                     key={m.key}
                     style={{
                       flex: 1,
-                      minWidth: 50,
                       paddingVertical: 8,
-                      paddingHorizontal: 8,
                       borderRadius: 8,
                       alignItems: 'center',
                       backgroundColor: metalTab === m.key ? m.bgActive : 'transparent',
@@ -5195,7 +5194,7 @@ function AppContent() {
                     <Text style={{ color: metalTab === m.key ? m.color : colors.muted, fontWeight: '600', fontSize: 13 }}>{m.label}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
               <TouchableOpacity
                 style={{
                   width: 36,
@@ -5959,17 +5958,19 @@ function AppContent() {
                       });
                     }
 
-                    const basePlatinum = rawData[0].platinum;
-                    const basePalladium = rawData[0].palladium;
-                    const hasPlatinumData = basePlatinum > 0;
-                    const hasPalladiumData = basePalladium > 0;
+                    const lastPt = rawData[rawData.length - 1].platinum;
+                    const hasPlatinumData = lastPt > 0;
+                    const basePlatinum = hasPlatinumData ? rawData[0].platinum || lastPt : 0;
+                    const lastPdVal = rawData[rawData.length - 1].palladium;
+                    const hasPalladiumData = lastPdVal > 0;
+                    const basePalladium = hasPalladiumData ? rawData[0].palladium || lastPdVal : 0;
 
                     if (spotHistoryShowPlatinum && hasPlatinumData) {
                       datasets.push({
-                        data: rawData.map(pt => usePercent
-                          ? ((pt.platinum - basePlatinum) / basePlatinum) * 100
-                          : pt.platinum
-                        ),
+                        data: rawData.map(pt => {
+                          const v = pt.platinum || basePlatinum;
+                          return usePercent ? ((v - basePlatinum) / basePlatinum) * 100 : v;
+                        }),
                         color: (opacity = 1) => `rgba(123, 179, 212, ${opacity})`,
                         strokeWidth: 2,
                       });
@@ -5977,10 +5978,10 @@ function AppContent() {
 
                     if (spotHistoryShowPalladium && hasPalladiumData) {
                       datasets.push({
-                        data: rawData.map(pt => usePercent
-                          ? ((pt.palladium - basePalladium) / basePalladium) * 100
-                          : pt.palladium
-                        ),
+                        data: rawData.map(pt => {
+                          const v = pt.palladium || basePalladium;
+                          return usePercent ? ((v - basePalladium) / basePalladium) * 100 : v;
+                        }),
                         color: (opacity = 1) => `rgba(107, 191, 138, ${opacity})`,
                         strokeWidth: 2,
                       });

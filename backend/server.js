@@ -1003,7 +1003,7 @@ app.get('/api/spot-price-history', async (req, res) => {
           const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
           const { data: logData } = await getSupabase()
             .from('price_log')
-            .select('timestamp, gold_price, silver_price')
+            .select('timestamp, gold_price, silver_price, platinum_price, palladium_price')
             .gte('timestamp', thirtyDaysAgo + 'T00:00:00')
             .order('timestamp', { ascending: true });
 
@@ -1013,7 +1013,12 @@ app.get('/api/spot-price-history', async (req, res) => {
             for (const row of logData) {
               const d = row.timestamp.split('T')[0];
               if (!dailyPrices[d]) {
-                dailyPrices[d] = { gold: parseFloat(row.gold_price), silver: parseFloat(row.silver_price) };
+                dailyPrices[d] = {
+                  gold: parseFloat(row.gold_price),
+                  silver: parseFloat(row.silver_price),
+                  platinum: row.platinum_price ? parseFloat(row.platinum_price) : 0,
+                  palladium: row.palladium_price ? parseFloat(row.palladium_price) : 0,
+                };
               }
             }
             // Override matching points with more accurate price_log data
@@ -1021,12 +1026,14 @@ app.get('/api/spot-price-history', async (req, res) => {
               if (dailyPrices[pt.date]) {
                 pt.gold = dailyPrices[pt.date].gold;
                 pt.silver = dailyPrices[pt.date].silver;
+                pt.platinum = dailyPrices[pt.date].platinum;
+                pt.palladium = dailyPrices[pt.date].palladium;
               }
             }
             // Add any price_log dates not already in allPoints
             for (const [d, prices] of Object.entries(dailyPrices)) {
               if (d >= startStr && d <= todayStr && !allPoints.find(p => p.date === d)) {
-                allPoints.push({ date: d, gold: prices.gold, silver: prices.silver });
+                allPoints.push({ date: d, gold: prices.gold, silver: prices.silver, platinum: prices.platinum, palladium: prices.palladium });
               }
             }
           }
@@ -1055,6 +1062,8 @@ app.get('/api/spot-price-history', async (req, res) => {
         date: todayStr,
         gold: spotPriceCache.prices.gold,
         silver: spotPriceCache.prices.silver,
+        platinum: spotPriceCache.prices.platinum || 0,
+        palladium: spotPriceCache.prices.palladium || 0,
       });
     }
 
@@ -1064,6 +1073,24 @@ app.get('/api/spot-price-history', async (req, res) => {
       byDate[pt.date] = pt;
     }
     allPoints = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Fill platinum/palladium gaps: forward-fill then backward-fill
+    // Historical JSON only has gold/silver; price_log has pt/pd for recent ~30 days
+    let lastPt = 0, lastPd = 0;
+    for (const pt of allPoints) {
+      if (pt.platinum > 0) lastPt = pt.platinum;
+      else pt.platinum = lastPt;
+      if (pt.palladium > 0) lastPd = pt.palladium;
+      else pt.palladium = lastPd;
+    }
+    // Backward-fill for points before first known pt/pd value
+    lastPt = 0; lastPd = 0;
+    for (let i = allPoints.length - 1; i >= 0; i--) {
+      if (allPoints[i].platinum > 0) lastPt = allPoints[i].platinum;
+      else allPoints[i].platinum = lastPt;
+      if (allPoints[i].palladium > 0) lastPd = allPoints[i].palladium;
+      else allPoints[i].palladium = lastPd;
+    }
 
     // Sample down to maxPoints using evenly-spaced selection
     let sampled = allPoints;
