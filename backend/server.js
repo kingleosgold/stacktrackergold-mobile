@@ -3562,7 +3562,7 @@ app.get('/api/sync-subscription', async (req, res) => {
 
     // Query RevenueCat REST API for this user's subscription status
     const rcResponse = await axios.get(
-      `https://api.revenuecat.com/v1/subscribers/${userId}`,
+      `https://api.revenuecat.com/v2/projects/proj1fb48f08/subscribers/${userId}`,
       {
         headers: {
           'Authorization': `Bearer ${REVENUECAT_API_KEY}`,
