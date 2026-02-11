@@ -3252,22 +3252,65 @@ async function runIntelligenceGeneration() {
     }
   }
 
-  // ── STEP 2: VAULT DATA ──
+  // ── STEP 2: VAULT DATA (2 targeted searches + open interest) ──
 
   console.log(`\n🏦 [Vault] ===== STEP 2: COMEX VAULT DATA =====`);
 
-  const VAULT_PROMPT = `Search for today's (${today}) COMEX precious metals warehouse inventory report. Find the latest registered and eligible inventory numbers for gold, silver, platinum, and palladium. Also find the current open interest for the active month contract for each metal. Return a JSON object with keys: gold, silver, platinum, palladium. Each must have: registered_oz (number), eligible_oz (number), registered_change_oz (number, daily change), eligible_change_oz (number, daily change), open_interest_oz (number, active month). Use the most recent data available. Return ONLY JSON, no markdown.`;
+  const VAULT_SYSTEM = `You are a COMEX warehouse data analyst. Search for the most recent COMEX vault / warehouse inventory numbers posted online. Reddit communities like r/WallstreetSilver and r/SilverDegenClub post these daily, as do sites like Kitco, SilverSeek, and GoldSeek. Return precise numbers in troy ounces. Only return data if you find actual reported numbers — do not estimate or fabricate. Return ONLY valid JSON, no markdown.`;
 
-  const VAULT_SYSTEM = `You are a COMEX warehouse data analyst. Search for the most recent CME Group / COMEX precious metals warehouse stock reports. Return precise numbers in troy ounces. If exact daily data is not available for a metal, use the most recent report numbers. Return ONLY valid JSON.`;
+  // Search 1: Silver & Gold (most commonly reported)
+  const VAULT_AG_AU_PROMPT = `COMEX silver gold registered eligible inventory ounces today ${today} site:reddit.com OR site:kitco.com OR site:silverseek.com OR site:goldseek.com`;
+  const VAULT_AG_AU_SYSTEM = `${VAULT_SYSTEM} Search for the latest COMEX warehouse inventory numbers for silver and gold. Look for posts or articles from the last 48 hours that report registered, eligible, and total inventory in troy ounces, plus daily changes. Return JSON: { "gold": { "registered_oz": number, "eligible_oz": number, "registered_change_oz": number, "eligible_change_oz": number }, "silver": { "registered_oz": number, "eligible_oz": number, "registered_change_oz": number, "eligible_change_oz": number } }. Use real numbers from actual reports. If you cannot find real numbers for a metal, omit that key entirely. Return ONLY JSON.`;
 
-  apiCalls++;
-  console.log(`🏦 [Vault] Searching for COMEX inventory...`);
-  const vaultResult = await geminiSearch(VAULT_PROMPT, VAULT_SYSTEM);
+  // Search 2: Platinum & Palladium
+  const VAULT_PT_PD_PROMPT = `COMEX NYMEX platinum palladium registered eligible warehouse inventory ounces ${today}`;
+  const VAULT_PT_PD_SYSTEM = `${VAULT_SYSTEM} Search for the latest COMEX/NYMEX warehouse inventory numbers for platinum and palladium. Return JSON: { "platinum": { "registered_oz": number, "eligible_oz": number, "registered_change_oz": number, "eligible_change_oz": number }, "palladium": { "registered_oz": number, "eligible_oz": number, "registered_change_oz": number, "eligible_change_oz": number } }. Use real numbers from actual reports. If you cannot find real numbers for a metal, omit that key entirely. Return ONLY JSON.`;
+
+  // Search 3: Open interest (separate, often on different sites)
+  const VAULT_OI_PROMPT = `COMEX gold silver platinum palladium open interest contracts today ${today} site:cmegroup.com OR site:barchart.com OR site:kitco.com`;
+  const VAULT_OI_SYSTEM = `Search for the latest COMEX open interest for gold, silver, platinum, and palladium futures (active front month). Convert contracts to troy ounces (gold=100oz/contract, silver=5000oz/contract, platinum=50oz/contract, palladium=100oz/contract). Return JSON: { "gold": { "open_interest_oz": number }, "silver": { "open_interest_oz": number }, "platinum": { "open_interest_oz": number }, "palladium": { "open_interest_oz": number } }. Use real numbers. Omit metals you cannot find. Return ONLY JSON.`;
+
+  // Run vault searches
+  apiCalls += 3;
+  console.log(`🏦 [Vault] Search 1/3: Silver & Gold inventory...`);
+  const agAuResult = await geminiSearch(VAULT_AG_AU_PROMPT, VAULT_AG_AU_SYSTEM);
+  await new Promise(r => setTimeout(r, 1000));
+
+  console.log(`🏦 [Vault] Search 2/3: Platinum & Palladium inventory...`);
+  const ptPdResult = await geminiSearch(VAULT_PT_PD_PROMPT, VAULT_PT_PD_SYSTEM);
+  await new Promise(r => setTimeout(r, 1000));
+
+  console.log(`🏦 [Vault] Search 3/3: Open interest...`);
+  const oiResult = await geminiSearch(VAULT_OI_PROMPT, VAULT_OI_SYSTEM);
+
+  // Merge results
+  const vaultMerged = {};
+  for (const result of [agAuResult, ptPdResult]) {
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+      for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
+        if (result[metal]) vaultMerged[metal] = { ...(vaultMerged[metal] || {}), ...result[metal] };
+      }
+    }
+  }
+  // Merge open interest
+  if (oiResult && typeof oiResult === 'object' && !Array.isArray(oiResult)) {
+    for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
+      if (oiResult[metal]?.open_interest_oz) {
+        vaultMerged[metal] = { ...(vaultMerged[metal] || {}), open_interest_oz: oiResult[metal].open_interest_oz };
+      }
+    }
+  }
 
   let vaultInserted = 0;
+  const metalsWithData = Object.keys(vaultMerged).filter(m => {
+    const d = vaultMerged[m];
+    return d && (parseFloat(d.registered_oz) > 0 || parseFloat(d.eligible_oz) > 0);
+  });
 
-  if (vaultResult && typeof vaultResult === 'object' && !Array.isArray(vaultResult)) {
-    // Delete existing vault data for today
+  console.log(`🏦 [Vault] Found data for: ${metalsWithData.length > 0 ? metalsWithData.join(', ') : 'none'}`);
+
+  if (metalsWithData.length > 0) {
+    // Only clear today's data for metals we have fresh data for
     try {
       await sb.from('vault_data').delete().eq('date', today).eq('source', 'comex');
       console.log(`🏦 [Vault] Cleared existing data for ${today}`);
@@ -3275,22 +3318,24 @@ async function runIntelligenceGeneration() {
       console.log(`🏦 [Vault] Clear failed: ${err.message}`);
     }
 
-    for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
-      const md = vaultResult[metal];
-      if (!md) {
-        console.log(`     ${metal}: No data`);
-        continue;
-      }
-
+    for (const metal of metalsWithData) {
+      const md = vaultMerged[metal];
       try {
         const registered = parseFloat(md.registered_oz) || 0;
         const eligible = parseFloat(md.eligible_oz) || 0;
         const regChange = parseFloat(md.registered_change_oz) || 0;
         const eligChange = parseFloat(md.eligible_change_oz) || 0;
         const openInterest = parseFloat(md.open_interest_oz) || 0;
+
+        // Skip metals with no real inventory data (avoid inserting zeros)
+        if (registered === 0 && eligible === 0) {
+          console.log(`     ${metal}: Skipped (zero inventory — likely bad data)`);
+          continue;
+        }
+
         const combined = registered + eligible;
         const combinedChange = regChange + eligChange;
-        const oversubscribed = registered > 0 ? Math.round((openInterest / registered) * 100) / 100 : 0;
+        const oversubscribed = registered > 0 && openInterest > 0 ? Math.round((openInterest / registered) * 100) / 100 : 0;
 
         const row = {
           date: today,
@@ -3308,15 +3353,14 @@ async function runIntelligenceGeneration() {
 
         await sb.from('vault_data').insert(row);
         vaultInserted++;
-        console.log(`     ✅ ${metal}: registered=${registered.toLocaleString()} oz, ratio=${oversubscribed}x`);
+        console.log(`     ✅ ${metal}: registered=${registered.toLocaleString()} oz${openInterest > 0 ? `, ratio=${oversubscribed}x` : ', no OI'}`);
       } catch (err) {
         console.log(`     ❌ ${metal}: ${err.message}`);
         errors.push(`Vault ${metal}: ${err.message}`);
       }
     }
   } else {
-    console.log(`🏦 [Vault] No usable data returned`);
-    errors.push('Vault search returned no data');
+    console.log(`🏦 [Vault] ⚠️ No vault data found — previous day's data remains`);
   }
 
   // ── SUMMARY ──
