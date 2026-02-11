@@ -13,6 +13,7 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const sizeOf = require('image-size');
 const axios = require('axios');
+const cron = require('node-cron');
 
 const app = express();
 
@@ -3084,6 +3085,277 @@ app.post('/api/vault-data/migrate', async (req, res) => {
 });
 
 // ============================================
+// INTELLIGENCE GENERATION (Gemini + Google Search)
+// ============================================
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+const MAX_BRIEFS_PER_DAY = 8;
+
+/**
+ * Call Gemini with Google Search grounding. Returns parsed JSON or null.
+ */
+async function geminiSearch(prompt, systemPrompt, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const body = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.3 },
+      };
+      if (systemPrompt) {
+        body.system_instruction = { parts: [{ text: systemPrompt }] };
+      }
+
+      const resp = await axios.post(GEMINI_URL, body, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 30000,
+      });
+
+      const text = resp.data?.candidates?.[0]?.content?.parts
+        ?.filter(p => p.text)
+        ?.map(p => p.text)
+        ?.join('') || '';
+
+      if (!text) {
+        console.log(`     Attempt ${attempt}: Empty Gemini response`);
+        continue;
+      }
+
+      // Strip markdown fences and parse JSON
+      const cleaned = text.replace(/^```(?:json)?\s*\n?/g, '').replace(/\n?```\s*$/g, '').trim();
+      return JSON.parse(cleaned);
+    } catch (err) {
+      console.log(`     Attempt ${attempt} failed: ${err.message}`);
+      if (attempt < retries) {
+        const wait = Math.pow(2, attempt) * 1000;
+        console.log(`     Retrying in ${wait / 1000}s...`);
+        await new Promise(r => setTimeout(r, wait));
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Title similarity check (simple Dice coefficient on bigrams).
+ */
+function titleSimilarity(a, b) {
+  const bigrams = (s) => {
+    const lower = s.toLowerCase();
+    const set = new Set();
+    for (let i = 0; i < lower.length - 1; i++) set.add(lower.slice(i, i + 2));
+    return set;
+  };
+  const setA = bigrams(a);
+  const setB = bigrams(b);
+  let intersection = 0;
+  for (const bg of setA) { if (setB.has(bg)) intersection++; }
+  return setA.size + setB.size > 0 ? (2 * intersection) / (setA.size + setB.size) : 0;
+}
+
+/**
+ * Run the full intelligence generation pipeline.
+ * Returns { briefsInserted, vaultInserted, apiCalls, errors }.
+ */
+async function runIntelligenceGeneration() {
+  const startTime = Date.now();
+  const today = new Date().toISOString().split('T')[0];
+  let apiCalls = 0;
+  const errors = [];
+
+  if (!GEMINI_API_KEY) {
+    return { briefsInserted: 0, vaultInserted: 0, apiCalls: 0, errors: ['GEMINI_API_KEY not configured'] };
+  }
+  if (!isSupabaseAvailable()) {
+    return { briefsInserted: 0, vaultInserted: 0, apiCalls: 0, errors: ['Supabase not configured'] };
+  }
+
+  const sb = getSupabase();
+
+  // ── STEP 1: INTELLIGENCE BRIEFS ──
+
+  console.log(`\n🧠 [Intelligence] ===== STEP 1: BRIEFS for ${today} =====`);
+
+  const SEARCHES = [
+    `gold silver precious metals market news today ${today}`,
+    `federal reserve interest rate policy gold impact ${today}`,
+    `COMEX silver gold delivery supply shortage ${today}`,
+    `central bank gold buying reserves ${today}`,
+    `silver industrial demand solar panels EV ${today}`,
+    `platinum palladium automotive catalyst supply ${today}`,
+  ];
+
+  const BRIEFS_SYSTEM = `You are a precious metals market analyst. Search for the most important news from the last 24 hours about the given topic. Return a JSON array of 1-3 news items. Each item must have: title (string), summary (2-3 sentences), category (one of: market_brief, breaking_news, policy, supply_demand, analysis), source (publication name), source_url (if findable), relevance_score (1-100, how important this is for physical precious metals stackers). Only include genuinely newsworthy items. If nothing significant happened, return an empty array. Return ONLY the JSON array, no markdown.`;
+
+  const allBriefs = [];
+
+  for (let i = 0; i < SEARCHES.length; i++) {
+    console.log(`🧠 [Intelligence] Search ${i + 1}/${SEARCHES.length}: ${SEARCHES[i].slice(0, 60)}...`);
+    apiCalls++;
+    const result = await geminiSearch(SEARCHES[i], BRIEFS_SYSTEM);
+
+    if (Array.isArray(result)) {
+      console.log(`     Found ${result.length} briefs`);
+      allBriefs.push(...result);
+    } else {
+      console.log(`     No results or bad response`);
+    }
+
+    // Small delay between searches
+    if (i < SEARCHES.length - 1) await new Promise(r => setTimeout(r, 1000));
+  }
+
+  console.log(`🧠 [Intelligence] Raw briefs: ${allBriefs.length}`);
+
+  // Deduplicate by title similarity
+  const deduped = [];
+  for (const brief of allBriefs) {
+    if (!brief.title) continue;
+    const isDupe = deduped.some(existing => titleSimilarity(brief.title, existing.title) > 0.8);
+    if (!isDupe) deduped.push(brief);
+  }
+
+  // Sort by relevance, cap
+  deduped.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+  const finalBriefs = deduped.slice(0, MAX_BRIEFS_PER_DAY);
+  console.log(`🧠 [Intelligence] After dedup + cap: ${finalBriefs.length}`);
+
+  // Delete existing briefs for today (idempotent)
+  try {
+    await sb.from('intelligence_briefs').delete().eq('date', today);
+    console.log(`🧠 [Intelligence] Cleared existing briefs for ${today}`);
+  } catch (err) {
+    console.log(`🧠 [Intelligence] Clear failed: ${err.message}`);
+  }
+
+  // Insert briefs
+  let briefsInserted = 0;
+  for (const brief of finalBriefs) {
+    try {
+      const row = {
+        date: today,
+        category: brief.category || 'market_brief',
+        title: brief.title || 'Untitled',
+        summary: brief.summary || '',
+        source: brief.source || null,
+        source_url: brief.source_url || null,
+        relevance_score: Math.min(Math.max(parseInt(brief.relevance_score) || 50, 1), 100),
+      };
+      await sb.from('intelligence_briefs').insert(row);
+      briefsInserted++;
+      console.log(`     ✅ ${row.title.slice(0, 60)}...`);
+    } catch (err) {
+      console.log(`     ❌ Insert failed: ${err.message}`);
+      errors.push(`Brief insert: ${err.message}`);
+    }
+  }
+
+  // ── STEP 2: VAULT DATA ──
+
+  console.log(`\n🏦 [Vault] ===== STEP 2: COMEX VAULT DATA =====`);
+
+  const VAULT_PROMPT = `Search for today's (${today}) COMEX precious metals warehouse inventory report. Find the latest registered and eligible inventory numbers for gold, silver, platinum, and palladium. Also find the current open interest for the active month contract for each metal. Return a JSON object with keys: gold, silver, platinum, palladium. Each must have: registered_oz (number), eligible_oz (number), registered_change_oz (number, daily change), eligible_change_oz (number, daily change), open_interest_oz (number, active month). Use the most recent data available. Return ONLY JSON, no markdown.`;
+
+  const VAULT_SYSTEM = `You are a COMEX warehouse data analyst. Search for the most recent CME Group / COMEX precious metals warehouse stock reports. Return precise numbers in troy ounces. If exact daily data is not available for a metal, use the most recent report numbers. Return ONLY valid JSON.`;
+
+  apiCalls++;
+  console.log(`🏦 [Vault] Searching for COMEX inventory...`);
+  const vaultResult = await geminiSearch(VAULT_PROMPT, VAULT_SYSTEM);
+
+  let vaultInserted = 0;
+
+  if (vaultResult && typeof vaultResult === 'object' && !Array.isArray(vaultResult)) {
+    // Delete existing vault data for today
+    try {
+      await sb.from('vault_data').delete().eq('date', today).eq('source', 'comex');
+      console.log(`🏦 [Vault] Cleared existing data for ${today}`);
+    } catch (err) {
+      console.log(`🏦 [Vault] Clear failed: ${err.message}`);
+    }
+
+    for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
+      const md = vaultResult[metal];
+      if (!md) {
+        console.log(`     ${metal}: No data`);
+        continue;
+      }
+
+      try {
+        const registered = parseFloat(md.registered_oz) || 0;
+        const eligible = parseFloat(md.eligible_oz) || 0;
+        const regChange = parseFloat(md.registered_change_oz) || 0;
+        const eligChange = parseFloat(md.eligible_change_oz) || 0;
+        const openInterest = parseFloat(md.open_interest_oz) || 0;
+        const combined = registered + eligible;
+        const combinedChange = regChange + eligChange;
+        const oversubscribed = registered > 0 ? Math.round((openInterest / registered) * 100) / 100 : 0;
+
+        const row = {
+          date: today,
+          source: 'comex',
+          metal,
+          registered_oz: registered,
+          eligible_oz: eligible,
+          combined_oz: combined,
+          registered_change_oz: regChange,
+          eligible_change_oz: eligChange,
+          combined_change_oz: combinedChange,
+          open_interest_oz: openInterest,
+          oversubscribed_ratio: oversubscribed,
+        };
+
+        await sb.from('vault_data').insert(row);
+        vaultInserted++;
+        console.log(`     ✅ ${metal}: registered=${registered.toLocaleString()} oz, ratio=${oversubscribed}x`);
+      } catch (err) {
+        console.log(`     ❌ ${metal}: ${err.message}`);
+        errors.push(`Vault ${metal}: ${err.message}`);
+      }
+    }
+  } else {
+    console.log(`🏦 [Vault] No usable data returned`);
+    errors.push('Vault search returned no data');
+  }
+
+  // ── SUMMARY ──
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const estCost = (apiCalls * 0.01).toFixed(2);
+
+  console.log(`\n${'━'.repeat(50)}`);
+  console.log(`  Intelligence Generation Complete`);
+  console.log(`  Briefs: ${briefsInserted} | Vault: ${vaultInserted}/4 | API calls: ${apiCalls}`);
+  console.log(`  Cost: ~$${estCost} | Runtime: ${elapsed}s`);
+  if (errors.length > 0) console.log(`  Errors: ${errors.length}`);
+  console.log(`${'━'.repeat(50)}\n`);
+
+  return { briefsInserted, vaultInserted, apiCalls, elapsed, estCost, errors };
+}
+
+// POST /api/intelligence/generate - Run intelligence generation pipeline
+app.post('/api/intelligence/generate', async (req, res) => {
+  try {
+    const apiKey = req.headers['x-api-key'] || req.query.api_key;
+    if (!apiKey || apiKey !== process.env.INTELLIGENCE_API_KEY) {
+      return res.status(401).json({ success: false, error: 'Invalid API key' });
+    }
+
+    console.log(`\n🧠 [Intelligence] Manual generation triggered via API`);
+    const result = await runIntelligenceGeneration();
+
+    res.json({
+      success: result.briefsInserted > 0 || result.vaultInserted > 0,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Intelligence generate error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
 // STARTUP
 // ============================================
 
@@ -3107,6 +3379,7 @@ fetchLiveSpotPrices().then(() => {
     console.log('💸 API: MetalPriceAPI Primary, GoldAPI Fallback (10,000/month each)');
     console.log('🗄️ Scan Storage: /tmp/scan-usage.json');
     console.log('🔔 Price Alerts: ENABLED (checking every 5 min)');
+    console.log('🧠 Intelligence Cron:', GEMINI_API_KEY ? 'ENABLED (6:30 AM EST daily)' : 'DISABLED (no GEMINI_API_KEY)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     // Start price alert checker (runs every 5 minutes)
@@ -3131,6 +3404,20 @@ fetchLiveSpotPrices().then(() => {
     // Note: startPriceAlertChecker already runs immediately on startup,
     // so no separate initial check needed. The checker handles token lookup
     // from the push_tokens table correctly.
+
+    // Intelligence cron: daily at 6:30 AM EST (11:30 UTC)
+    if (GEMINI_API_KEY) {
+      cron.schedule('30 11 * * *', async () => {
+        console.log(`\n🧠 [Intelligence Cron] Triggered at ${new Date().toISOString()}`);
+        try {
+          const result = await runIntelligenceGeneration();
+          console.log(`🧠 [Intelligence Cron] Done: ${result.briefsInserted} briefs, ${result.vaultInserted}/4 vault`);
+        } catch (err) {
+          console.error(`🧠 [Intelligence Cron] Failed:`, err.message);
+        }
+      }, { timezone: 'UTC' });
+      console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:30 AM EST (11:30 UTC)');
+    }
   });
 }).catch(error => {
   console.error('Startup error:', error);
