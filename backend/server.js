@@ -24,7 +24,7 @@ app.set('trust proxy', 1);
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -100,6 +100,17 @@ const { calibrateRatios, getRatioForDate, needsCalibration } = require('./servic
 const { logPriceFetch, findLoggedPrice, findClosestLoggedPrice, getLogStats } = require('./services/priceLogger');
 const { createAlert, getAlertsForUser, deleteAlert, checkAlerts, getAlertCount } = require('./services/priceAlerts');
 const { saveSnapshot, getSnapshots, getLatestSnapshot, getSnapshotCount } = require('./services/portfolioSnapshots');
+
+// RevenueCat integration config
+const REVENUECAT_WEBHOOK_SECRET = process.env.REVENUECAT_WEBHOOK_SECRET;
+const REVENUECAT_API_KEY = process.env.REVENUECAT_API_KEY;
+
+if (!REVENUECAT_WEBHOOK_SECRET) {
+  console.warn('⚠️ RevenueCat webhook disabled: missing REVENUECAT_WEBHOOK_SECRET');
+}
+if (!REVENUECAT_API_KEY) {
+  console.warn('⚠️ RevenueCat sync disabled: missing REVENUECAT_API_KEY');
+}
 
 // Cache for historical prices (to avoid repeated API calls for the same date)
 // Historical prices don't change, so we can cache them indefinitely
@@ -3400,6 +3411,231 @@ app.post('/api/intelligence/generate', async (req, res) => {
 });
 
 // ============================================
+// REVENUECAT SUBSCRIPTION SYNC
+// ============================================
+
+/**
+ * Map a RevenueCat product_id to our subscription_tier.
+ */
+function mapProductToTier(productId) {
+  if (!productId) return 'free';
+  const pid = productId.toLowerCase();
+  if (pid.includes('lifetime')) return 'lifetime';
+  if (pid.includes('gold') || pid.includes('premium') || pid.includes('yearly') || pid.includes('monthly')) return 'gold';
+  return 'free';
+}
+
+/**
+ * Check if a string looks like a valid UUID (Supabase user id).
+ */
+function isUUID(str) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
+// POST /api/webhooks/revenuecat — RevenueCat server-to-server webhook
+app.post('/api/webhooks/revenuecat', async (req, res) => {
+  // Always return 200 to RevenueCat so they don't retry endlessly
+  try {
+    // Verify webhook secret
+    if (REVENUECAT_WEBHOOK_SECRET) {
+      const authHeader = req.headers['authorization'] || '';
+      const token = authHeader.replace(/^Bearer\s+/i, '');
+      if (token !== REVENUECAT_WEBHOOK_SECRET) {
+        console.warn('🔑 [RevenueCat Webhook] Invalid authorization token — rejecting');
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    } else {
+      console.warn('🔑 [RevenueCat Webhook] No REVENUECAT_WEBHOOK_SECRET set — accepting without auth');
+    }
+
+    const event = req.body?.event || req.body;
+    const eventType = event?.type;
+    const appUserId = event?.app_user_id;
+    const productId = event?.product_id;
+    const expirationMs = event?.expiration_at_ms;
+
+    console.log(`\n📦 [RevenueCat Webhook] Event: ${eventType}, user: ${appUserId}, product: ${productId}`);
+
+    // Skip anonymous users (pre-v1.4.1 installs that haven't logged in)
+    if (!appUserId || appUserId.startsWith('$RCAnonymousID:')) {
+      console.log('   ⚠️ Anonymous user, skipping Supabase sync');
+      return res.status(200).json({ success: true, skipped: true, reason: 'anonymous_user' });
+    }
+
+    // Validate that app_user_id is a valid Supabase UUID
+    if (!isUUID(appUserId)) {
+      console.log(`   ⚠️ Non-UUID app_user_id: ${appUserId}, skipping`);
+      return res.status(200).json({ success: true, skipped: true, reason: 'non_uuid_user' });
+    }
+
+    if (!isSupabaseAvailable()) {
+      console.error('   ❌ Supabase not configured — cannot sync subscription');
+      return res.status(200).json({ success: false, error: 'supabase_unavailable' });
+    }
+
+    const supabase = getSupabase();
+    const tier = mapProductToTier(productId);
+    const expirationDate = expirationMs ? new Date(expirationMs).toISOString() : null;
+
+    switch (eventType) {
+      case 'INITIAL_PURCHASE':
+      case 'RENEWAL':
+      case 'PRODUCT_CHANGE': {
+        console.log(`   ✅ Setting tier=${tier}, expires=${expirationDate}`);
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            subscription_tier: tier,
+            subscription_expires_at: expirationDate,
+          })
+          .eq('id', appUserId);
+
+        if (error) console.error('   ❌ Supabase update failed:', error.message);
+        else console.log('   ✅ Profile updated successfully');
+        break;
+      }
+
+      case 'CANCELLATION': {
+        // Don't downgrade — user keeps access until expiration
+        console.log(`   ⏳ Cancellation — keeping tier, setting expiry=${expirationDate}`);
+        const { error } = await supabase
+          .from('profiles')
+          .update({ subscription_expires_at: expirationDate })
+          .eq('id', appUserId);
+
+        if (error) console.error('   ❌ Supabase update failed:', error.message);
+        else console.log('   ✅ Expiration date updated');
+        break;
+      }
+
+      case 'EXPIRATION': {
+        console.log('   ⬇️ Subscription expired — downgrading to free');
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            subscription_tier: 'free',
+            subscription_expires_at: null,
+          })
+          .eq('id', appUserId);
+
+        if (error) console.error('   ❌ Supabase update failed:', error.message);
+        else console.log('   ✅ Downgraded to free');
+        break;
+      }
+
+      case 'BILLING_ISSUE_DETECTED': {
+        console.log('   ⚠️ Billing issue detected — no tier change (grace period)');
+        break;
+      }
+
+      default:
+        console.log(`   ℹ️ Unhandled event type: ${eventType} — no action taken`);
+    }
+
+    return res.status(200).json({ success: true, processed: true });
+
+  } catch (error) {
+    console.error('❌ [RevenueCat Webhook] Error:', error.message);
+    // Still return 200 to prevent RevenueCat retries
+    return res.status(200).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/sync-subscription — Manual sync via RevenueCat REST API
+app.get('/api/sync-subscription', async (req, res) => {
+  try {
+    const userId = req.query.user_id;
+
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ success: false, error: 'Valid user_id (UUID) required' });
+    }
+
+    if (!REVENUECAT_API_KEY) {
+      return res.status(503).json({ success: false, error: 'RevenueCat sync not configured' });
+    }
+
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ success: false, error: 'Database not available' });
+    }
+
+    console.log(`\n🔄 [Subscription Sync] Checking RevenueCat for user: ${userId}`);
+
+    // Query RevenueCat REST API for this user's subscription status
+    const rcResponse = await axios.get(
+      `https://api.revenuecat.com/v1/subscribers/${userId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${REVENUECAT_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        validateStatus: () => true, // Don't throw on non-200
+      }
+    );
+
+    if (rcResponse.status === 404) {
+      // User not found in RevenueCat — they have no purchases
+      console.log('   ℹ️ User not found in RevenueCat — setting tier to free');
+      const supabase = getSupabase();
+      await supabase
+        .from('profiles')
+        .update({ subscription_tier: 'free', subscription_expires_at: null })
+        .eq('id', userId);
+
+      return res.json({ success: true, tier: 'free', synced: true });
+    }
+
+    if (rcResponse.status !== 200) {
+      console.error(`   ❌ RevenueCat API error: ${rcResponse.status}`, rcResponse.data);
+      return res.status(502).json({ success: false, error: `RevenueCat returned ${rcResponse.status}` });
+    }
+
+    const subscriber = rcResponse.data?.subscriber;
+    const entitlements = subscriber?.entitlements || {};
+
+    // Check for active "Gold" (or any) entitlement
+    let tier = 'free';
+    let expirationDate = null;
+
+    for (const [, entitlement] of Object.entries(entitlements)) {
+      const ent = entitlement;
+      // Check if entitlement is active (expires_date is null for lifetime, or in the future)
+      const expiresDate = ent.expires_date ? new Date(ent.expires_date) : null;
+      const isActive = !expiresDate || expiresDate > new Date();
+
+      if (isActive) {
+        const productId = ent.product_identifier || '';
+        tier = mapProductToTier(productId);
+        expirationDate = ent.expires_date || null;
+        console.log(`   ✅ Active entitlement found: product=${productId}, tier=${tier}, expires=${expirationDate}`);
+        break; // Use the first active entitlement
+      }
+    }
+
+    // Update Supabase profiles
+    const supabase = getSupabase();
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        subscription_tier: tier,
+        subscription_expires_at: expirationDate,
+      })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('   ❌ Supabase update failed:', error.message);
+      return res.status(500).json({ success: false, error: 'Failed to update profile' });
+    }
+
+    console.log(`   ✅ Synced: tier=${tier}`);
+    return res.json({ success: true, tier, synced: true });
+
+  } catch (error) {
+    console.error('❌ [Subscription Sync] Error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
 // STARTUP
 // ============================================
 
@@ -3462,6 +3698,9 @@ fetchLiveSpotPrices().then(() => {
       }, { timezone: 'UTC' });
       console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:30 AM EST (11:30 UTC)');
     }
+
+    console.log('💳 RevenueCat Webhook:', REVENUECAT_WEBHOOK_SECRET ? 'ENABLED' : 'DISABLED (no secret)');
+    console.log('🔄 RevenueCat Sync:', REVENUECAT_API_KEY ? 'ENABLED' : 'DISABLED (no API key)');
   });
 }).catch(error => {
   console.error('Startup error:', error);
