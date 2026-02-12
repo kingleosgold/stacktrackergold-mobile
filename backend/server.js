@@ -37,6 +37,9 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 
+// Stripe webhook needs raw body for signature verification — must come BEFORE express.json()
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
 // Increase JSON limit for base64 image uploads
 app.use(express.json({ limit: '20mb' }));
 
@@ -110,6 +113,18 @@ if (!REVENUECAT_WEBHOOK_SECRET) {
 }
 if (!REVENUECAT_API_KEY) {
   console.warn('⚠️ RevenueCat sync disabled: missing REVENUECAT_API_KEY');
+}
+
+// Stripe integration config
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? require('stripe')(process.env.STRIPE_SECRET_KEY)
+  : null;
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+const STRIPE_GOLD_PRICE_ID = process.env.STRIPE_GOLD_PRICE_ID;
+const STRIPE_PLATINUM_PRICE_ID = process.env.STRIPE_PLATINUM_PRICE_ID;
+
+if (!stripe) {
+  console.warn('⚠️ Stripe disabled: missing STRIPE_SECRET_KEY');
 }
 
 // Cache for historical prices (to avoid repeated API calls for the same date)
@@ -3640,6 +3655,254 @@ app.get('/api/sync-subscription', async (req, res) => {
 });
 
 // ============================================
+// STRIPE BILLING
+// ============================================
+
+/**
+ * Map a Stripe price_id to our subscription_tier.
+ */
+function mapStripePriceToTier(priceId) {
+  if (!priceId) return 'free';
+  if (priceId === STRIPE_PLATINUM_PRICE_ID) return 'platinum';
+  if (priceId === STRIPE_GOLD_PRICE_ID) return 'gold';
+  return 'free';
+}
+
+// POST /api/stripe/create-checkout-session
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured' });
+    }
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const { user_id, price_id, success_url, cancel_url } = req.body;
+
+    if (!user_id || !isUUID(user_id)) {
+      return res.status(400).json({ error: 'Valid user_id is required' });
+    }
+    if (!price_id) {
+      return res.status(400).json({ error: 'price_id is required' });
+    }
+
+    const supabaseClient = getSupabase();
+
+    // Look up user profile for email and existing stripe_customer_id
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('email, stripe_customer_id')
+      .eq('id', user_id)
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(404).json({ error: 'User profile not found' });
+    }
+
+    let customerId = profile.stripe_customer_id;
+
+    // Create Stripe customer if we don't have one
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: profile.email,
+        metadata: { supabase_user_id: user_id },
+      });
+      customerId = customer.id;
+
+      // Store stripe_customer_id in profiles
+      await supabaseClient
+        .from('profiles')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', user_id);
+    }
+
+    // Determine tier from price_id for metadata
+    const tier = mapStripePriceToTier(price_id);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: customerId,
+      line_items: [{ price: price_id, quantity: 1 }],
+      success_url: success_url || 'https://stacktrackergold.com/settings?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: cancel_url || 'https://stacktrackergold.com/settings',
+      client_reference_id: user_id,
+      metadata: { user_id, tier },
+    });
+
+    console.log(`💳 [Stripe] Checkout session created for user ${user_id}, tier=${tier}`);
+    return res.json({ url: session.url });
+
+  } catch (error) {
+    console.error('❌ [Stripe] Create checkout error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/webhooks/stripe — Stripe webhook
+app.post('/api/webhooks/stripe', async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).send('Stripe not configured');
+    }
+
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.warn('⚠️ [Stripe Webhook] Signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    console.log(`💳 [Stripe Webhook] Event: ${event.type}`);
+
+    if (!isSupabaseAvailable()) {
+      console.error('❌ [Stripe Webhook] Supabase not available');
+      return res.status(503).send('Database not available');
+    }
+
+    const supabaseClient = getSupabase();
+
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        const userId = session.client_reference_id || session.metadata?.user_id;
+        if (!userId || !isUUID(userId)) {
+          console.warn('⚠️ [Stripe Webhook] No valid user_id in checkout session');
+          break;
+        }
+
+        // Get subscription to find the price_id
+        let tier = session.metadata?.tier || 'gold';
+        if (session.subscription) {
+          try {
+            const subscription = await stripe.subscriptions.retrieve(session.subscription);
+            const priceId = subscription.items?.data?.[0]?.price?.id;
+            if (priceId) {
+              tier = mapStripePriceToTier(priceId);
+            }
+          } catch (e) {
+            console.warn('⚠️ [Stripe Webhook] Could not retrieve subscription:', e.message);
+          }
+        }
+
+        const { error } = await supabaseClient
+          .from('profiles')
+          .update({
+            subscription_tier: tier,
+            stripe_customer_id: session.customer,
+          })
+          .eq('id', userId);
+
+        if (error) {
+          console.error('❌ [Stripe Webhook] Failed to update profile:', error.message);
+        } else {
+          console.log(`✅ [Stripe Webhook] checkout.session.completed: user=${userId}, tier=${tier}`);
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object;
+        const customerId = subscription.customer;
+        const priceId = subscription.items?.data?.[0]?.price?.id;
+        const tier = mapStripePriceToTier(priceId);
+
+        // Look up user by stripe_customer_id
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('id')
+          .eq('stripe_customer_id', customerId)
+          .single();
+
+        if (profile) {
+          const newTier = subscription.status === 'active' ? tier : 'free';
+          await supabaseClient
+            .from('profiles')
+            .update({ subscription_tier: newTier })
+            .eq('id', profile.id);
+          console.log(`✅ [Stripe Webhook] subscription.updated: user=${profile.id}, tier=${newTier}`);
+        }
+        break;
+      }
+
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object;
+        const customerId = subscription.customer;
+
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('id')
+          .eq('stripe_customer_id', customerId)
+          .single();
+
+        if (profile) {
+          await supabaseClient
+            .from('profiles')
+            .update({ subscription_tier: 'free' })
+            .eq('id', profile.id);
+          console.log(`✅ [Stripe Webhook] subscription.deleted: user=${profile.id}, downgraded to free`);
+        }
+        break;
+      }
+
+      default:
+        console.log(`💳 [Stripe Webhook] Unhandled event: ${event.type}`);
+    }
+
+    return res.json({ received: true });
+
+  } catch (error) {
+    console.error('❌ [Stripe Webhook] Error:', error.message);
+    return res.status(500).send('Webhook handler error');
+  }
+});
+
+// POST /api/stripe/customer-portal
+app.post('/api/stripe/customer-portal', async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ error: 'Stripe is not configured' });
+    }
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const { user_id, return_url } = req.body;
+
+    if (!user_id || !isUUID(user_id)) {
+      return res.status(400).json({ error: 'Valid user_id is required' });
+    }
+
+    const supabaseClient = getSupabase();
+
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', user_id)
+      .single();
+
+    if (profileError || !profile?.stripe_customer_id) {
+      return res.status(404).json({ error: 'No Stripe customer found for this user' });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: profile.stripe_customer_id,
+      return_url: return_url || 'https://stacktrackergold.com/settings',
+    });
+
+    console.log(`💳 [Stripe] Customer portal session created for user ${user_id}`);
+    return res.json({ url: session.url });
+
+  } catch (error) {
+    console.error('❌ [Stripe] Customer portal error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
 // STARTUP
 // ============================================
 
@@ -3664,6 +3927,7 @@ fetchLiveSpotPrices().then(() => {
     console.log('🗄️ Scan Storage: /tmp/scan-usage.json');
     console.log('🔔 Price Alerts: ENABLED (checking every 5 min)');
     console.log('🧠 Intelligence Cron:', GEMINI_API_KEY ? 'ENABLED (6:30 AM EST daily)' : 'DISABLED (no GEMINI_API_KEY)');
+    console.log('💳 Stripe:', stripe ? 'ENABLED' : 'DISABLED (no STRIPE_SECRET_KEY)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     // Start price alert checker (runs every 5 minutes)
