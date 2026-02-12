@@ -120,8 +120,9 @@ const stripe = process.env.STRIPE_SECRET_KEY
   ? require('stripe')(process.env.STRIPE_SECRET_KEY)
   : null;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-const STRIPE_GOLD_PRICE_ID = process.env.STRIPE_GOLD_PRICE_ID;
-const STRIPE_PLATINUM_PRICE_ID = process.env.STRIPE_PLATINUM_PRICE_ID;
+const STRIPE_GOLD_MONTHLY_PRICE_ID = process.env.STRIPE_GOLD_MONTHLY_PRICE_ID;
+const STRIPE_GOLD_YEARLY_PRICE_ID = process.env.STRIPE_GOLD_YEARLY_PRICE_ID;
+const STRIPE_GOLD_LIFETIME_PRICE_ID = process.env.STRIPE_GOLD_LIFETIME_PRICE_ID;
 
 if (!stripe) {
   console.warn('⚠️ Stripe disabled: missing STRIPE_SECRET_KEY');
@@ -3660,12 +3661,21 @@ app.get('/api/sync-subscription', async (req, res) => {
 
 /**
  * Map a Stripe price_id to our subscription_tier.
+ * All paid Stripe plans map to 'gold' (or 'lifetime' for one-time).
  */
 function mapStripePriceToTier(priceId) {
   if (!priceId) return 'free';
-  if (priceId === STRIPE_PLATINUM_PRICE_ID) return 'platinum';
-  if (priceId === STRIPE_GOLD_PRICE_ID) return 'gold';
+  if (priceId === STRIPE_GOLD_LIFETIME_PRICE_ID) return 'lifetime';
+  if (priceId === STRIPE_GOLD_MONTHLY_PRICE_ID) return 'gold';
+  if (priceId === STRIPE_GOLD_YEARLY_PRICE_ID) return 'gold';
   return 'free';
+}
+
+/**
+ * Check if a price_id is the lifetime (one-time payment) product.
+ */
+function isLifetimePrice(priceId) {
+  return priceId === STRIPE_GOLD_LIFETIME_PRICE_ID;
 }
 
 // POST /api/stripe/create-checkout-session
@@ -3717,18 +3727,26 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
         .eq('id', user_id);
     }
 
-    // Determine tier from price_id for metadata
+    // Determine tier and checkout mode from price_id
     const tier = mapStripePriceToTier(price_id);
+    const isLifetime = isLifetimePrice(price_id);
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
+    const sessionParams = {
+      mode: isLifetime ? 'payment' : 'subscription',
       customer: customerId,
       line_items: [{ price: price_id, quantity: 1 }],
       success_url: success_url || 'https://stacktrackergold.com/settings?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: cancel_url || 'https://stacktrackergold.com/settings',
       client_reference_id: user_id,
       metadata: { user_id, tier },
-    });
+    };
+
+    // For lifetime, add invoice creation so webhook fires checkout.session.completed
+    if (isLifetime) {
+      sessionParams.invoice_creation = { enabled: true };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     console.log(`💳 [Stripe] Checkout session created for user ${user_id}, tier=${tier}`);
     return res.json({ url: session.url });
@@ -3774,9 +3792,11 @@ app.post('/api/webhooks/stripe', async (req, res) => {
           break;
         }
 
-        // Get subscription to find the price_id
+        // Determine tier from metadata or by looking up the price
         let tier = session.metadata?.tier || 'gold';
+
         if (session.subscription) {
+          // Subscription checkout — look up price_id from subscription
           try {
             const subscription = await stripe.subscriptions.retrieve(session.subscription);
             const priceId = subscription.items?.data?.[0]?.price?.id;
@@ -3786,6 +3806,9 @@ app.post('/api/webhooks/stripe', async (req, res) => {
           } catch (e) {
             console.warn('⚠️ [Stripe Webhook] Could not retrieve subscription:', e.message);
           }
+        } else if (session.mode === 'payment') {
+          // One-time payment (lifetime) — tier comes from metadata
+          tier = session.metadata?.tier || 'lifetime';
         }
 
         const { error } = await supabaseClient
@@ -3807,18 +3830,19 @@ app.post('/api/webhooks/stripe', async (req, res) => {
       case 'customer.subscription.updated': {
         const subscription = event.data.object;
         const customerId = subscription.customer;
-        const priceId = subscription.items?.data?.[0]?.price?.id;
-        const tier = mapStripePriceToTier(priceId);
 
         // Look up user by stripe_customer_id
         const { data: profile } = await supabaseClient
           .from('profiles')
-          .select('id')
+          .select('id, subscription_tier')
           .eq('stripe_customer_id', customerId)
           .single();
 
         if (profile) {
-          const newTier = subscription.status === 'active' ? tier : 'free';
+          // Don't downgrade lifetime users via subscription events
+          if (profile.subscription_tier === 'lifetime') break;
+
+          const newTier = subscription.status === 'active' ? 'gold' : 'free';
           await supabaseClient
             .from('profiles')
             .update({ subscription_tier: newTier })
@@ -3834,11 +3858,14 @@ app.post('/api/webhooks/stripe', async (req, res) => {
 
         const { data: profile } = await supabaseClient
           .from('profiles')
-          .select('id')
+          .select('id, subscription_tier')
           .eq('stripe_customer_id', customerId)
           .single();
 
         if (profile) {
+          // Don't downgrade lifetime users
+          if (profile.subscription_tier === 'lifetime') break;
+
           await supabaseClient
             .from('profiles')
             .update({ subscription_tier: 'free' })
