@@ -5678,9 +5678,8 @@ function AppContent() {
                 </ScrollView>
               </View>
 
-              {/* ===== SECTION 3: WHAT CHANGED TODAY (Gold-only) ===== */}
-              <View style={{ position: 'relative', marginBottom: 16 }}>
-                <View style={{ opacity: hasGoldAccess ? 1 : 0.4 }} pointerEvents={hasGoldAccess ? 'auto' : 'none'}>
+              {/* ===== SECTION 3: WHAT CHANGED TODAY ===== */}
+              <View style={{ marginBottom: 16 }}>
                   {holdingsImpact.length > 0 && (
                     <View>
                       <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 }}>What Changed Today</Text>
@@ -5697,6 +5696,7 @@ function AppContent() {
                             paddingHorizontal: 16,
                             borderBottomWidth: i < holdingsImpact.length - 1 ? 1 : 0,
                             borderBottomColor: todayCardBorder,
+                            opacity: (!hasGoldAccess && i > 0) ? 0.25 : 1,
                           }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
@@ -5724,32 +5724,13 @@ function AppContent() {
                       <Text style={{ color: colors.muted, fontSize: 14 }}>Add holdings to see daily impact</Text>
                     </View>
                   )}
-                </View>
-
-                {/* Gold-only overlay */}
-                {!hasGoldAccess && (
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                    <View style={{
-                      backgroundColor: isDarkMode ? 'rgba(26, 26, 46, 0.95)' : 'rgba(255,255,255,0.95)',
-                      borderRadius: 16,
-                      padding: 20,
-                      marginHorizontal: 20,
-                      alignItems: 'center',
-                      borderWidth: 1,
-                      borderColor: 'rgba(212, 168, 67, 0.3)',
-                    }}>
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.medium, fontWeight: '700', marginBottom: 6 }}>Unlock Daily Intelligence</Text>
-                      <Text style={{ color: colors.muted, textAlign: 'center', marginBottom: 14, fontSize: scaledFonts.small, lineHeight: 18 }}>
-                        See how your holdings changed and get market intelligence
-                      </Text>
-                      <TouchableOpacity
-                        style={{ backgroundColor: colors.gold, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 }}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowPaywallModal(true); }}
-                      >
-                        <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.normal }}>Upgrade to Gold</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                {!hasGoldAccess && holdingsImpact.length > 1 && (
+                  <TouchableOpacity
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                    style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Unlock all {holdingsImpact.length} metals with Gold</Text>
+                  </TouchableOpacity>
                 )}
               </View>
 
@@ -5805,8 +5786,7 @@ function AppContent() {
                 const getChangeArrow = (val) => val < 0 ? '\u25BC' : val > 0 ? '\u25B2' : '';
 
                 return (
-                  <View style={{ position: 'relative', marginBottom: 16 }}>
-                    <View style={{ opacity: hasGoldAccess ? 1 : 0.4 }} pointerEvents={hasGoldAccess ? 'auto' : 'none'}>
+                  <View style={{ marginBottom: 16 }}>
                       {/* Section header with gold divider */}
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 }}>
                         <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginLeft: 4 }}>
@@ -5876,6 +5856,7 @@ function AppContent() {
                               </View>
                             </View>
 
+                            <View style={{ opacity: hasGoldAccess ? 1 : 0.2 }}>
                             {/* Eligible */}
                             <View style={{ marginBottom: 14 }}>
                               <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Eligible</Text>
@@ -5918,6 +5899,7 @@ function AppContent() {
                                 </View>
                               </View>
                             )}
+                            </View>
                           </View>
 
                           {/* Divider */}
@@ -5925,7 +5907,7 @@ function AppContent() {
 
                           {/* Mini trend chart */}
                           {chartDataPoints.length >= 3 && (
-                            <View style={{ paddingVertical: 12, paddingHorizontal: 4 }}>
+                            <View style={{ paddingVertical: 12, paddingHorizontal: 4, opacity: hasGoldAccess ? 1 : 0.2 }}>
                               <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 12 }}>Registered Inventory (30d)</Text>
                               <LineChart
                                 data={{
@@ -5987,40 +5969,21 @@ function AppContent() {
                           <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>Check back soon for COMEX inventory data</Text>
                         </View>
                       )}
-                    </View>
 
-                    {/* Gold-only overlay for vault watch */}
                     {!hasGoldAccess && (
-                      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                        <View style={{
-                          backgroundColor: isDarkMode ? 'rgba(26, 26, 46, 0.95)' : 'rgba(255,255,255,0.95)',
-                          borderRadius: 16,
-                          padding: 20,
-                          marginHorizontal: 20,
-                          alignItems: 'center',
-                          borderWidth: 1,
-                          borderColor: 'rgba(212, 168, 67, 0.3)',
-                        }}>
-                          <Text style={{ color: colors.gold, fontSize: scaledFonts.medium, fontWeight: '700', marginBottom: 6 }}>Unlock Vault Watch</Text>
-                          <Text style={{ color: colors.muted, textAlign: 'center', marginBottom: 14, fontSize: scaledFonts.small, lineHeight: 18 }}>
-                            Track COMEX warehouse inventory and spot supply squeezes
-                          </Text>
-                          <TouchableOpacity
-                            style={{ backgroundColor: colors.gold, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 }}
-                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowPaywallModal(true); }}
-                          >
-                            <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.normal }}>Upgrade to Gold</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                      <TouchableOpacity
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                        style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Unlock full Vault Watch with Gold</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 );
               })()}
 
-              {/* ===== SECTION 4: INTELLIGENCE FEED (Gold-only) ===== */}
-              <View style={{ position: 'relative', marginBottom: 16 }}>
-                <View style={{ opacity: hasGoldAccess ? 1 : 0.4 }} pointerEvents={hasGoldAccess ? 'auto' : 'none'}>
+              {/* ===== SECTION 4: INTELLIGENCE FEED ===== */}
+              <View style={{ marginBottom: 16 }}>
                   {/* Section header with gold divider */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 }}>
                     <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginLeft: 4 }}>Market Intelligence</Text>
@@ -6056,8 +6019,14 @@ function AppContent() {
                             borderWidth: 1,
                             borderColor: todayCardBorder,
                             padding: 16,
+                            opacity: (!hasGoldAccess && i > 0) ? 0.2 : 1,
                           }}
                           onPress={() => {
+                            if (!hasGoldAccess && i > 0) {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setShowPaywallModal(true);
+                              return;
+                            }
                             if (brief.source_url) {
                               Linking.openURL(brief.source_url);
                             }
@@ -6102,38 +6071,18 @@ function AppContent() {
                       <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>Check back soon for today's market briefs</Text>
                     </View>
                   )}
-                </View>
-
-                {/* Gold-only overlay for intelligence (only if section 3 doesn't already show it) */}
-                {!hasGoldAccess && holdingsImpact.length === 0 && (
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                    <View style={{
-                      backgroundColor: isDarkMode ? 'rgba(26, 26, 46, 0.95)' : 'rgba(255,255,255,0.95)',
-                      borderRadius: 16,
-                      padding: 20,
-                      marginHorizontal: 20,
-                      alignItems: 'center',
-                      borderWidth: 1,
-                      borderColor: 'rgba(212, 168, 67, 0.3)',
-                    }}>
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.medium, fontWeight: '700', marginBottom: 6 }}>Unlock Daily Intelligence</Text>
-                      <Text style={{ color: colors.muted, textAlign: 'center', marginBottom: 14, fontSize: scaledFonts.small, lineHeight: 18 }}>
-                        Get AI-powered market briefs delivered daily
-                      </Text>
-                      <TouchableOpacity
-                        style={{ backgroundColor: colors.gold, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 }}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowPaywallModal(true); }}
-                      >
-                        <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.normal }}>Upgrade to Gold</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                {!hasGoldAccess && intelligenceBriefs.length > 1 && (
+                  <TouchableOpacity
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                    style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Read {intelligenceBriefs.length - 1} more briefs with Gold</Text>
+                  </TouchableOpacity>
                 )}
               </View>
 
-              {/* ===== SECTION 4.5: AI STACK ADVISOR (Gold-only) ===== */}
-              <View style={{ position: 'relative', marginBottom: 16 }}>
-                <View style={{ opacity: hasGoldAccess ? 1 : 0.4 }} pointerEvents={hasGoldAccess ? 'auto' : 'none'}>
+              {/* ===== SECTION 4.5: AI STACK ADVISOR ===== */}
+              <View style={{ marginBottom: 16 }}>
                   {/* Section header with gold divider */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 10 }}>
                     <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginLeft: 4 }}>
@@ -6197,6 +6146,7 @@ function AppContent() {
                                 }}
                                 onPress={() => {
                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                  if (!hasGoldAccess) { setShowPaywallModal(true); return; }
                                   sendAdvisorMessage(q);
                                 }}
                               >
@@ -6264,12 +6214,12 @@ function AppContent() {
                           placeholderTextColor={colors.muted}
                           value={advisorInput}
                           onChangeText={setAdvisorInput}
-                          onSubmitEditing={() => sendAdvisorMessage()}
+                          onSubmitEditing={() => { if (!hasGoldAccess) { setShowPaywallModal(true); return; } sendAdvisorMessage(); }}
                           returnKeyType="send"
                           editable={!advisorLoading}
                         />
                         <TouchableOpacity
-                          onPress={() => sendAdvisorMessage()}
+                          onPress={() => { if (!hasGoldAccess) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); return; } sendAdvisorMessage(); }}
                           disabled={!advisorInput.trim() || advisorLoading}
                           style={{
                             width: 36,
@@ -6287,38 +6237,11 @@ function AppContent() {
                       {/* Questions remaining */}
                       <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
                         <Text style={{ color: colors.muted, fontSize: 10, textAlign: 'center' }}>
-                          {25 - advisorQuestionsToday} questions remaining today
+                          {hasGoldAccess ? `${25 - advisorQuestionsToday} questions remaining today` : 'Gold feature \u00B7 Tap a question to learn more'}
                         </Text>
                       </View>
                     </View>
                   )}
-                </View>
-
-                {/* Gold-only overlay */}
-                {!hasGoldAccess && (
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-                    <View style={{
-                      backgroundColor: isDarkMode ? 'rgba(26, 26, 46, 0.95)' : 'rgba(255,255,255,0.95)',
-                      borderRadius: 16,
-                      padding: 20,
-                      marginHorizontal: 20,
-                      alignItems: 'center',
-                      borderWidth: 1,
-                      borderColor: 'rgba(212, 168, 67, 0.3)',
-                    }}>
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.medium, fontWeight: '700', marginBottom: 6 }}>Unlock AI Stack Advisor</Text>
-                      <Text style={{ color: colors.muted, textAlign: 'center', marginBottom: 14, fontSize: scaledFonts.small, lineHeight: 18 }}>
-                        Get personalized advice about your precious metals portfolio
-                      </Text>
-                      <TouchableOpacity
-                        style={{ backgroundColor: colors.gold, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 }}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowPaywallModal(true); }}
-                      >
-                        <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.normal }}>Upgrade to Gold</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
               </View>
 
               {/* ===== SECTION 5: FOOTER ===== */}
@@ -6661,55 +6584,32 @@ function AppContent() {
         {/* TOOLS TAB */}
         {tab === 'tools' && (
           <>
-            {!hasGoldAccess ? (
-              /* Gold Lock Screen for non-Gold users */
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
-                <Text style={{ fontSize: 48, marginBottom: 16 }}>🔒</Text>
-                <Text style={{ color: colors.gold, fontSize: scaledFonts.xlarge, fontWeight: '700', marginBottom: 8, textAlign: 'center' }}>
-                  Unlock Tools
-                </Text>
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.normal, textAlign: 'center', marginBottom: 24, paddingHorizontal: 40, lineHeight: 22 }}>
-                  Get access to Price Alerts, Speculation Tool, Junk Silver Calculator, Stack Milestones, and more
-                </Text>
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: colors.gold,
-                    paddingVertical: 14,
-                    paddingHorizontal: 32,
-                    borderRadius: 12,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setShowPaywallModal(true);
-                  }}
-                >
-                  <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.medium }}>Upgrade to Gold</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
                 {/* Price Alerts */}
                 <TouchableOpacity
                   style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (!hasGoldAccess) { setShowPaywallModal(true); return; }
                     setShowAddAlertModal(true);
                   }}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🔔 Price Alerts</Text>
-                    {priceAlerts.length > 0 && (
+                    {hasGoldAccess && priceAlerts.length > 0 && (
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{priceAlerts.length} active</Text>
+                    )}
+                    {!hasGoldAccess && (
+                      <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
                     )}
                   </View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Set alerts for gold and silver price targets</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowSpeculationModal(true)}>
-                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🔮 Speculation Tool</Text>
+                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => { if (!hasGoldAccess) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); return; } setShowSpeculationModal(true); }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🔮 Speculation Tool</Text>
+                    {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>}
+                  </View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>What if silver hits $100? What if gold hits $10,000?</Text>
                 </TouchableOpacity>
 
@@ -6723,6 +6623,7 @@ function AppContent() {
                   activeOpacity={0.7}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (!hasGoldAccess) { setShowPaywallModal(true); return; }
                     setTempSilverMilestone(customSilverMilestone?.toString() || '');
                     setTempGoldMilestone(customGoldMilestone?.toString() || '');
                     setShowMilestoneModal(true);
@@ -6731,7 +6632,11 @@ function AppContent() {
                   <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>🏆 Stack Milestones</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
+                      {hasGoldAccess ? (
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
+                      ) : (
+                        <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
+                      )}
                     </View>
                     <ProgressBar value={totalSilverOzt} max={nextSilverMilestone} color={colors.silver} label={`Silver: ${formatOunces(totalSilverOzt, 0)} / ${nextSilverMilestone} oz${customSilverMilestone ? ' (custom)' : ''}`} />
                     <ProgressBar value={totalGoldOzt} max={nextGoldMilestone} color={colors.gold} label={`Gold: ${formatOunces(totalGoldOzt, 2)} / ${nextGoldMilestone} oz${customGoldMilestone ? ' (custom)' : ''}`} />
@@ -6843,8 +6748,6 @@ function AppContent() {
                     </View>
                   );
                 })()}
-              </>
-            )}
           </>
         )}
 
@@ -6865,16 +6768,23 @@ function AppContent() {
                 {analyticsLoading && hasGoldAccess && <ActivityIndicator size="small" color={colors.gold} />}
               </View>
               <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>
-                {hasGoldAccess
-                  ? 'Track your portfolio performance with historical data and insights'
-                  : 'See what Gold members get access to'}
+                Track your portfolio performance with historical data and insights
               </Text>
             </View>
 
-            {/* Analytics Content - Blurred for non-Gold users */}
-            <View style={{ position: 'relative' }}>
-              {/* Content with blur effect for non-Gold */}
-              <View style={{ opacity: hasGoldAccess ? 1 : 0.7 }} pointerEvents={hasGoldAccess ? 'auto' : 'none'}>
+            {/* Inline upgrade bar for non-Gold */}
+            {!hasGoldAccess && (
+              <TouchableOpacity
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                style={{ marginHorizontal: 2, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center', backgroundColor: 'rgba(212, 168, 67, 0.05)' }}
+              >
+                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Upgrade to Gold for full analytics</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Analytics Content */}
+            <View>
+              <View style={{ opacity: hasGoldAccess ? 1 : 0.7 }}>
               <>
                 {/* Time Range Selector */}
                 <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
@@ -7635,57 +7545,6 @@ function AppContent() {
               </>
               </View>
 
-              {/* Upgrade Overlay for non-Gold users */}
-              {!hasGoldAccess && (
-                <View style={{
-                  position: 'absolute',
-                  top: 80,
-                  left: 0,
-                  right: 0,
-                  alignItems: 'center',
-                  zIndex: 10,
-                }}>
-                  <View style={{
-                    backgroundColor: 'rgba(26, 26, 46, 0.95)',
-                    borderRadius: 20,
-                    padding: 24,
-                    marginHorizontal: 20,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: 'rgba(251, 191, 36, 0.3)',
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 8,
-                    elevation: 5,
-                  }}>
-                    <Text style={{ fontSize: 24, marginBottom: 12, color: colors.muted }}>—</Text>
-                    <Text style={{ color: colors.gold, fontSize: scaledFonts.large, fontWeight: '700', marginBottom: 8, textAlign: 'center' }}>
-                      Unlock Portfolio Analytics
-                    </Text>
-                    <Text style={{ color: colors.muted, textAlign: 'center', marginBottom: 20, lineHeight: 20, fontSize: scaledFonts.normal }}>
-                      Track your portfolio value over time, analyze cost basis, see premium trends, and more
-                    </Text>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: colors.gold,
-                        paddingVertical: 14,
-                        paddingHorizontal: 32,
-                        borderRadius: 12,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                      }}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setShowPaywallModal(true);
-                      }}
-                    >
-                      <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.medium }}>Upgrade to Gold</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
             </View>
           </>
         )}
