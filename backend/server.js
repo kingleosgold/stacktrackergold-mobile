@@ -3656,6 +3656,207 @@ app.get('/api/sync-subscription', async (req, res) => {
 });
 
 // ============================================
+// AI STACK ADVISOR
+// ============================================
+
+app.post('/api/advisor/chat', async (req, res) => {
+  try {
+    if (!GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'AI advisor is not configured' });
+    }
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const { userId, message, conversationHistory } = req.body;
+
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+    if (!message || typeof message !== 'string' || message.length > 500) {
+      return res.status(400).json({ error: 'Message is required (max 500 characters)' });
+    }
+
+    const supabaseClient = getSupabase();
+
+    // Verify user has Gold or Lifetime tier
+    const { data: profile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('id', userId)
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(404).json({ error: 'User profile not found' });
+    }
+
+    const tier = profile.subscription_tier || 'free';
+    if (tier !== 'gold' && tier !== 'lifetime') {
+      return res.status(403).json({ error: 'AI Stack Advisor requires Gold' });
+    }
+
+    // Fetch user's holdings
+    const { data: holdings, error: holdingsError } = await supabaseClient
+      .from('holdings')
+      .select('metal, type, weight, weight_unit, quantity, purchase_price, purchase_date, notes')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (holdingsError) {
+      console.error('❌ [Advisor] Holdings fetch error:', holdingsError.message);
+    }
+
+    const userHoldings = holdings || [];
+
+    // Get current spot prices
+    const prices = spotPriceCache.prices;
+    const change = spotPriceCache.change || {};
+
+    // Build portfolio summary
+    const metalTotals = { gold: { oz: 0, cost: 0 }, silver: { oz: 0, cost: 0 }, platinum: { oz: 0, cost: 0 }, palladium: { oz: 0, cost: 0 } };
+    const holdingDetails = [];
+
+    for (const h of userHoldings) {
+      const metal = h.metal;
+      if (!metalTotals[metal]) continue;
+      const weightOz = h.weight || 0;
+      const qty = h.quantity || 1;
+      const totalOz = weightOz * qty;
+      const purchasePrice = h.purchase_price || 0;
+      const totalCost = purchasePrice * qty;
+      const currentValue = totalOz * (prices[metal] || 0);
+
+      metalTotals[metal].oz += totalOz;
+      metalTotals[metal].cost += totalCost;
+
+      // Clean up type field (might contain JSON metadata)
+      let typeName = h.type || 'Other';
+      if (typeof typeName === 'string' && typeName.startsWith('{')) {
+        try { typeName = JSON.parse(typeName).name || 'Other'; } catch { /* keep as-is */ }
+      }
+
+      holdingDetails.push({
+        metal,
+        type: typeName,
+        qty,
+        totalOz: totalOz.toFixed(4),
+        purchasePrice: purchasePrice.toFixed(2),
+        totalCost: totalCost.toFixed(2),
+        currentValue: currentValue.toFixed(2),
+        gainLoss: (currentValue - totalCost).toFixed(2),
+        gainLossPct: totalCost > 0 ? (((currentValue - totalCost) / totalCost) * 100).toFixed(1) : '0',
+        purchaseDate: h.purchase_date || 'Unknown',
+      });
+    }
+
+    const totalValue = Object.keys(metalTotals).reduce((sum, m) => sum + metalTotals[m].oz * (prices[m] || 0), 0);
+    const totalCost = Object.keys(metalTotals).reduce((sum, m) => sum + metalTotals[m].cost, 0);
+    const gsRatio = prices.silver > 0 ? (prices.gold / prices.silver).toFixed(1) : 'N/A';
+
+    // Format holdings for the prompt
+    const holdingsText = holdingDetails.length > 0
+      ? holdingDetails.map(h =>
+        `- ${h.qty}x ${h.type} (${h.metal}): ${h.totalOz} oz, Cost $${h.totalCost}, Value $${h.currentValue}, ${parseFloat(h.gainLoss) >= 0 ? '+' : ''}$${h.gainLoss} (${h.gainLossPct}%), Purchased ${h.purchaseDate}`
+      ).join('\n')
+      : 'No holdings found.';
+
+    const metalSummary = Object.entries(metalTotals)
+      .filter(([_, v]) => v.oz > 0)
+      .map(([m, v]) => {
+        const val = v.oz * (prices[m] || 0);
+        const gl = val - v.cost;
+        return `${m.charAt(0).toUpperCase() + m.slice(1)}: ${v.oz.toFixed(2)} oz, Value $${val.toFixed(2)}, Cost $${v.cost.toFixed(2)}, ${gl >= 0 ? '+' : ''}$${gl.toFixed(2)}`;
+      }).join('\n');
+
+    const changeText = ['gold', 'silver', 'platinum', 'palladium']
+      .map(m => {
+        const c = change[m];
+        if (!c || !c.percent) return null;
+        return `${m.charAt(0).toUpperCase() + m.slice(1)}: ${c.percent >= 0 ? '+' : ''}${c.percent.toFixed(2)}% ($${c.amount?.toFixed(2) || '?'})`;
+      })
+      .filter(Boolean)
+      .join(', ');
+
+    const systemPrompt = `You are the Stack Advisor, an AI assistant for precious metals investors inside the Stack Tracker Gold app. You have access to the user's portfolio and current market data.
+
+PORTFOLIO SUMMARY:
+Total Value: $${totalValue.toFixed(2)}
+Total Cost Basis: $${totalCost.toFixed(2)}
+Overall ${totalValue >= totalCost ? 'Gain' : 'Loss'}: ${totalValue >= totalCost ? '+' : ''}$${(totalValue - totalCost).toFixed(2)} (${totalCost > 0 ? (((totalValue - totalCost) / totalCost) * 100).toFixed(1) : '0'}%)
+
+BY METAL:
+${metalSummary || 'No holdings'}
+
+INDIVIDUAL HOLDINGS:
+${holdingsText}
+
+CURRENT SPOT PRICES:
+Gold: $${prices.gold}, Silver: $${prices.silver}, Platinum: $${prices.platinum}, Palladium: $${prices.palladium}
+
+MARKET CONTEXT:
+Gold/Silver Ratio: ${gsRatio}
+Today's Moves: ${changeText || 'No data available'}
+
+RULES:
+- Give specific, actionable advice based on their actual portfolio
+- Reference their holdings by name when relevant (e.g. "Your 1832 American Silver Eagles are up 64%...")
+- Use current spot prices in calculations
+- When discussing buying: mention current premiums and cost-per-oz context
+- Be concise but thorough — this is for serious stackers, not beginners
+- Never guarantee returns or make definitive price predictions
+- Add a brief disclaimer at the end of financial advice responses
+- Format responses with clear sections when appropriate using markdown (bold, bullet points)
+- You can use dollar amounts and percentages freely
+- Keep responses under 600 words`;
+
+    // Build conversation for Gemini
+    const contents = [];
+
+    // Add conversation history (max last 10 messages)
+    const history = Array.isArray(conversationHistory) ? conversationHistory.slice(-10) : [];
+    for (const msg of history) {
+      if (msg.role === 'user') {
+        contents.push({ role: 'user', parts: [{ text: msg.content }] });
+      } else if (msg.role === 'assistant') {
+        contents.push({ role: 'model', parts: [{ text: msg.content }] });
+      }
+    }
+
+    // Add the new user message
+    contents.push({ role: 'user', parts: [{ text: message }] });
+
+    const geminiBody = {
+      contents,
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+    };
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiResp = await axios.post(geminiUrl, geminiBody, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 30000,
+    });
+
+    const responseText = geminiResp.data?.candidates?.[0]?.content?.parts
+      ?.filter(p => p.text)
+      ?.map(p => p.text)
+      ?.join('') || '';
+
+    if (!responseText) {
+      return res.status(500).json({ error: 'AI advisor returned an empty response' });
+    }
+
+    console.log(`🧠 [Advisor] Response for user ${userId}: ${responseText.length} chars`);
+    return res.json({ response: responseText });
+
+  } catch (error) {
+    console.error('❌ [Advisor] Error:', error.message);
+    return res.status(500).json({ error: 'Failed to get advisor response' });
+  }
+});
+
+// ============================================
 // STRIPE BILLING
 // ============================================
 
