@@ -5740,16 +5740,18 @@ function AppContent() {
                     </View>
                   )}
                 {!hasGoldAccess && holdingsImpact.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
-                    style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                    <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
-                    <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                      style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                      <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                      <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </View>
 
@@ -5990,16 +5992,18 @@ function AppContent() {
                       )}
 
                     {!hasGoldAccess && (
-                      <TouchableOpacity
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
-                        style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
-                      >
-                        <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                        <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
-                        <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity
+                          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                          style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
+                        >
+                          <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                          <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                          <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
+                        </TouchableOpacity>
+                      </>
                     )}
                   </View>
                 );
@@ -6095,16 +6099,18 @@ function AppContent() {
                     </View>
                   )}
                 {!hasGoldAccess && intelligenceBriefs.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
-                    style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                    <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
-                    <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                      style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                      <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                      <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </View>
 
@@ -6801,16 +6807,18 @@ function AppContent() {
 
             {/* Inline upgrade bar for non-Gold */}
             {!hasGoldAccess && (
-              <TouchableOpacity
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
-                style={{ marginHorizontal: 2, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center', backgroundColor: 'rgba(212, 168, 67, 0.05)' }}
-              >
-                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center', marginBottom: 4 }}>
-                <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                  style={{ marginHorizontal: 2, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center', backgroundColor: 'rgba(212, 168, 67, 0.05)' }}
+                >
+                  <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                  <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
+                </TouchableOpacity>
+              </>
             )}
 
             {/* Analytics Content */}
