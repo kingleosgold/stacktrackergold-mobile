@@ -947,6 +947,10 @@ function AppContent() {
   const shareViewRef = useRef(null);
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
 
+  // Today Tab - AI Daily Brief
+  const [dailyBrief, setDailyBrief] = useState(null); // { brief_text, date }
+  const [dailyBriefLoading, setDailyBriefLoading] = useState(false);
+
   // Today Tab - Intelligence Feed
   const [intelligenceBriefs, setIntelligenceBriefs] = useState([]);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
@@ -3783,6 +3787,25 @@ function AppContent() {
   // TODAY TAB - INTELLIGENCE FEED
   // ============================================
 
+  const fetchDailyBrief = async () => {
+    if (!supabaseUser || !hasGoldAccess) return;
+    try {
+      setDailyBriefLoading(true);
+      const today = new Date().toISOString().split('T')[0];
+      const response = await fetch(`${API_BASE_URL}/api/daily-brief?userId=${supabaseUser.id}&date=${today}`);
+      const data = await response.json();
+      if (data.success && data.brief) {
+        setDailyBrief(data.brief);
+      } else {
+        setDailyBrief(null);
+      }
+    } catch (error) {
+      console.log('Daily brief fetch error:', error.message);
+    } finally {
+      setDailyBriefLoading(false);
+    }
+  };
+
   const fetchIntelligenceBriefs = async () => {
     try {
       setIntelligenceLoading(true);
@@ -3817,11 +3840,12 @@ function AppContent() {
     }
   };
 
-  // Fetch intelligence + vault data on mount and when switching to Today tab
+  // Fetch intelligence + vault + daily brief data on mount and when switching to Today tab
   useEffect(() => {
     if (tab === 'today') {
       if (!intelligenceLastFetched) fetchIntelligenceBriefs();
       if (!vaultLastFetched) fetchVaultData();
+      if (!dailyBrief && hasGoldAccess && supabaseUser) fetchDailyBrief();
     }
   }, [tab]);
 
@@ -3832,6 +3856,7 @@ function AppContent() {
       fetchIntelligenceBriefs(),
       fetchVaultData(),
       fetchSpotPrices(true),
+      fetchDailyBrief(),
     ]);
     setIsRefreshing(false);
   };
@@ -5385,6 +5410,57 @@ function AppContent() {
 
           return (
             <View style={{ backgroundColor: isDarkMode ? '#0d0d0d' : colors.bg, marginHorizontal: -20, paddingHorizontal: 16, paddingTop: 4, minHeight: Dimensions.get('window').height - 200 }}>
+
+              {/* ===== YOUR DAILY BRIEF ===== */}
+              {hasGoldAccess ? (
+                <View style={{
+                  backgroundColor: todayCardBg,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: todayCardBorder,
+                  borderLeftWidth: 3,
+                  borderLeftColor: '#D4A843',
+                  padding: 16,
+                  marginBottom: 16,
+                }}>
+                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>
+                    {'☀\uFE0F'} Your Morning Brief · {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                  {dailyBriefLoading ? (
+                    <ActivityIndicator size="small" color="#D4A843" style={{ paddingVertical: 8 }} />
+                  ) : dailyBrief && dailyBrief.brief_text ? (
+                    <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }}>{dailyBrief.brief_text}</Text>
+                  ) : (
+                    <Text style={{ color: colors.muted, fontSize: 13, fontStyle: 'italic' }}>
+                      Your brief is being prepared... Check back after 6:30 AM EST
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: todayCardBg,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: todayCardBorder,
+                    borderLeftWidth: 3,
+                    borderLeftColor: '#D4A843',
+                    padding: 16,
+                    marginBottom: 16,
+                  }}
+                  onPress={() => setShowPaywallModal(true)}
+                >
+                  <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 4 }}>
+                    {'☀\uFE0F'} Your Morning Brief
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 13 }}>
+                    Get your personalized morning brief with Gold
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                    <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '600' }}>UPGRADE</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {/* ===== SECTION 1: PORTFOLIO PULSE ===== */}
               <View style={{

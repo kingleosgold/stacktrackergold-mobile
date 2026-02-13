@@ -3860,6 +3860,211 @@ RULES:
 });
 
 // ============================================
+// AI DAILY BRIEF
+// ============================================
+
+/**
+ * Generate a personalized daily brief for a Gold/Lifetime user.
+ * Analyzes their holdings against current market conditions and news.
+ */
+async function generateDailyBrief(userId) {
+  if (!GEMINI_API_KEY) throw new Error('Gemini API key not configured');
+  if (!isSupabaseAvailable()) throw new Error('Database not available');
+  if (!isUUID(userId)) throw new Error('Invalid userId');
+
+  const supabaseClient = getSupabase();
+
+  // Verify Gold/Lifetime tier
+  const { data: profile, error: profileError } = await supabaseClient
+    .from('profiles')
+    .select('subscription_tier')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) throw new Error('User profile not found');
+  const tier = profile.subscription_tier || 'free';
+  if (tier !== 'gold' && tier !== 'lifetime') throw new Error('Daily brief requires Gold');
+
+  // Fetch user's holdings
+  const { data: holdings } = await supabaseClient
+    .from('holdings')
+    .select('metal, type, weight, weight_unit, quantity, purchase_price')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  const userHoldings = holdings || [];
+
+  // Build portfolio summary
+  const prices = spotPriceCache.prices;
+  const change = spotPriceCache.change || {};
+  const metalTotals = { gold: { oz: 0, cost: 0 }, silver: { oz: 0, cost: 0 }, platinum: { oz: 0, cost: 0 }, palladium: { oz: 0, cost: 0 } };
+
+  for (const h of userHoldings) {
+    const metal = h.metal;
+    if (!metalTotals[metal]) continue;
+    const weightOz = h.weight || 0;
+    const qty = h.quantity || 1;
+    metalTotals[metal].oz += weightOz * qty;
+    metalTotals[metal].cost += (h.purchase_price || 0) * qty;
+  }
+
+  const totalValue = Object.keys(metalTotals).reduce((sum, m) => sum + metalTotals[m].oz * (prices[m] || 0), 0);
+  const totalCost = Object.keys(metalTotals).reduce((sum, m) => sum + metalTotals[m].cost, 0);
+
+  const metalSummary = Object.entries(metalTotals)
+    .filter(([_, v]) => v.oz > 0)
+    .map(([m, v]) => {
+      const val = v.oz * (prices[m] || 0);
+      return `${m.charAt(0).toUpperCase() + m.slice(1)}: ${v.oz.toFixed(2)} oz ($${val.toFixed(2)})`;
+    }).join(', ');
+
+  const changeText = ['gold', 'silver', 'platinum', 'palladium']
+    .map(m => {
+      const c = change[m];
+      if (!c || !c.percent) return null;
+      return `${m.charAt(0).toUpperCase() + m.slice(1)}: ${c.percent >= 0 ? '+' : ''}${c.percent.toFixed(2)}%`;
+    })
+    .filter(Boolean)
+    .join(', ');
+
+  // Fetch today's intelligence briefs for context
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const { data: newsBriefs } = await supabaseClient
+    .from('intelligence_briefs')
+    .select('title, summary, category')
+    .eq('date', today)
+    .order('relevance_score', { ascending: false })
+    .limit(6);
+
+  const newsContext = (newsBriefs || [])
+    .map(b => `- [${b.category}] ${b.title}: ${b.summary}`)
+    .join('\n');
+
+  // Call Gemini 2.0 Flash (plain text, no Google Search tool)
+  const systemPrompt = `You are a senior precious metals market analyst writing a personalized morning briefing for an investor. Be concise, insightful, and specific to their portfolio. Write 3-4 short paragraphs. Use plain text, no markdown headers or bullet points. Address the reader as "you" and reference their actual holdings.`;
+
+  const userPrompt = `Write a morning market brief for today (${today}).
+
+PORTFOLIO:
+Total Value: $${totalValue.toFixed(2)} | Cost Basis: $${totalCost.toFixed(2)} | ${totalValue >= totalCost ? 'Gain' : 'Loss'}: $${Math.abs(totalValue - totalCost).toFixed(2)}
+Holdings: ${metalSummary || 'No holdings yet'}
+
+SPOT PRICES:
+Gold: $${prices.gold}, Silver: $${prices.silver}, Platinum: $${prices.platinum}, Palladium: $${prices.palladium}
+Today's Changes: ${changeText || 'No change data available'}
+Gold/Silver Ratio: ${prices.silver > 0 ? (prices.gold / prices.silver).toFixed(1) : 'N/A'}
+
+TODAY'S NEWS:
+${newsContext || 'No news available yet today.'}
+
+Write a personalized briefing covering: 1) How today's market moves affect their specific portfolio, 2) Key news and what it means for their metals, 3) One brief forward-looking thought. Keep it under 250 words.`;
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const geminiResp = await axios.post(geminiUrl, {
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+  }, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000,
+  });
+
+  const briefText = geminiResp.data?.candidates?.[0]?.content?.parts
+    ?.filter(p => p.text)
+    ?.map(p => p.text)
+    ?.join('') || '';
+
+  if (!briefText) throw new Error('Gemini returned empty response');
+
+  // Upsert into daily_briefs (on conflict update)
+  const { error: upsertError } = await supabaseClient
+    .from('daily_briefs')
+    .upsert({
+      user_id: userId,
+      brief_text: briefText,
+      generated_at: new Date().toISOString(),
+      date: today,
+    }, { onConflict: 'user_id,date' });
+
+  if (upsertError) throw new Error(`Failed to save brief: ${upsertError.message}`);
+
+  console.log(`📝 [Daily Brief] Generated for user ${userId}: ${briefText.length} chars`);
+  return { success: true, brief: { brief_text: briefText, generated_at: new Date().toISOString(), date: today } };
+}
+
+// GET /api/daily-brief — Fetch the latest daily brief for a user
+app.get('/api/daily-brief', async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const supabaseClient = getSupabase();
+
+    // Tier check
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('id', userId)
+      .single();
+
+    const tier = profile?.subscription_tier || 'free';
+    if (tier !== 'gold' && tier !== 'lifetime') {
+      return res.status(403).json({ error: 'Daily brief requires Gold' });
+    }
+
+    // Get latest brief
+    const { data, error } = await supabaseClient
+      .from('daily_briefs')
+      .select('brief_text, generated_at, date')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      return res.json({ success: true, brief: null });
+    }
+
+    // Check if the brief is from today (EST)
+    const todayEST = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    if (data.date !== todayEST) {
+      return res.json({ success: true, brief: null });
+    }
+
+    return res.json({ success: true, brief: data });
+
+  } catch (error) {
+    console.error('❌ [Daily Brief] Fetch error:', error.message);
+    return res.status(500).json({ error: 'Failed to fetch daily brief' });
+  }
+});
+
+// POST /api/daily-brief/generate — Manual trigger for testing
+app.post('/api/daily-brief/generate', async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+
+    const result = await generateDailyBrief(userId);
+    return res.json(result);
+
+  } catch (error) {
+    console.error('❌ [Daily Brief] Generate error:', error.message);
+    return res.status(500).json({ error: error.message || 'Failed to generate daily brief' });
+  }
+});
+
+// ============================================
 // STRIPE BILLING
 // ============================================
 
@@ -4275,7 +4480,24 @@ fetchLiveSpotPrices().then(() => {
     console.log('🗄️ Scan Storage: /tmp/scan-usage.json');
     console.log('🔔 Price Alerts: ENABLED (checking every 5 min)');
     console.log('🧠 Intelligence Cron:', GEMINI_API_KEY ? 'ENABLED (6:30 AM EST daily)' : 'DISABLED (no GEMINI_API_KEY)');
+    console.log('📝 Daily Brief Cron:', GEMINI_API_KEY ? 'ENABLED (6:35 AM EST daily)' : 'DISABLED (no GEMINI_API_KEY)');
     console.log('💳 Stripe:', stripe ? 'ENABLED' : 'DISABLED (no STRIPE_SECRET_KEY)');
+
+    // SQL reminder for daily_briefs table
+    console.log('\n📋 [Daily Briefs] Ensure this table exists in Supabase:');
+    console.log(`
+  CREATE TABLE daily_briefs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES auth.users(id),
+    brief_text TEXT NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    date DATE NOT NULL,
+    UNIQUE (user_id, date)
+  );
+  CREATE INDEX idx_daily_briefs_user_date ON daily_briefs(user_id, date DESC);
+  ALTER TABLE daily_briefs ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY "Users can read own briefs" ON daily_briefs FOR SELECT USING (auth.uid() = user_id);
+    `);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     // Start price alert checker (runs every 5 minutes)
@@ -4313,6 +4535,47 @@ fetchLiveSpotPrices().then(() => {
         }
       }, { timezone: 'UTC' });
       console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:30 AM EST (11:30 UTC)');
+
+      // Daily Brief cron: 6:35 AM EST (11:35 UTC) — 5 min after intelligence so news is available
+      cron.schedule('35 11 * * *', async () => {
+        console.log(`\n📝 [Daily Brief Cron] Triggered at ${new Date().toISOString()}`);
+        try {
+          const supabaseClient = getSupabase();
+          const { data: goldUsers, error } = await supabaseClient
+            .from('profiles')
+            .select('id')
+            .in('subscription_tier', ['gold', 'lifetime']);
+
+          if (error || !goldUsers) {
+            console.error('📝 [Daily Brief Cron] Failed to fetch Gold users:', error?.message);
+            return;
+          }
+
+          console.log(`📝 [Daily Brief Cron] Generating briefs for ${goldUsers.length} Gold/Lifetime users`);
+          let success = 0;
+          let failed = 0;
+
+          for (const user of goldUsers) {
+            try {
+              await generateDailyBrief(user.id);
+              success++;
+              console.log(`📝 [Daily Brief Cron] ✅ ${success}/${goldUsers.length} — user ${user.id}`);
+            } catch (err) {
+              failed++;
+              console.error(`📝 [Daily Brief Cron] ❌ user ${user.id}: ${err.message}`);
+            }
+            // 2s delay between users to avoid rate limits
+            if (goldUsers.indexOf(user) < goldUsers.length - 1) {
+              await new Promise(r => setTimeout(r, 2000));
+            }
+          }
+
+          console.log(`📝 [Daily Brief Cron] Done: ${success} success, ${failed} failed out of ${goldUsers.length}`);
+        } catch (err) {
+          console.error('📝 [Daily Brief Cron] Failed:', err.message);
+        }
+      }, { timezone: 'UTC' });
+      console.log('📝 [Daily Brief Cron] Scheduled: daily at 6:35 AM EST (11:35 UTC)');
     }
 
     console.log('💳 RevenueCat Webhook:', REVENUECAT_WEBHOOK_SECRET ? 'ENABLED' : 'DISABLED (no secret)');
