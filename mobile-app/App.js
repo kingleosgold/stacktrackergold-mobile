@@ -5711,17 +5711,26 @@ function AppContent() {
                             paddingHorizontal: 16,
                             borderBottomWidth: i < holdingsImpact.length - 1 ? 1 : 0,
                             borderBottomColor: todayCardBorder,
-                            opacity: (!hasGoldAccess && i > 0) ? 0.25 : 1,
                           }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
-                              <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
-                                Your {m.label.toLowerCase()} ({formatOunces(m.ozt, m.label === 'Silver' ? 0 : 2)} oz)
-                              </Text>
-                            </View>
-                            <Text style={{ color: m.dollarChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 14, fontWeight: '600', marginLeft: 16, marginTop: 4 }}>
-                              {m.dollarChange >= 0 ? 'gained' : 'lost'} ${formatCurrency(Math.abs(m.dollarChange), 0)} ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
-                            </Text>
+                            {hasGoldAccess || i === 0 ? (
+                              <>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
+                                  <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
+                                    Your {m.label.toLowerCase()} ({formatOunces(m.ozt, m.label === 'Silver' ? 0 : 2)} oz)
+                                  </Text>
+                                </View>
+                                <Text style={{ color: m.dollarChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 14, fontWeight: '600', marginLeft: 16, marginTop: 4 }}>
+                                  {m.dollarChange >= 0 ? 'gained' : 'lost'} ${formatCurrency(Math.abs(m.dollarChange), 0)} ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
+                                </Text>
+                              </>
+                            ) : (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
+                                <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>{m.label}</Text>
+                                <Text style={{ color: colors.muted, fontSize: 14 }}>{'\u2022\u2022\u2022\u2022\u2022\u2022'}</Text>
+                              </View>
+                            )}
                           </View>
                         ))}
                       </View>
@@ -5877,50 +5886,72 @@ function AppContent() {
                               </View>
                             </View>
 
-                            <View style={{ opacity: hasGoldAccess ? 1 : 0.2 }}>
-                            {/* Eligible */}
-                            <View style={{ marginBottom: 14 }}>
-                              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Eligible</Text>
-                              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
-                                <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>{formatOzCompact(latestVault.eligible_oz)} oz</Text>
-                                {latestVault.eligible_change_oz !== 0 && (
-                                  <Text style={{ color: getChangeColor(latestVault.eligible_change_oz), fontSize: 12, fontWeight: '600' }}>
-                                    {getChangeArrow(latestVault.eligible_change_oz)} {formatChangeOz(latestVault.eligible_change_oz)}
-                                  </Text>
-                                )}
-                              </View>
-                            </View>
-
-                            {/* Combined */}
-                            <View style={{ marginBottom: 14 }}>
-                              <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Combined</Text>
-                              <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>{formatOzCompact(latestVault.combined_oz)} oz</Text>
-                            </View>
-
-                            {/* Oversubscribed Ratio */}
-                            {ratio > 0 && (
-                              <View style={{ marginBottom: 4 }}>
-                                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Oversubscribed Ratio</Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                  <Text style={{ color: ratio > 2 ? '#FBBF24' : colors.text, fontSize: 24, fontWeight: '700' }}>{ratio.toFixed(1)}x</Text>
-                                  {ratioWarning && (
-                                    <View style={{
-                                      flexDirection: 'row',
-                                      alignItems: 'center',
-                                      gap: 4,
-                                      backgroundColor: `${ratioWarning.color}15`,
-                                      borderRadius: 6,
-                                      paddingHorizontal: 8,
-                                      paddingVertical: 3,
-                                    }}>
-                                      <Text style={{ fontSize: 12 }}>{ratioWarning.icon}</Text>
-                                      <Text style={{ color: ratioWarning.color, fontSize: 11, fontWeight: '600' }}>{ratioWarning.label}</Text>
-                                    </View>
-                                  )}
+                            {hasGoldAccess ? (
+                              <>
+                                {/* Eligible */}
+                                <View style={{ marginBottom: 14 }}>
+                                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Eligible</Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+                                    <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600' }}>{formatOzCompact(latestVault.eligible_oz)} oz</Text>
+                                    {latestVault.eligible_change_oz !== 0 && (
+                                      <Text style={{ color: getChangeColor(latestVault.eligible_change_oz), fontSize: 12, fontWeight: '600' }}>
+                                        {getChangeArrow(latestVault.eligible_change_oz)} {formatChangeOz(latestVault.eligible_change_oz)}
+                                      </Text>
+                                    )}
+                                  </View>
                                 </View>
-                              </View>
+
+                                {/* Combined */}
+                                <View style={{ marginBottom: 14 }}>
+                                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Combined</Text>
+                                  <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>{formatOzCompact(latestVault.combined_oz)} oz</Text>
+                                </View>
+
+                                {/* Oversubscribed Ratio */}
+                                {ratio > 0 && (
+                                  <View style={{ marginBottom: 4 }}>
+                                    <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Oversubscribed Ratio</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                      <Text style={{ color: ratio > 2 ? '#FBBF24' : colors.text, fontSize: 24, fontWeight: '700' }}>{ratio.toFixed(1)}x</Text>
+                                      {ratioWarning && (
+                                        <View style={{
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          backgroundColor: `${ratioWarning.color}15`,
+                                          borderRadius: 6,
+                                          paddingHorizontal: 8,
+                                          paddingVertical: 3,
+                                        }}>
+                                          <Text style={{ fontSize: 12 }}>{ratioWarning.icon}</Text>
+                                          <Text style={{ color: ratioWarning.color, fontSize: 11, fontWeight: '600' }}>{ratioWarning.label}</Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                  </View>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {/* Eligible - redacted */}
+                                <View style={{ marginBottom: 14 }}>
+                                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Eligible</Text>
+                                  <Text style={{ color: colors.muted, fontSize: 20, fontWeight: '600' }}>{'\u2022\u2022\u2022\u2022\u2022\u2022'} oz</Text>
+                                </View>
+
+                                {/* Combined - redacted */}
+                                <View style={{ marginBottom: 14 }}>
+                                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Combined</Text>
+                                  <Text style={{ color: colors.muted, fontSize: 18, fontWeight: '600' }}>{'\u2022\u2022\u2022\u2022\u2022\u2022'} oz</Text>
+                                </View>
+
+                                {/* Oversubscribed Ratio - redacted */}
+                                <View style={{ marginBottom: 4 }}>
+                                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>Oversubscribed Ratio</Text>
+                                  <Text style={{ color: colors.muted, fontSize: 24, fontWeight: '700' }}>{'\u2022\u2022\u2022'}x</Text>
+                                </View>
+                              </>
                             )}
-                            </View>
                           </View>
 
                           {/* Divider */}
@@ -5928,48 +5959,59 @@ function AppContent() {
 
                           {/* Mini trend chart */}
                           {chartDataPoints.length >= 3 && (
-                            <View style={{ paddingVertical: 12, paddingHorizontal: 4, opacity: hasGoldAccess ? 1 : 0.2 }}>
-                              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 12 }}>Registered Inventory (30d)</Text>
-                              <LineChart
-                                data={{
-                                  labels: sparseLabels,
-                                  datasets: [{
-                                    data: chartDataPoints,
+                            hasGoldAccess ? (
+                              <View style={{ paddingVertical: 12, paddingHorizontal: 4 }}>
+                                <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 12 }}>Registered Inventory (30d)</Text>
+                                <LineChart
+                                  data={{
+                                    labels: sparseLabels,
+                                    datasets: [{
+                                      data: chartDataPoints,
+                                      color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
+                                      strokeWidth: 2,
+                                    }],
+                                  }}
+                                  width={SCREEN_WIDTH - 56}
+                                  height={160}
+                                  yAxisSuffix=""
+                                  chartConfig={{
+                                    backgroundColor: 'transparent',
+                                    backgroundGradientFrom: isDarkMode ? '#0d0d0d' : '#fafafa',
+                                    backgroundGradientTo: isDarkMode ? '#0d0d0d' : '#fafafa',
+                                    decimalPlaces: 0,
                                     color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
-                                    strokeWidth: 2,
-                                  }],
-                                }}
-                                width={SCREEN_WIDTH - 56}
-                                height={160}
-                                yAxisSuffix=""
-                                chartConfig={{
-                                  backgroundColor: 'transparent',
-                                  backgroundGradientFrom: isDarkMode ? '#0d0d0d' : '#fafafa',
-                                  backgroundGradientTo: isDarkMode ? '#0d0d0d' : '#fafafa',
-                                  decimalPlaces: 0,
-                                  color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
-                                  labelColor: () => colors.muted,
-                                  style: { borderRadius: 8 },
-                                  propsForDots: { r: '0' },
-                                  fillShadowGradientFrom: 'rgba(212, 168, 67, 0.3)',
-                                  fillShadowGradientTo: 'rgba(212, 168, 67, 0.0)',
-                                  fillShadowGradientFromOpacity: 0.3,
-                                  fillShadowGradientToOpacity: 0,
-                                  formatYLabel: (value) => {
-                                    const num = parseFloat(value);
-                                    if (num >= 1e9) return `${(num / 1e9).toFixed(1)}B`;
-                                    if (num >= 1e6) return `${(num / 1e6).toFixed(0)}M`;
-                                    if (num >= 1e3) return `${(num / 1e3).toFixed(0)}K`;
-                                    return num.toFixed(0);
-                                  },
-                                }}
-                                fromZero={false}
-                                segments={3}
-                                bezier
-                                withShadow={true}
-                                style={{ borderRadius: 8, marginLeft: -8 }}
-                              />
-                            </View>
+                                    labelColor: () => colors.muted,
+                                    style: { borderRadius: 8 },
+                                    propsForDots: { r: '0' },
+                                    fillShadowGradientFrom: 'rgba(212, 168, 67, 0.3)',
+                                    fillShadowGradientTo: 'rgba(212, 168, 67, 0.0)',
+                                    fillShadowGradientFromOpacity: 0.3,
+                                    fillShadowGradientToOpacity: 0,
+                                    formatYLabel: (value) => {
+                                      const num = parseFloat(value);
+                                      if (num >= 1e9) return `${(num / 1e9).toFixed(1)}B`;
+                                      if (num >= 1e6) return `${(num / 1e6).toFixed(0)}M`;
+                                      if (num >= 1e3) return `${(num / 1e3).toFixed(0)}K`;
+                                      return num.toFixed(0);
+                                    },
+                                  }}
+                                  fromZero={false}
+                                  segments={3}
+                                  bezier
+                                  withShadow={true}
+                                  style={{ borderRadius: 8, marginLeft: -8 }}
+                                />
+                              </View>
+                            ) : (
+                              <TouchableOpacity
+                                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                                style={{ margin: 12, height: 200, borderWidth: 1.5, borderColor: 'rgba(212, 168, 67, 0.3)', borderStyle: 'dashed', borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: isDarkMode ? 'rgba(212, 168, 67, 0.03)' : 'rgba(212, 168, 67, 0.05)' }}
+                              >
+                                <Text style={{ fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, color: colors.muted, marginBottom: 12 }}>30-day inventory trend</Text>
+                                <Text style={{ fontSize: 28, marginBottom: 8 }}>{'\uD83D\uDD12'}</Text>
+                                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Available with Gold</Text>
+                              </TouchableOpacity>
+                            )
                           )}
 
                           {/* Source footer */}
@@ -6037,7 +6079,7 @@ function AppContent() {
                     </View>
                   ) : intelligenceBriefs.length > 0 ? (
                     <View style={{ gap: 10 }}>
-                      {intelligenceBriefs.map((brief, i) => (
+                      {(hasGoldAccess ? intelligenceBriefs : intelligenceBriefs.slice(0, 1)).map((brief, i) => (
                         <TouchableOpacity
                           key={brief.id || i}
                           style={{
@@ -6046,14 +6088,8 @@ function AppContent() {
                             borderWidth: 1,
                             borderColor: todayCardBorder,
                             padding: 16,
-                            opacity: (!hasGoldAccess && i > 0) ? 0.2 : 1,
                           }}
                           onPress={() => {
-                            if (!hasGoldAccess && i > 0) {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              setShowPaywallModal(true);
-                              return;
-                            }
                             if (brief.source_url) {
                               Linking.openURL(brief.source_url);
                             }
@@ -6084,6 +6120,28 @@ function AppContent() {
                           <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>{brief.summary}</Text>
                         </TouchableOpacity>
                       ))}
+
+                      {/* Gated count card for free users */}
+                      {!hasGoldAccess && intelligenceBriefs.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                          style={{
+                            backgroundColor: todayCardBg,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: 'rgba(212, 168, 67, 0.3)',
+                            padding: 20,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ fontSize: 24, marginBottom: 8 }}>{'\uD83D\uDD12'}</Text>
+                          <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600', marginBottom: 6 }}>
+                            {intelligenceBriefs.length - 1} more market brief{intelligenceBriefs.length - 1 > 1 ? 's' : ''} today
+                          </Text>
+                          <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                          <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo {'\u00B7'} Cancel anytime</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   ) : (
                     <View style={{
@@ -6098,20 +6156,6 @@ function AppContent() {
                       <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>Check back soon for today's market briefs</Text>
                     </View>
                   )}
-                {!hasGoldAccess && intelligenceBriefs.length > 1 && (
-                  <>
-                    <TouchableOpacity
-                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
-                      style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
-                    >
-                      <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                      <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
-                      <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
               </View>
 
               {/* ===== SECTION 4.5: AI STACK ADVISOR ===== */}
@@ -7285,20 +7329,29 @@ function AppContent() {
                 <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                   <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Holdings Breakdown</Text>
                   {totalMeltValue > 0 ? (
-                    <View style={{ opacity: hasGoldAccess ? 1 : 0.35 }}>
-                    <PieChart
-                      data={[
-                        { label: hasGoldAccess ? 'Gold' : '', value: goldMeltValue, color: colors.gold },
-                        { label: hasGoldAccess ? 'Silver' : '', value: silverMeltValue, color: colors.silver },
-                        { label: hasGoldAccess ? 'Platinum' : '', value: platinumMeltValue, color: colors.platinum },
-                        { label: hasGoldAccess ? 'Palladium' : '', value: palladiumMeltValue, color: colors.palladium },
-                      ].filter(d => d.value > 0)}
-                      size={160}
-                      cardBgColor={colors.cardBg}
-                      textColor={hasGoldAccess ? colors.text : 'transparent'}
-                      mutedColor={hasGoldAccess ? colors.muted : 'transparent'}
-                    />
-                    </View>
+                    hasGoldAccess ? (
+                      <PieChart
+                        data={[
+                          { label: 'Gold', value: goldMeltValue, color: colors.gold },
+                          { label: 'Silver', value: silverMeltValue, color: colors.silver },
+                          { label: 'Platinum', value: platinumMeltValue, color: colors.platinum },
+                          { label: 'Palladium', value: palladiumMeltValue, color: colors.palladium },
+                        ].filter(d => d.value > 0)}
+                        size={160}
+                        cardBgColor={colors.cardBg}
+                        textColor={colors.text}
+                        mutedColor={colors.muted}
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
+                        style={{ height: 180, borderWidth: 1.5, borderColor: 'rgba(212, 168, 67, 0.3)', borderStyle: 'dashed', borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: isDarkMode ? 'rgba(212, 168, 67, 0.03)' : 'rgba(212, 168, 67, 0.05)' }}
+                      >
+                        <Text style={{ fontSize: 28, marginBottom: 8 }}>{'\uD83D\uDD12'}</Text>
+                        <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 4 }}>Portfolio Breakdown</Text>
+                        <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Available with Gold</Text>
+                      </TouchableOpacity>
+                    )
                   ) : (
                     <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Add holdings to see breakdown</Text>
