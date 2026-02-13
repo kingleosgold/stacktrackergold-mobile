@@ -26,7 +26,7 @@ import * as XLSX from 'xlsx';
 import * as Notifications from 'expo-notifications';
 import * as StoreReview from 'expo-store-review';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
-import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitlements } from './src/utils/entitlements';
+import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitlements, restorePurchases } from './src/utils/entitlements';
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import { registerBackgroundFetch, getBackgroundFetchStatus } from './src/utils/backgroundTasks';
 import { LineChart } from 'react-native-chart-kit';
@@ -2172,6 +2172,21 @@ function AppContent() {
     } catch (error) {
       if (__DEV__) console.log('❌ Error checking entitlements:', error);
       return false;
+    }
+  };
+
+  // Restore purchases handler (used by inline upgrade bars)
+  const handleRestore = async () => {
+    try {
+      const hasGoldNow = await restorePurchases();
+      if (hasGoldNow) {
+        setHasGold(true);
+        Alert.alert('Purchases Restored!', 'Your Gold subscription has been restored.');
+      } else {
+        Alert.alert('No Purchases Found', 'No active subscriptions were found to restore.');
+      }
+    } catch (error) {
+      Alert.alert('Restore Failed', 'Could not restore purchases. Please try again.');
     }
   };
 
@@ -5729,7 +5744,11 @@ function AppContent() {
                     onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                     style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
                   >
-                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Unlock all {holdingsImpact.length} metals with Gold</Text>
+                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                    <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                    <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -5975,7 +5994,11 @@ function AppContent() {
                         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                         style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
                       >
-                        <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Unlock full Vault Watch with Gold</Text>
+                        <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                        <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                        <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -6076,7 +6099,11 @@ function AppContent() {
                     onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                     style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
                   >
-                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Read {intelligenceBriefs.length - 1} more briefs with Gold</Text>
+                    <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                    <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                    <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -6237,7 +6264,7 @@ function AppContent() {
                       {/* Questions remaining */}
                       <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>
                         <Text style={{ color: colors.muted, fontSize: 10, textAlign: 'center' }}>
-                          {hasGoldAccess ? `${25 - advisorQuestionsToday} questions remaining today` : 'Gold feature \u00B7 Tap a question to learn more'}
+                          {hasGoldAccess ? `${25 - advisorQuestionsToday} questions remaining today` : 'Gold feature \u00B7 Try free for 7 days'}
                         </Text>
                       </View>
                     </View>
@@ -6778,13 +6805,16 @@ function AppContent() {
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                 style={{ marginHorizontal: 2, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center', backgroundColor: 'rgba(212, 168, 67, 0.05)' }}
               >
-                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Upgrade to Gold for full analytics</Text>
+                <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Try Gold free for 7 days</Text>
+                <Text style={{ color: colors.muted, fontSize: 10, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ color: colors.muted, fontSize: 11, textDecorationLine: 'underline' }}>Restore Purchases</Text>
               </TouchableOpacity>
             )}
 
             {/* Analytics Content */}
             <View>
-              <View style={{ opacity: hasGoldAccess ? 1 : 0.7 }}>
               <>
                 {/* Time Range Selector */}
                 <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
@@ -7247,18 +7277,20 @@ function AppContent() {
                 <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                   <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Holdings Breakdown</Text>
                   {totalMeltValue > 0 ? (
+                    <View style={{ opacity: hasGoldAccess ? 1 : 0.35 }}>
                     <PieChart
                       data={[
-                        { label: 'Gold', value: goldMeltValue, color: colors.gold },
-                        { label: 'Silver', value: silverMeltValue, color: colors.silver },
-                        { label: 'Platinum', value: platinumMeltValue, color: colors.platinum },
-                        { label: 'Palladium', value: palladiumMeltValue, color: colors.palladium },
+                        { label: hasGoldAccess ? 'Gold' : '', value: goldMeltValue, color: colors.gold },
+                        { label: hasGoldAccess ? 'Silver' : '', value: silverMeltValue, color: colors.silver },
+                        { label: hasGoldAccess ? 'Platinum' : '', value: platinumMeltValue, color: colors.platinum },
+                        { label: hasGoldAccess ? 'Palladium' : '', value: palladiumMeltValue, color: colors.palladium },
                       ].filter(d => d.value > 0)}
                       size={160}
                       cardBgColor={colors.cardBg}
-                      textColor={colors.text}
-                      mutedColor={colors.muted}
+                      textColor={hasGoldAccess ? colors.text : 'transparent'}
+                      mutedColor={hasGoldAccess ? colors.muted : 'transparent'}
                     />
+                    </View>
                   ) : (
                     <View style={{ alignItems: 'center', paddingVertical: 20 }}>
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Add holdings to see breakdown</Text>
@@ -7513,37 +7545,39 @@ function AppContent() {
                   <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Break-Even Analysis</Text>
                   {totalSilverOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.silver}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                      <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver: ${formatCurrency(silverBreakeven)}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{silverSpot >= silverBreakeven ? 'Profitable!' : `Need +$${formatCurrency(silverBreakeven - silverSpot)}`}</Text>
+                      <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver: {hasGoldAccess ? `$${formatCurrency(silverBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{silverSpot >= silverBreakeven ? 'Profitable!' : (hasGoldAccess ? `Need +$${formatCurrency(silverBreakeven - silverSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                   {totalGoldOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.gold}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.normal }}>Gold: ${formatCurrency(goldBreakeven)}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{goldSpot >= goldBreakeven ? 'Profitable!' : `Need +$${formatCurrency(goldBreakeven - goldSpot)}`}</Text>
+                      <Text style={{ color: colors.gold, fontSize: scaledFonts.normal }}>Gold: {hasGoldAccess ? `$${formatCurrency(goldBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{goldSpot >= goldBreakeven ? 'Profitable!' : (hasGoldAccess ? `Need +$${formatCurrency(goldBreakeven - goldSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                   {totalPlatinumOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.platinum}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                      <Text style={{ color: colors.platinum, fontSize: scaledFonts.normal }}>Platinum: ${formatCurrency(platinumBreakeven)}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{platinumSpot >= platinumBreakeven ? 'Profitable!' : `Need +$${formatCurrency(platinumBreakeven - platinumSpot)}`}</Text>
+                      <Text style={{ color: colors.platinum, fontSize: scaledFonts.normal }}>Platinum: {hasGoldAccess ? `$${formatCurrency(platinumBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{platinumSpot >= platinumBreakeven ? 'Profitable!' : (hasGoldAccess ? `Need +$${formatCurrency(platinumBreakeven - platinumSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                   {totalPalladiumOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.palladium}22`, padding: 12, borderRadius: 8 }}>
-                      <Text style={{ color: colors.palladium, fontSize: scaledFonts.normal }}>Palladium: ${formatCurrency(palladiumBreakeven)}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{palladiumSpot >= palladiumBreakeven ? 'Profitable!' : `Need +$${formatCurrency(palladiumBreakeven - palladiumSpot)}`}</Text>
+                      <Text style={{ color: colors.palladium, fontSize: scaledFonts.normal }}>Palladium: {hasGoldAccess ? `$${formatCurrency(palladiumBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{palladiumSpot >= palladiumBreakeven ? 'Profitable!' : (hasGoldAccess ? `Need +$${formatCurrency(palladiumBreakeven - palladiumSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                 </View>
 
                 {/* Premium Analysis */}
-                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPremiumAnalysisModal(true); }}>
-                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Premium Analysis</Text>
+                <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (!hasGoldAccess) { setShowPaywallModal(true); return; } setShowPremiumAnalysisModal(true); }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Premium Analysis</Text>
+                    {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>}
+                  </View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>View premiums paid across your holdings</Text>
                 </TouchableOpacity>
               </>
-              </View>
 
             </View>
           </>

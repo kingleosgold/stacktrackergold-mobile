@@ -147,11 +147,18 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
         {isPurchasing ? (
           <ActivityIndicator color="#fbbf24" style={{ marginTop: 12 }} />
         ) : (
-          <View style={[styles.subscribeButton, badge === 'BEST VALUE' && { backgroundColor: '#22c55e' }]}>
-            <Text style={styles.subscribeButtonText}>
-              {title === 'Lifetime' ? 'Buy Once' : 'Subscribe'}
-            </Text>
-          </View>
+          <>
+            <View style={[styles.subscribeButton, badge === 'BEST VALUE' && { backgroundColor: '#22c55e' }]}>
+              <Text style={styles.subscribeButtonText}>
+                {title === 'Lifetime' ? 'Buy Once' : 'Try Free for 7 Days'}
+              </Text>
+            </View>
+            {title !== 'Lifetime' && (
+              <Text style={{ color: '#71717a', fontSize: 11, textAlign: 'center', marginTop: 6 }}>
+                Then {pkg.product.priceString}/{title === 'Monthly' ? 'mo' : 'yr'} · Cancel anytime
+              </Text>
+            )}
+          </>
         )}
       </TouchableOpacity>
     );
@@ -239,6 +246,19 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
             )}
           </ScrollView>
 
+          {/* Restore Purchases - Prominent Ghost Button */}
+          <TouchableOpacity
+            onPress={handleRestore}
+            style={styles.restoreButtonProminent}
+            disabled={restoring}
+          >
+            {restoring ? (
+              <ActivityIndicator size="small" color="#fbbf24" />
+            ) : (
+              <Text style={styles.restoreButtonProminentText}>Restore Purchases</Text>
+            )}
+          </TouchableOpacity>
+
           {/* Legal Links */}
           <View style={styles.legalLinks}>
             <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)}>
@@ -249,19 +269,6 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
               <Text style={styles.legalLinkText}>Terms of Use</Text>
             </TouchableOpacity>
           </View>
-
-          {/* Restore Button */}
-          <TouchableOpacity
-            onPress={handleRestore}
-            style={styles.restoreButton}
-            disabled={restoring}
-          >
-            {restoring ? (
-              <ActivityIndicator size="small" color="#a1a1aa" />
-            ) : (
-              <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-            )}
-          </TouchableOpacity>
 
           {/* Footer */}
           <Text style={styles.footer}>
@@ -441,15 +448,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#52525b',
   },
-  restoreButton: {
-    paddingVertical: 16,
+  restoreButtonProminent: {
+    marginHorizontal: 24,
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#fbbf24',
     alignItems: 'center',
-    marginTop: 12,
   },
-  restoreButtonText: {
-    fontSize: 15,
-    color: '#a1a1aa',
-    textDecorationLine: 'underline',
+  restoreButtonProminentText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fbbf24',
   },
   footer: {
     fontSize: 11,
