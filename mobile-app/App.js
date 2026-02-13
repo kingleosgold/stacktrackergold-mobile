@@ -6117,7 +6117,7 @@ function AppContent() {
                           <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600', marginBottom: 6, lineHeight: 20 }}>{brief.title}</Text>
 
                           {/* Summary */}
-                          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }}>{brief.summary}</Text>
+                          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18 }} numberOfLines={3}>{brief.summary}</Text>
                         </TouchableOpacity>
                       ))}
 
@@ -8196,35 +8196,6 @@ function AppContent() {
 
         <View style={{ height: (tab === 'settings' || tab === 'analytics') ? 300 : 100 }} />
       </ScrollView>
-
-      {/* Upgrade to Gold Banner - only show after subscription status is loaded */}
-      {!subscriptionLoading && !hasGold && !hasLifetimeAccess && !upgradeBannerDismissed && (
-        <View style={styles.upgradeBanner}>
-          <TouchableOpacity
-            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingLeft: 16 }}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setShowPaywallModal(true);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: scaledFonts.medium, marginRight: 8 }}>👑</Text>
-            <Text style={{ color: '#1a1a2e', fontSize: scaledFonts.normal, fontWeight: '600', flex: 1 }}>
-              Unlock unlimited features - Upgrade to Gold
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ paddingHorizontal: 16, paddingVertical: 12 }}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setUpgradeBannerDismissed(true);
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={{ color: '#1a1a2e', fontSize: scaledFonts.large, fontWeight: '700' }}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/* Bottom Tabs */}
       <View style={[styles.bottomTabs, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)', borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
