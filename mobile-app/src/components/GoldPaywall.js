@@ -116,7 +116,7 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
     }
   };
 
-  const renderPackage = (pkg, title, description, isPopular = false) => {
+  const renderPackage = (pkg, title, description, badge = null) => {
     const isPurchasing = purchasing === pkg.identifier;
 
     return (
@@ -124,14 +124,14 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
         key={pkg.identifier}
         style={[
           styles.packageCard,
-          isPopular && styles.popularPackage,
+          badge && styles.popularPackage,
         ]}
         onPress={() => handlePurchase(pkg)}
         disabled={isPurchasing || loading}
       >
-        {isPopular && (
-          <View style={styles.popularBadge}>
-            <Text style={styles.popularText}>MOST POPULAR</Text>
+        {badge && (
+          <View style={[styles.popularBadge, badge === 'BEST VALUE' && { backgroundColor: '#22c55e' }]}>
+            <Text style={styles.popularText}>{badge}</Text>
           </View>
         )}
 
@@ -147,8 +147,10 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
         {isPurchasing ? (
           <ActivityIndicator color="#fbbf24" style={{ marginTop: 12 }} />
         ) : (
-          <View style={styles.subscribeButton}>
-            <Text style={styles.subscribeButtonText}>Subscribe</Text>
+          <View style={[styles.subscribeButton, badge === 'BEST VALUE' && { backgroundColor: '#22c55e' }]}>
+            <Text style={styles.subscribeButtonText}>
+              {title === 'Lifetime' ? 'Buy Once' : 'Subscribe'}
+            </Text>
           </View>
         )}
       </TouchableOpacity>
@@ -171,7 +173,7 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
             </View>
             <Text style={styles.title}>Upgrade to Gold</Text>
             <Text style={styles.subtitle}>
-              Unlock unlimited precious metals tracking
+              AI-powered intelligence for serious stackers
             </Text>
             <TouchableOpacity
               onPress={onClose}
@@ -184,10 +186,13 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
 
           {/* Features */}
           <View style={styles.featuresSection}>
-            <Feature icon="∞" text="Unlimited gold & silver items" />
-            <Feature icon="📷" text="AI receipt scanning" />
-            <Feature icon="📊" text="Advanced analytics" />
-            <Feature icon="☁️" text="iCloud sync across devices" />
+            <Feature icon="🧠" text="AI Intelligence Feed" />
+            <Feature icon="🏦" text="COMEX Vault Watch" />
+            <Feature icon="💬" text="AI Stack Advisor (coming soon)" />
+            <Feature icon="📰" text="AI Daily Brief (coming soon)" />
+            <Feature icon="🔍" text="AI Deal Finder (coming soon)" />
+            <Feature icon="📈" text="Spot Price History" />
+            <Feature icon="📊" text="Advanced Analytics" />
           </View>
 
           {/* Packages */}
@@ -202,18 +207,19 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
                 {offerings.monthly && renderPackage(
                   offerings.monthly,
                   'Monthly',
-                  'Perfect for trying out Gold tier'
+                  'Full access, cancel anytime'
                 )}
                 {offerings.annual && renderPackage(
                   offerings.annual,
                   'Yearly',
-                  'Save 33% compared to monthly',
-                  true
+                  'Save 33% vs monthly — best for serious stackers',
+                  'SAVE 33%'
                 )}
                 {offerings.lifetime && renderPackage(
                   offerings.lifetime,
                   'Lifetime',
-                  'One-time payment, stack forever'
+                  'One-time payment, stack forever',
+                  'BEST VALUE'
                 )}
               </>
             ) : (

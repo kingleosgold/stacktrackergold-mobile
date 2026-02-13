@@ -47,7 +47,7 @@ Stack Tracker Pro is a privacy-first iOS app for tracking precious metals portfo
 - **URL**: stack-tracker-pro-production.up.railway.app
 
 ### Key Services
-- **RevenueCat**: Subscription management (Gold Monthly $4.99, Yearly $39.99, Lifetime $79.99)
+- **RevenueCat**: Subscription management (Gold Monthly $9.99, Yearly $79.99, Lifetime $199.99)
 - **MetalPriceAPI**: Live spot prices (primary)
 - **GoldAPI**: Fallback for spot prices
 - **Claude Vision API**: Receipt OCR scanning
@@ -55,15 +55,19 @@ Stack Tracker Pro is a privacy-first iOS app for tracking precious metals portfo
 ## App Features
 
 ### Free Tier
-- 5 receipt scans/month (server-side tracking)
-- Basic dashboard
-- Manual holdings entry
+- Portfolio tracking (unlimited holdings)
+- Live spot prices
+- Basic analytics
 - CSV export
-- Manual cloud backup (file-based)
 
-### Gold/Lifetime Tier
-- Unlimited receipt scans
-- iCloud sync across devices
+### Gold/Lifetime Tier ($9.99/mo, $79.99/yr, $199.99 lifetime)
+- AI Intelligence Feed
+- COMEX Vault Watch
+- AI Stack Advisor (coming soon)
+- AI Daily Brief (coming soon)
+- AI Deal Finder (coming soon)
+- Spot Price History charts
+- Advanced Analytics
 - All free features
 
 ## Important Files
@@ -113,13 +117,13 @@ backend/
 ## RevenueCat Setup
 
 ### Products:
-- `stacktracker_gold_monthly` - $4.99/month
-- `stacktracker_gold_yearly` - $39.99/year  
-- `stacktracker_lifetime` - $79.99 one-time
+- `stacktracker_gold_monthly` - $9.99/month
+- `stacktracker_gold_yearly` - $79.99/year (save 33%)
+- `stacktracker_lifetime` - $199.99 one-time
 
 ### Entitlements:
-- `Gold` - Monthly/Yearly subscribers
-- `Lifetime` - Lifetime purchase
+- `Gold` - Any active subscription or lifetime purchase
+- Existing $4.99/mo subscribers grandfathered at old price
 
 ### Testing:
 - Grant promotional entitlements via RevenueCat dashboard
@@ -167,15 +171,16 @@ git push origin main              # Deploy to Railway
 
 ## Monetization Strategy
 
-Current Gold benefits:
-1. Unlimited receipt scans
-2. iCloud sync
+Two tiers only: FREE and GOLD (no Platinum tier).
 
-Future features (see Future_Features.pdf):
-- Price alerts
-- iOS widgets
-- Advanced analytics
-- Multiple portfolios
+Gold benefits:
+1. AI Intelligence Feed
+2. COMEX Vault Watch
+3. Spot Price History charts
+4. Advanced Analytics
+5. AI Stack Advisor (coming soon)
+6. AI Daily Brief (coming soon)
+7. AI Deal Finder (coming soon)
 
 ## Contact & Support
 - Support email: stacktrackerpro@gmail.com
