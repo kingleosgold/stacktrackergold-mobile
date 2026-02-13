@@ -3901,14 +3901,24 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     const supabaseClient = getSupabase();
 
     // Look up user profile for email and existing stripe_customer_id
-    const { data: profile, error: profileError } = await supabaseClient
+    let { data: profile } = await supabaseClient
       .from('profiles')
       .select('email, stripe_customer_id')
       .eq('id', user_id)
       .single();
 
-    if (profileError || !profile) {
-      return res.status(404).json({ error: 'User profile not found' });
+    // If profile doesn't exist (new user), create it from auth.users
+    if (!profile) {
+      const { data: authUser, error: authError } = await supabaseClient.auth.admin.getUserById(user_id);
+      if (authError || !authUser?.user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const userEmail = authUser.user.email || '';
+      await supabaseClient
+        .from('profiles')
+        .upsert({ id: user_id, email: userEmail, subscription_tier: 'free' }, { onConflict: 'id' });
+      profile = { email: userEmail, stripe_customer_id: null };
+      console.log(`📝 [Stripe] Created missing profile for user ${user_id}`);
     }
 
     let customerId = profile.stripe_customer_id;
