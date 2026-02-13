@@ -931,15 +931,17 @@ function AppContent() {
   const [analyticsRange, setAnalyticsRange] = useState('1M');
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
-  // Spot Price History State
-  const [spotHistoryRange, setSpotHistoryRange] = useState('1Y');
-  const [spotHistoryData, setSpotHistoryData] = useState(null);
-  const [spotHistoryLoading, setSpotHistoryLoading] = useState(false);
-  const [spotHistoryError, setSpotHistoryError] = useState(null);
-  const [spotHistoryShowGold, setSpotHistoryShowGold] = useState(true);
-  const [spotHistoryShowSilver, setSpotHistoryShowSilver] = useState(true);
-  const [spotHistoryShowPlatinum, setSpotHistoryShowPlatinum] = useState(false);
-  const [spotHistoryShowPalladium, setSpotHistoryShowPalladium] = useState(false);
+  // Spot Price History State — per-metal charts
+  const [spotHistoryMetal, setSpotHistoryMetal] = useState({
+    gold: { range: '1Y', data: null, loading: false, error: null },
+    silver: { range: '1Y', data: null, loading: false, error: null },
+    platinum: { range: '1Y', data: null, loading: false, error: null },
+    palladium: { range: '1Y', data: null, loading: false, error: null },
+  });
+
+  // Sparkline data for Metal Movers + Portfolio Pulse (7-day trend)
+  const [sparklineData, setSparklineData] = useState(null); // { gold: [7 numbers], silver: [...], ... }
+  const sparklineFetchedRef = useRef(false);
 
   // Share My Stack
   const shareViewRef = useRef(null);
@@ -977,8 +979,11 @@ function AppContent() {
   // primaryData = the chosen data source with best historical coverage
   const snapshotsCacheRef = useRef({ primaryData: null, fetched: false });
 
-  // Spot price history cache - keyed by range to avoid re-fetching
+  // Spot price history cache - keyed by "metal-range" to avoid re-fetching
   const spotHistoryCacheRef = useRef({});
+
+  // Scroll ref for scroll-to-top on tab re-tap
+  const scrollRef = useRef(null);
 
   // Form State
   const [form, setForm] = useState({
@@ -1561,9 +1566,7 @@ function AppContent() {
       }
 
       // Show v2.0 tutorial if user hasn't seen it (and has seen the original)
-      console.log('[DEBUG] has_seen_v2_0_tutorial =', hasSeenV20Tutorial, '| hasSeenTutorial =', hasSeenTutorial);
       if (hasSeenTutorial && !hasSeenV20Tutorial) {
-        console.log('[DEBUG] Triggering v2.0 tutorial');
         setShowV20Tutorial(true);
       }
 
@@ -3218,20 +3221,20 @@ function AppContent() {
   };
 
   /**
-   * Fetch spot price history for the Spot Price History chart.
+   * Fetch spot price history for a single metal chart.
    * Uses cache to avoid re-fetching when switching between ranges.
    */
-  const fetchSpotPriceHistory = async (range) => {
-    const cached = spotHistoryCacheRef.current[range];
+  const fetchSpotPriceHistoryForMetal = async (metal, range) => {
+    const cacheKey = `${metal}-${range}`;
+    const cached = spotHistoryCacheRef.current[cacheKey];
     const cacheMaxAge = ['1M', '3M'].includes(range) ? 15 * 60 * 1000 : 60 * 60 * 1000;
 
     if (cached && (Date.now() - cached.fetchedAt) < cacheMaxAge) {
-      setSpotHistoryData({ data: cached.data, range });
+      setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: cached.data, loading: false, error: null } }));
       return;
     }
 
-    setSpotHistoryLoading(true);
-    setSpotHistoryError(null);
+    setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], loading: true, error: null } }));
 
     try {
       const response = await fetch(
@@ -3240,20 +3243,43 @@ function AppContent() {
       const result = await response.json();
 
       if (result.success && result.data && result.data.length > 0) {
-        spotHistoryCacheRef.current[range] = {
-          data: result.data,
-          fetchedAt: Date.now(),
-        };
-        setSpotHistoryData({ data: result.data, range });
+        const metalData = result.data.map(pt => ({ date: pt.date, value: pt[metal] || 0 })).filter(pt => pt.value > 0);
+        if (metalData.length > 1) {
+          spotHistoryCacheRef.current[cacheKey] = { data: metalData, fetchedAt: Date.now() };
+          setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: metalData, loading: false, error: null } }));
+        } else {
+          setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: null, loading: false, error: 'no_data' } }));
+        }
       } else {
-        setSpotHistoryError('Historical data not available for this range');
+        setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: null, loading: false, error: 'Historical data not available' } }));
       }
     } catch (error) {
-      console.log('Spot price history fetch error:', error.message);
-      setSpotHistoryError('Failed to load price history');
-    } finally {
-      setSpotHistoryLoading(false);
+      console.log(`Spot price history fetch error (${metal}):`, error.message);
+      setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: null, loading: false, error: 'Failed to load' } }));
     }
+  };
+
+  /** Change range for a single metal chart */
+  const setMetalRange = (metal, range) => {
+    setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], range } }));
+  };
+
+  /** Fetch 7-day sparkline data for Metal Movers + Portfolio Pulse */
+  const fetchSparklineData = async () => {
+    if (sparklineFetchedRef.current) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/spot-price-history?range=1M&maxPoints=7`);
+      const result = await response.json();
+      if (result.success && result.data && result.data.length > 1) {
+        setSparklineData({
+          gold: result.data.map(pt => pt.gold),
+          silver: result.data.map(pt => pt.silver),
+          platinum: result.data.map(pt => pt.platinum || 0),
+          palladium: result.data.map(pt => pt.palladium || 0),
+        });
+        sparklineFetchedRef.current = true;
+      }
+    } catch (e) { /* silent */ }
   };
 
   /**
@@ -3439,12 +3465,19 @@ function AppContent() {
     }
   }, [analyticsRange]);
 
-  // Fetch spot price history when range changes or tab becomes active
+  // Fetch spot price history for all metals when analytics tab becomes active or ranges change
   useEffect(() => {
     if (tab === 'analytics' && (hasGold || hasLifetimeAccess)) {
-      fetchSpotPriceHistory(spotHistoryRange);
+      ['gold', 'silver', 'platinum', 'palladium'].forEach(metal => {
+        fetchSpotPriceHistoryForMetal(metal, spotHistoryMetal[metal].range);
+      });
     }
-  }, [tab, spotHistoryRange, hasGold, hasLifetimeAccess]);
+  }, [tab, hasGold, hasLifetimeAccess, spotHistoryMetal.gold.range, spotHistoryMetal.silver.range, spotHistoryMetal.platinum.range, spotHistoryMetal.palladium.range]);
+
+  // Fetch sparkline data when Today tab loads
+  useEffect(() => {
+    if (tab === 'today') fetchSparklineData();
+  }, [tab]);
 
   // ============================================
   // CLOUD BACKUP
@@ -5275,6 +5308,7 @@ function AppContent() {
 
       {/* Main Content */}
       <ScrollView
+        ref={scrollRef}
         style={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -5367,8 +5401,31 @@ function AppContent() {
 
                 <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '500', marginBottom: 4, marginTop: 4 }}>Today, {dateStr}</Text>
 
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <Text style={{ color: colors.text, fontSize: 36, fontWeight: '700' }}>${formatCurrency(totalMeltValue, 0)}</Text>
+                  {sparklineData && sparklineData.gold.length >= 2 && totalMeltValue > 0 && (() => {
+                    const goldPts = sparklineData.gold;
+                    const silverPts = sparklineData.silver;
+                    const portfolioPoints = goldPts.map((g, i) => (totalGoldOzt * g) + (totalSilverOzt * (silverPts[i] || 0)) + (totalPlatinumOzt * (sparklineData.platinum[i] || 0)) + (totalPalladiumOzt * (sparklineData.palladium[i] || 0)));
+                    const min = Math.min(...portfolioPoints);
+                    const max = Math.max(...portfolioPoints);
+                    const range = max - min || 1;
+                    const sparkColor = dailyChange >= 0 ? '#4CAF50' : '#F44336';
+                    return (
+                      <Svg width={60} height={28} viewBox={`0 0 ${(portfolioPoints.length - 1) * 10} 24`}>
+                        <Path
+                          d={portfolioPoints.map((v, i) => {
+                            const x = i * 10;
+                            const y = 22 - ((v - min) / range) * 20;
+                            return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                          }).join(' ')}
+                          stroke={sparkColor}
+                          strokeWidth={2}
+                          fill="none"
+                        />
+                      </Svg>
+                    );
+                  })()}
                 </View>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
@@ -5383,48 +5440,70 @@ function AppContent() {
                 <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, fontStyle: 'italic' }}>{aiSummary}</Text>
               </View>
 
-              {/* ===== SECTION 2: METAL MOVERS ===== */}
+              {/* ===== SECTION 2: METAL MOVERS (2x2 Grid) ===== */}
               <View style={{ marginBottom: 16 }}>
                 <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 }}>Metal Movers</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                  {metalMovers.map(m => (
-                    <View key={m.symbol} style={{
-                      backgroundColor: todayCardBg,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: todayCardBorder,
-                      padding: 14,
-                      width: 140,
-                      overflow: 'hidden',
-                    }}>
-                      {/* Color accent left edge */}
-                      <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 3, backgroundColor: m.color }} />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  {metalMovers.map((m, idx) => {
+                    const metalKey = m.label.toLowerCase();
+                    const points = sparklineData?.[metalKey] || [];
+                    return (
+                      <View key={m.symbol} style={{
+                        backgroundColor: todayCardBg,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: todayCardBorder,
+                        padding: 14,
+                        width: (SCREEN_WIDTH - 32 - 10) / 2,
+                        overflow: 'hidden',
+                      }}>
+                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: m.color }} />
 
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
-                        <Text style={{ color: m.color, fontSize: 13, fontWeight: '700' }}>{m.symbol}</Text>
-                        {Math.abs(m.pct) > 3 && (
-                          <View style={{ backgroundColor: 'rgba(248,113,113,0.15)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
-                            <Text style={{ color: '#F87171', fontSize: 9, fontWeight: '700' }}>HOT</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
+                            <Text style={{ color: m.color, fontSize: 13, fontWeight: '700' }}>{m.label}</Text>
+                            {idx === 0 && Math.abs(m.pct) > 0.1 && (
+                              <View style={{ backgroundColor: 'rgba(248,113,113,0.15)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
+                                <Text style={{ color: '#F87171', fontSize: 9, fontWeight: '700' }}>HOT</Text>
+                              </View>
+                            )}
                           </View>
-                        )}
-                      </View>
+                          {points.length >= 2 && (
+                            <Svg width={40} height={20} viewBox={`0 0 ${(points.length - 1) * 6} 20`}>
+                              <Path
+                                d={points.map((v, i) => {
+                                  const min = Math.min(...points);
+                                  const max = Math.max(...points);
+                                  const range = max - min || 1;
+                                  const x = i * 6;
+                                  const y = 18 - ((v - min) / range) * 16;
+                                  return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                                }).join(' ')}
+                                stroke={m.color}
+                                strokeWidth={1.5}
+                                fill="none"
+                              />
+                            </Svg>
+                          )}
+                        </View>
 
-                      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>
-                        ${m.symbol === 'Ag' ? m.spot.toFixed(2) : m.spot.toFixed(0)}
-                      </Text>
+                        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>
+                          ${m.symbol === 'Ag' ? m.spot.toFixed(2) : formatCurrency(m.spot, 0)}
+                        </Text>
 
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Text style={{ color: m.change >= 0 ? '#4CAF50' : '#F44336', fontSize: 12, fontWeight: '600' }}>
-                          {m.change >= 0 ? '+' : ''}{m.symbol === 'Ag' ? m.change.toFixed(2) : m.change.toFixed(0)}
-                        </Text>
-                        <Text style={{ color: m.pct >= 0 ? '#4CAF50' : '#F44336', fontSize: 11 }}>
-                          ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ color: m.change >= 0 ? '#4CAF50' : '#F44336', fontSize: 12, fontWeight: '600' }}>
+                            {m.change >= 0 ? '+' : ''}{m.symbol === 'Ag' ? m.change.toFixed(2) : m.change.toFixed(0)}
+                          </Text>
+                          <Text style={{ color: m.pct >= 0 ? '#4CAF50' : '#F44336', fontSize: 11 }}>
+                            ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                  ))}
-                </ScrollView>
+                    );
+                  })}
+                </View>
               </View>
 
               {/* ===== SECTION 3: WHAT CHANGED TODAY ===== */}
@@ -6848,241 +6927,132 @@ function AppContent() {
                   )}
                 </View>
 
-                {/* Spot Price History */}
-                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>
-                    Spot Price History
-                  </Text>
+                {/* Spot Price History — 4 Individual Metal Charts */}
+                {[
+                  { key: 'gold', label: 'Gold', spot: goldSpot, color: '#D4A843', fillColor: 'rgba(212, 168, 67, 0.15)' },
+                  { key: 'silver', label: 'Silver', spot: silverSpot, color: '#C0C0C0', fillColor: 'rgba(192, 192, 192, 0.15)' },
+                  { key: 'platinum', label: 'Platinum', spot: platinumSpot, color: '#4A90D9', fillColor: 'rgba(74, 144, 217, 0.15)' },
+                  { key: 'palladium', label: 'Palladium', spot: palladiumSpot, color: '#6BBF8A', fillColor: 'rgba(107, 191, 138, 0.15)' },
+                ].map(metal => {
+                  const mState = spotHistoryMetal[metal.key];
+                  const mData = mState.data;
+                  const mRange = mState.range;
+                  const pctChange = mData && mData.length > 1 ? ((mData[mData.length - 1].value - mData[0].value) / mData[0].value * 100) : 0;
 
-                  {/* Metal Toggle Buttons */}
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                    {[
-                      { key: 'gold', label: 'Gold', color: '#D4A843', show: spotHistoryShowGold, setShow: setSpotHistoryShowGold },
-                      { key: 'silver', label: 'Silver', color: '#C0C0C0', show: spotHistoryShowSilver, setShow: setSpotHistoryShowSilver },
-                      { key: 'platinum', label: 'Pt', color: '#7BB3D4', show: spotHistoryShowPlatinum, setShow: setSpotHistoryShowPlatinum },
-                      { key: 'palladium', label: 'Pd', color: '#6BBF8A', show: spotHistoryShowPalladium, setShow: setSpotHistoryShowPalladium },
-                    ].map(m => (
-                      <TouchableOpacity
-                        key={m.key}
-                        style={{
-                          flexDirection: 'row', alignItems: 'center',
-                          paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
-                          backgroundColor: m.show ? m.color : (isDarkMode ? '#27272a' : '#f4f4f5'),
-                          borderWidth: 1, borderColor: m.show ? m.color : colors.border,
-                        }}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          // Ensure at least one toggle stays on
-                          const othersOn = [spotHistoryShowGold, spotHistoryShowSilver, spotHistoryShowPlatinum, spotHistoryShowPalladium].filter((v, i) => i !== ['gold', 'silver', 'platinum', 'palladium'].indexOf(m.key) && v).length > 0;
-                          if (!m.show || othersOn) m.setShow(!m.show);
-                        }}
-                      >
-                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: m.color, marginRight: 6 }} />
-                        <Text style={{ color: m.show ? '#000' : colors.text, fontWeight: '600', fontSize: scaledFonts.small }}>{m.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  {/* Time Range Selector */}
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                    {['1M', '3M', '6M', '1Y', '5Y', 'ALL'].map((r) => (
-                      <TouchableOpacity
-                        key={r}
-                        style={{
-                          paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
-                          backgroundColor: spotHistoryRange === r ? colors.gold : (isDarkMode ? '#27272a' : '#f4f4f5'),
-                        }}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setSpotHistoryRange(r);
-                        }}
-                      >
-                        <Text style={{
-                          color: spotHistoryRange === r ? '#000' : colors.text,
-                          fontWeight: spotHistoryRange === r ? '600' : '400',
-                          fontSize: scaledFonts.small,
-                        }}>
-                          {r === 'ALL' ? 'All' : r}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  {/* Chart */}
-                  {spotHistoryLoading ? (
-                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                      <ActivityIndicator size="small" color={colors.gold} />
-                      <Text style={{ color: colors.muted, marginTop: 8, fontSize: scaledFonts.normal }}>Loading price history...</Text>
-                    </View>
-                  ) : spotHistoryError ? (
-                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                      <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>{spotHistoryError}</Text>
-                    </View>
-                  ) : spotHistoryData && spotHistoryData.data.length > 1 ? (() => {
-                    const rawData = spotHistoryData.data;
-                    const activeCount = [spotHistoryShowGold, spotHistoryShowSilver, spotHistoryShowPlatinum, spotHistoryShowPalladium].filter(Boolean).length;
-                    const showBoth = activeCount > 1;
-                    const usePercent = showBoth;
-
-                    // Build X-axis labels (~7 labels max)
-                    const labelStep = Math.max(1, Math.floor(rawData.length / 6));
-                    const chartLabels = rawData.map((pt, i) => {
-                      if (i % labelStep !== 0 && i !== rawData.length - 1) return '';
-                      const d = new Date(pt.date + 'T12:00:00');
-                      if (spotHistoryRange === 'ALL' || spotHistoryRange === '5Y') {
-                        return `${d.getFullYear()}`;
-                      } else if (spotHistoryRange === '1Y') {
-                        return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
-                      } else {
-                        return `${d.getMonth() + 1}/${d.getDate()}`;
-                      }
-                    });
-
-                    // Build datasets
-                    const datasets = [];
-                    const baseGold = rawData[0].gold;
-                    const baseSilver = rawData[0].silver;
-
-                    if (spotHistoryShowGold) {
-                      datasets.push({
-                        data: rawData.map(pt => usePercent
-                          ? ((pt.gold - baseGold) / baseGold) * 100
-                          : pt.gold
-                        ),
-                        color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
-                        strokeWidth: 2,
-                      });
-                    }
-
-                    if (spotHistoryShowSilver) {
-                      datasets.push({
-                        data: rawData.map(pt => usePercent
-                          ? ((pt.silver - baseSilver) / baseSilver) * 100
-                          : pt.silver
-                        ),
-                        color: (opacity = 1) => `rgba(192, 192, 192, ${opacity})`,
-                        strokeWidth: 2,
-                      });
-                    }
-
-                    const lastPt = rawData[rawData.length - 1].platinum;
-                    const hasPlatinumData = lastPt > 0;
-                    const basePlatinum = hasPlatinumData ? rawData[0].platinum || lastPt : 0;
-                    const lastPdVal = rawData[rawData.length - 1].palladium;
-                    const hasPalladiumData = lastPdVal > 0;
-                    const basePalladium = hasPalladiumData ? rawData[0].palladium || lastPdVal : 0;
-
-                    if (spotHistoryShowPlatinum && hasPlatinumData) {
-                      datasets.push({
-                        data: rawData.map(pt => {
-                          const v = pt.platinum || basePlatinum;
-                          return usePercent ? ((v - basePlatinum) / basePlatinum) * 100 : v;
-                        }),
-                        color: (opacity = 1) => `rgba(123, 179, 212, ${opacity})`,
-                        strokeWidth: 2,
-                      });
-                    }
-
-                    if (spotHistoryShowPalladium && hasPalladiumData) {
-                      datasets.push({
-                        data: rawData.map(pt => {
-                          const v = pt.palladium || basePalladium;
-                          return usePercent ? ((v - basePalladium) / basePalladium) * 100 : v;
-                        }),
-                        color: (opacity = 1) => `rgba(107, 191, 138, ${opacity})`,
-                        strokeWidth: 2,
-                      });
-                    }
-
-                    const lastGold = rawData[rawData.length - 1].gold;
-                    const lastSilver = rawData[rawData.length - 1].silver;
-                    const lastPlatinum = rawData[rawData.length - 1].platinum;
-                    const lastPalladium = rawData[rawData.length - 1].palladium;
-                    const goldPctChange = ((lastGold - baseGold) / baseGold) * 100;
-                    const silverPctChange = ((lastSilver - baseSilver) / baseSilver) * 100;
-                    const platinumPctChange = hasPlatinumData ? ((lastPlatinum - basePlatinum) / basePlatinum) * 100 : 0;
-                    const palladiumPctChange = hasPalladiumData ? ((lastPalladium - basePalladium) / basePalladium) * 100 : 0;
-
-                    return (
-                      <>
-                        <LineChart
-                          key={`spot-${spotHistoryRange}-${spotHistoryShowGold}-${spotHistoryShowSilver}-${spotHistoryShowPlatinum}-${spotHistoryShowPalladium}`}
-                          data={{ labels: chartLabels, datasets }}
-                          width={SCREEN_WIDTH - 48}
-                          height={200}
-                          yAxisLabel={usePercent ? '' : '$'}
-                          yAxisSuffix={usePercent ? '%' : ''}
-                          chartConfig={{
-                            backgroundColor: colors.cardBg,
-                            backgroundGradientFrom: colors.cardBg,
-                            backgroundGradientTo: colors.cardBg,
-                            decimalPlaces: 0,
-                            color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
-                            labelColor: () => colors.muted,
-                            style: { borderRadius: 8 },
-                            propsForDots: { r: '0' },
-                            propsForBackgroundLines: {
-                              strokeDasharray: '',
-                              stroke: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                            },
-                            formatYLabel: (value) => {
-                              const num = parseFloat(value);
-                              if (usePercent) return `${num >= 0 ? '+' : ''}${num.toFixed(0)}`;
-                              if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-                              if (num >= 1000) return `${(num / 1000).toFixed(0)}k`;
-                              return num.toFixed(0);
-                            },
-                          }}
-                          fromZero={false}
-                          segments={4}
-                          bezier
-                          style={{ borderRadius: 8 }}
-                        />
-
-                        {/* Current Price Summary */}
-                        <View style={{ marginTop: 12, paddingHorizontal: 4 }}>
-                          {usePercent && (
-                            <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginBottom: 6 }}>
-                              % change from {new Date(rawData[0].date + 'T12:00:00').toLocaleDateString()}
-                            </Text>
-                          )}
-                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 4 }}>
-                            {spotHistoryShowGold && (
-                              <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>
-                                Gold: ${formatCurrency(lastGold)}
-                                {showBoth ? ` (${goldPctChange >= 0 ? '+' : ''}${goldPctChange.toFixed(1)}%)` : ''}
-                              </Text>
-                            )}
-                            {spotHistoryShowSilver && (
-                              <Text style={{ color: '#C0C0C0', fontSize: scaledFonts.small, fontWeight: '600' }}>
-                                Silver: ${formatCurrency(lastSilver)}
-                                {showBoth ? ` (${silverPctChange >= 0 ? '+' : ''}${silverPctChange.toFixed(1)}%)` : ''}
-                              </Text>
-                            )}
-                            {spotHistoryShowPlatinum && hasPlatinumData && (
-                              <Text style={{ color: '#7BB3D4', fontSize: scaledFonts.small, fontWeight: '600' }}>
-                                Platinum: ${formatCurrency(lastPlatinum)}
-                                {showBoth ? ` (${platinumPctChange >= 0 ? '+' : ''}${platinumPctChange.toFixed(1)}%)` : ''}
-                              </Text>
-                            )}
-                            {spotHistoryShowPalladium && hasPalladiumData && (
-                              <Text style={{ color: '#6BBF8A', fontSize: scaledFonts.small, fontWeight: '600' }}>
-                                Palladium: ${formatCurrency(lastPalladium)}
-                                {showBoth ? ` (${palladiumPctChange >= 0 ? '+' : ''}${palladiumPctChange.toFixed(1)}%)` : ''}
-                              </Text>
-                            )}
-                          </View>
+                  return (
+                    <View key={metal.key} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                      {/* Header: metal name + price + % change */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: metal.color }} />
+                          <Text style={{ color: colors.text, fontSize: scaledFonts.medium, fontWeight: '700' }}>{metal.label}</Text>
+                          <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600' }}>${formatCurrency(metal.spot)}</Text>
                         </View>
-                      </>
-                    );
-                  })() : (
-                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                      <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>
-                        Historical data not available for this range
-                      </Text>
+                        {mData && mData.length > 1 && (
+                          <Text style={{ color: pctChange >= 0 ? '#4CAF50' : '#F44336', fontSize: scaledFonts.small, fontWeight: '600' }}>
+                            {pctChange >= 0 ? '+' : ''}{pctChange.toFixed(1)}%
+                          </Text>
+                        )}
+                      </View>
+
+                      {/* Time Range Pills */}
+                      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+                        {['1M', '3M', '6M', '1Y', '5Y', 'ALL'].map(r => (
+                          <TouchableOpacity
+                            key={r}
+                            style={{
+                              paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+                              backgroundColor: mRange === r ? metal.color : (isDarkMode ? '#27272a' : '#f4f4f5'),
+                            }}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setMetalRange(metal.key, r);
+                            }}
+                          >
+                            <Text style={{ color: mRange === r ? '#000' : colors.text, fontWeight: mRange === r ? '600' : '400', fontSize: 12 }}>
+                              {r === 'ALL' ? 'All' : r}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      {/* Chart Area */}
+                      {mState.loading ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                          <ActivityIndicator size="small" color={metal.color} />
+                        </View>
+                      ) : mState.error === 'no_data' ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                          <Text style={{ color: colors.muted, fontSize: scaledFonts.normal, textAlign: 'center' }}>Historical data available soon</Text>
+                        </View>
+                      ) : mState.error ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                          <Text style={{ color: colors.muted, fontSize: scaledFonts.normal, textAlign: 'center' }}>{mState.error}</Text>
+                        </View>
+                      ) : mData && mData.length > 1 ? (() => {
+                        // Build labels — max 5 evenly spaced
+                        const labelCount = 5;
+                        const labelStep = Math.max(1, Math.floor(mData.length / (labelCount - 1)));
+                        const chartLabels = mData.map((pt, i) => {
+                          if (i !== 0 && i !== mData.length - 1 && i % labelStep !== 0) return '';
+                          const d = new Date(pt.date + 'T12:00:00');
+                          if (mRange === 'ALL' || mRange === '5Y') return `${d.getFullYear()}`;
+                          if (mRange === '1Y') return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
+                          return `${d.getMonth() + 1}/${d.getDate()}`;
+                        });
+
+                        return (
+                          <LineChart
+                            key={`spot-${metal.key}-${mRange}`}
+                            data={{
+                              labels: chartLabels,
+                              datasets: [{
+                                data: mData.map(pt => pt.value),
+                                color: (opacity = 1) => metal.color,
+                                strokeWidth: 2,
+                              }],
+                            }}
+                            width={SCREEN_WIDTH - 48}
+                            height={160}
+                            yAxisLabel="$"
+                            chartConfig={{
+                              backgroundColor: colors.cardBg,
+                              backgroundGradientFrom: colors.cardBg,
+                              backgroundGradientTo: colors.cardBg,
+                              decimalPlaces: metal.key === 'silver' ? 1 : 0,
+                              color: () => metal.color,
+                              fillShadowGradientFrom: metal.color,
+                              fillShadowGradientFromOpacity: 0.2,
+                              fillShadowGradientTo: metal.color,
+                              fillShadowGradientToOpacity: 0,
+                              labelColor: () => colors.muted,
+                              style: { borderRadius: 8 },
+                              propsForDots: { r: '0' },
+                              propsForBackgroundLines: {
+                                strokeDasharray: '',
+                                stroke: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                              },
+                              formatYLabel: (value) => {
+                                const num = parseFloat(value);
+                                if (num >= 10000) return `${(num / 1000).toFixed(0)}k`;
+                                if (num >= 1000) return `${(num / 1000).toFixed(1)}k`;
+                                return num.toFixed(0);
+                              },
+                            }}
+                            fromZero={false}
+                            segments={3}
+                            bezier
+                            style={{ borderRadius: 8 }}
+                          />
+                        );
+                      })() : (
+                        <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                          <Text style={{ color: colors.muted, fontSize: scaledFonts.normal, textAlign: 'center' }}>No data available</Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-                </View>
+                  );
+                })}
 
                 {/* Holdings Breakdown */}
                 <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
@@ -7999,7 +7969,15 @@ function AppContent() {
           { key: 'tools', label: 'Tools', Icon: ToolsIcon },
           { key: 'settings', label: 'Settings', Icon: SettingsIcon },
         ].map(t => (
-          <TouchableOpacity key={t.key} style={styles.bottomTab} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTab(t.key); }}>
+          <TouchableOpacity key={t.key} style={styles.bottomTab} onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (tab === t.key) {
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+            } else {
+              setTab(t.key);
+              setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: false }), 0);
+            }
+          }}>
             <t.Icon size={22} color={tab === t.key ? colors.gold : colors.muted} />
             <Text style={{ color: tab === t.key ? colors.gold : colors.muted, fontSize: 10, fontWeight: tab === t.key ? '600' : '400', marginTop: 4 }}>{t.label}</Text>
             {tab === t.key && <View style={{ position: 'absolute', bottom: -4, left: 8, right: 8, height: 2, backgroundColor: colors.gold, borderRadius: 1 }} />}
