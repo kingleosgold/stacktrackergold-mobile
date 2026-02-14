@@ -795,7 +795,7 @@ struct MediumRight: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Spacer(minLength: 4)
+            spotLabel
             goldRow
             thinDivider
             silverRow
@@ -803,6 +803,14 @@ struct MediumRight: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity)
+    }
+
+    private var spotLabel: some View {
+        Text("LIVE SPOT")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(wMuted)
+            .kerning(1.2)
+            .padding(.top, 8)
     }
 
     private var goldRow: some View {
@@ -884,20 +892,23 @@ struct LargeHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            portfolioLabel
             titleRow
             changeRow
         }
     }
 
+    private var portfolioLabel: some View {
+        PortfolioLabel(iconSize: 18, fontSize: 9)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+    }
+
     private var titleRow: some View {
-        HStack(spacing: 8) {
-            AppIconImage(size: 20)
-            WBoldCurrencyText(
-                text: wPrivacy(wFormatCurrency(data.portfolioValue), data.hideValues),
-                size: 32
-            )
-        }
-        .padding(.top, 10)
+        WBoldCurrencyText(
+            text: wPrivacy(wFormatCurrency(data.portfolioValue), data.hideValues),
+            size: 32
+        )
     }
 
     private var changeRow: some View {
