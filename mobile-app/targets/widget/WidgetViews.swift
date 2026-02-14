@@ -552,6 +552,13 @@ struct StackTrackerWidgetEntryView: View {
     var entry: WidgetEntry
 
     var body: some View {
+        widgetContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(wBgGradient)
+    }
+
+    @ViewBuilder
+    private var widgetContent: some View {
         switch family {
         case .systemSmall:
             SmallWidgetView(data: entry.data)

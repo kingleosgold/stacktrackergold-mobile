@@ -502,19 +502,23 @@ app.get('/api/widget-data', async (req, res) => {
       }
     }
 
+    // Zero out change data when markets are closed
+    const closed = areMarketsClosed();
+    const widgetChange = closed ? {} : change;
+
     res.json({
       success: true,
       portfolio_value: 0, // Widget gets this from App Group, not backend
       daily_change: 0,
       daily_change_pct: 0,
       metals: [
-        { symbol: 'Au', price: prices.gold, change_pct: change.gold?.percent || 0, sparkline: sparklines.gold },
-        { symbol: 'Ag', price: prices.silver, change_pct: change.silver?.percent || 0, sparkline: sparklines.silver },
-        { symbol: 'Pt', price: prices.platinum, change_pct: change.platinum?.percent || 0, sparkline: sparklines.platinum },
-        { symbol: 'Pd', price: prices.palladium, change_pct: change.palladium?.percent || 0, sparkline: sparklines.palladium },
+        { symbol: 'Au', price: prices.gold, change_pct: closed ? 0 : (change.gold?.percent || 0), sparkline: sparklines.gold },
+        { symbol: 'Ag', price: prices.silver, change_pct: closed ? 0 : (change.silver?.percent || 0), sparkline: sparklines.silver },
+        { symbol: 'Pt', price: prices.platinum, change_pct: closed ? 0 : (change.platinum?.percent || 0), sparkline: sparklines.platinum },
+        { symbol: 'Pd', price: prices.palladium, change_pct: closed ? 0 : (change.palladium?.percent || 0), sparkline: sparklines.palladium },
       ],
       timestamp: spotPriceCache.lastUpdated ? spotPriceCache.lastUpdated.toISOString() : new Date().toISOString(),
-      change: change,
+      change: widgetChange,
     });
   } catch (error) {
     console.error('Widget data error:', error);

@@ -950,6 +950,7 @@ function AppContent() {
   // Today Tab - AI Daily Brief
   const [dailyBrief, setDailyBrief] = useState(null); // { brief_text, date }
   const [dailyBriefLoading, setDailyBriefLoading] = useState(false);
+  const [briefExpanded, setBriefExpanded] = useState(false);
 
   // Today Tab - Intelligence Feed
   const [intelligenceBriefs, setIntelligenceBriefs] = useState([]);
@@ -5387,11 +5388,17 @@ function AppContent() {
           const biggestMover = metalMovers[0];
           const gainedLost = dailyChange >= 0 ? 'gained' : 'lost';
           const rallyDecline = biggestMover?.pct >= 0 ? 'rally' : 'decline';
-          const aiSummary = totalMeltValue > 0 && dailyChange !== 0
+          const aiSummary = marketsClosed
+            ? 'Markets are closed. Prices reflect Friday\u2019s close.'
+            : totalMeltValue > 0 && dailyChange !== 0
             ? `Your stack ${gainedLost} $${formatCurrency(Math.abs(dailyChange), 0)} today, driven by ${biggestMover?.label}'s ${Math.abs(biggestMover?.pct || 0).toFixed(1)}% ${rallyDecline}.`
             : totalMeltValue > 0
             ? 'Markets are steady today. Your stack value is unchanged.'
             : 'Add holdings to see your daily portfolio changes.';
+
+          // Display values (zeroed when markets closed)
+          const displayDailyChange = marketsClosed ? 0 : dailyChange;
+          const displayDailyChangePct = marketsClosed ? 0 : dailyChangePct;
 
           const categoryColors = {
             market_brief: '#D4A843',
@@ -5433,7 +5440,12 @@ function AppContent() {
                   {dailyBriefLoading ? (
                     <ActivityIndicator size="small" color="#D4A843" style={{ paddingVertical: 8 }} />
                   ) : dailyBrief && dailyBrief.brief_text ? (
-                    <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }}>{dailyBrief.brief_text}</Text>
+                    <>
+                      <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }} numberOfLines={briefExpanded ? undefined : 2}>{dailyBrief.brief_text}</Text>
+                      <TouchableOpacity onPress={() => setBriefExpanded(!briefExpanded)} style={{ marginTop: 6 }}>
+                        <Text style={{ color: '#D4A843', fontSize: 13, fontWeight: '600' }}>{briefExpanded ? 'See less' : 'See more'}</Text>
+                      </TouchableOpacity>
+                    </>
                   ) : (
                     <Text style={{ color: colors.muted, fontSize: 13, fontStyle: 'italic' }}>
                       Your brief is being prepared... Check back after 6:30 AM EST
@@ -5490,7 +5502,7 @@ function AppContent() {
                     const min = Math.min(...portfolioPoints);
                     const max = Math.max(...portfolioPoints);
                     const range = max - min || 1;
-                    const sparkColor = dailyChange >= 0 ? '#4CAF50' : '#F44336';
+                    const sparkColor = marketsClosed ? '#71717a' : (dailyChange >= 0 ? '#4CAF50' : '#F44336');
                     return (
                       <Svg width={60} height={28} viewBox={`0 0 ${(portfolioPoints.length - 1) * 10} 24`}>
                         <Path
@@ -5509,11 +5521,11 @@ function AppContent() {
                 </View>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                  <Text style={{ color: dailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 15, fontWeight: '600' }}>
-                    {dailyChange >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(dailyChange), 0)}
+                  <Text style={{ color: displayDailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 15, fontWeight: '600' }}>
+                    {displayDailyChange >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(displayDailyChange), 0)}
                   </Text>
-                  <Text style={{ color: dailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 13 }}>
-                    ({dailyChangePct >= 0 ? '+' : ''}{dailyChangePct.toFixed(2)}%)
+                  <Text style={{ color: displayDailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 13 }}>
+                    ({displayDailyChangePct >= 0 ? '+' : ''}{displayDailyChangePct.toFixed(2)}%)
                   </Text>
                 </View>
 
@@ -5573,12 +5585,18 @@ function AppContent() {
                         </Text>
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Text style={{ color: m.change >= 0 ? '#4CAF50' : '#F44336', fontSize: 12, fontWeight: '600' }}>
-                            {m.change >= 0 ? '+' : ''}{m.symbol === 'Ag' ? m.change.toFixed(2) : m.change.toFixed(0)}
-                          </Text>
-                          <Text style={{ color: m.pct >= 0 ? '#4CAF50' : '#F44336', fontSize: 11 }}>
-                            ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
-                          </Text>
+                          {marketsClosed ? (
+                            <Text style={{ color: '#4CAF50', fontSize: 12, fontWeight: '600' }}>+0.0%</Text>
+                          ) : (
+                            <>
+                              <Text style={{ color: m.change >= 0 ? '#4CAF50' : '#F44336', fontSize: 12, fontWeight: '600' }}>
+                                {m.change >= 0 ? '+' : ''}{m.symbol === 'Ag' ? m.change.toFixed(2) : m.change.toFixed(0)}
+                              </Text>
+                              <Text style={{ color: m.pct >= 0 ? '#4CAF50' : '#F44336', fontSize: 11 }}>
+                                ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
+                              </Text>
+                            </>
+                          )}
                         </View>
                       </View>
                     );
@@ -5613,9 +5631,15 @@ function AppContent() {
                                     Your {m.label.toLowerCase()} ({formatOunces(m.ozt, m.label === 'Silver' ? 0 : 2)} oz)
                                   </Text>
                                 </View>
-                                <Text style={{ color: m.dollarChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 14, fontWeight: '600', marginLeft: 16, marginTop: 4 }}>
-                                  {m.dollarChange >= 0 ? 'gained' : 'lost'} ${formatCurrency(Math.abs(m.dollarChange), 0)} ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
-                                </Text>
+                                {marketsClosed ? (
+                                  <Text style={{ color: colors.muted, fontSize: 14, fontWeight: '600', marginLeft: 16, marginTop: 4 }}>
+                                    No change (markets closed)
+                                  </Text>
+                                ) : (
+                                  <Text style={{ color: m.dollarChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 14, fontWeight: '600', marginLeft: 16, marginTop: 4 }}>
+                                    {m.dollarChange >= 0 ? 'gained' : 'lost'} ${formatCurrency(Math.abs(m.dollarChange), 0)} ({m.pct >= 0 ? '+' : ''}{m.pct.toFixed(1)}%)
+                                  </Text>
+                                )}
                               </>
                             ) : (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
