@@ -30,33 +30,23 @@ struct WidgetData: Codable {
     var hasSubscription: Bool
     var hideValues: Bool
 
+    // Sparkline data (7 data points per metal)
+    var goldSparkline: [Double]
+    var silverSparkline: [Double]
+    var platinumSparkline: [Double]
+    var palladiumSparkline: [Double]
+
     enum CodingKeys: String, CodingKey {
-        case portfolioValue
-        case dailyChangeAmount
-        case dailyChangePercent
-        case goldSpot
-        case silverSpot
-        case platinumSpot
-        case palladiumSpot
-        case goldChangeAmount
-        case goldChangePercent
-        case silverChangeAmount
-        case silverChangePercent
-        case platinumChangeAmount
-        case platinumChangePercent
-        case palladiumChangeAmount
-        case palladiumChangePercent
-        case goldValue
-        case silverValue
-        case platinumValue
-        case palladiumValue
-        case goldOzt
-        case silverOzt
-        case platinumOzt
-        case palladiumOzt
-        case lastUpdated
-        case hasSubscription
-        case hideValues
+        case portfolioValue, dailyChangeAmount, dailyChangePercent
+        case goldSpot, silverSpot, platinumSpot, palladiumSpot
+        case goldChangeAmount, goldChangePercent
+        case silverChangeAmount, silverChangePercent
+        case platinumChangeAmount, platinumChangePercent
+        case palladiumChangeAmount, palladiumChangePercent
+        case goldValue, silverValue, platinumValue, palladiumValue
+        case goldOzt, silverOzt, platinumOzt, palladiumOzt
+        case lastUpdated, hasSubscription, hideValues
+        case goldSparkline, silverSparkline, platinumSparkline, palladiumSparkline
     }
 
     init(from decoder: Decoder) throws {
@@ -87,6 +77,10 @@ struct WidgetData: Codable {
         lastUpdated = try container.decode(Date.self, forKey: .lastUpdated)
         hasSubscription = try container.decode(Bool.self, forKey: .hasSubscription)
         hideValues = (try? container.decode(Bool.self, forKey: .hideValues)) ?? false
+        goldSparkline = (try? container.decode([Double].self, forKey: .goldSparkline)) ?? []
+        silverSparkline = (try? container.decode([Double].self, forKey: .silverSparkline)) ?? []
+        platinumSparkline = (try? container.decode([Double].self, forKey: .platinumSparkline)) ?? []
+        palladiumSparkline = (try? container.decode([Double].self, forKey: .palladiumSparkline)) ?? []
     }
 
     init(portfolioValue: Double, dailyChangeAmount: Double, dailyChangePercent: Double,
@@ -101,7 +95,9 @@ struct WidgetData: Codable {
          goldOzt: Double = 0, silverOzt: Double = 0,
          platinumOzt: Double = 0, palladiumOzt: Double = 0,
          lastUpdated: Date, hasSubscription: Bool,
-         hideValues: Bool = false) {
+         hideValues: Bool = false,
+         goldSparkline: [Double] = [], silverSparkline: [Double] = [],
+         platinumSparkline: [Double] = [], palladiumSparkline: [Double] = []) {
         self.portfolioValue = portfolioValue
         self.dailyChangeAmount = dailyChangeAmount
         self.dailyChangePercent = dailyChangePercent
@@ -128,6 +124,10 @@ struct WidgetData: Codable {
         self.lastUpdated = lastUpdated
         self.hasSubscription = hasSubscription
         self.hideValues = hideValues
+        self.goldSparkline = goldSparkline
+        self.silverSparkline = silverSparkline
+        self.platinumSparkline = platinumSparkline
+        self.palladiumSparkline = palladiumSparkline
     }
 
     /// Placeholder data shown while loading
@@ -174,7 +174,23 @@ struct WidgetData: Codable {
             platinumOzt: 2,
             palladiumOzt: 1,
             lastUpdated: Date().addingTimeInterval(-120),
-            hasSubscription: true
+            hasSubscription: true,
+            goldSparkline: [5150, 5180, 5220, 5195, 5240, 5260, 5287],
+            silverSparkline: [110, 111.5, 112, 113, 112.5, 113.8, 114.17],
+            platinumSparkline: [2650, 2660, 2670, 2680, 2690, 2695, 2700],
+            palladiumSparkline: [1880, 1870, 1860, 1855, 1850, 1845, 1850]
         )
+    }
+
+    /// Compute portfolio sparkline from metal sparklines and ounce holdings
+    func portfolioSparkline() -> [Double] {
+        guard goldSparkline.count >= 2 else { return [] }
+        let count = min(goldSparkline.count, silverSparkline.count)
+        return (0..<count).map { i in
+            goldOzt * goldSparkline[i] +
+            silverOzt * silverSparkline[i] +
+            platinumOzt * (i < platinumSparkline.count ? platinumSparkline[i] : platinumSpot) +
+            palladiumOzt * (i < palladiumSparkline.count ? palladiumSparkline[i] : palladiumSpot)
+        }
     }
 }

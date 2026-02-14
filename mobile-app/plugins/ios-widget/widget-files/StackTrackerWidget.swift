@@ -27,7 +27,7 @@ struct StackTrackerWidget: Widget {
 /// Fetches fresh prices from backend cache and creates multiple timeline entries
 struct Provider: TimelineProvider {
     private let appGroupId = "group.com.stacktrackerpro.shared"
-    private let backendCacheUrl = "https://stack-tracker-pro-production.up.railway.app/api/spot-prices"
+    private let backendCacheUrl = "https://stack-tracker-pro-production.up.railway.app/api/widget-data"
 
     func placeholder(in context: Context) -> WidgetEntry {
         WidgetEntry(
@@ -71,6 +71,10 @@ struct Provider: TimelineProvider {
                 data.platinumChangePercent = freshPrices.platinumChangePercent
                 data.palladiumChangeAmount = freshPrices.palladiumChange
                 data.palladiumChangePercent = freshPrices.palladiumChangePercent
+                data.goldSparkline = freshPrices.goldSparkline
+                data.silverSparkline = freshPrices.silverSparkline
+                data.platinumSparkline = freshPrices.platinumSparkline
+                data.palladiumSparkline = freshPrices.palladiumSparkline
                 data.lastUpdated = currentDate
 
                 // Save updated data to App Group so app benefits too
@@ -106,7 +110,7 @@ struct Provider: TimelineProvider {
         }
     }
 
-    /// Fetch spot prices from backend cache using async/await with timeout
+    /// Fetch spot prices + sparklines from backend widget-data endpoint
     private func fetchFromBackendCacheAsync() async -> SpotPrices? {
         guard let url = URL(string: backendCacheUrl) else {
             print("❌ [Widget] Invalid URL")
@@ -115,16 +119,14 @@ struct Provider: TimelineProvider {
 
         print("🔧 [Widget] Fetching from: \(backendCacheUrl)")
 
-        // Create URLSession with timeout
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 10 // 10 second timeout
+        config.timeoutIntervalForRequest = 10
         config.timeoutIntervalForResource = 15
         let session = URLSession(configuration: config)
 
         do {
             let (data, response) = try await session.data(from: url)
 
-            // Check HTTP status
             if let httpResponse = response as? HTTPURLResponse {
                 print("🔧 [Widget] HTTP status: \(httpResponse.statusCode)")
                 guard httpResponse.statusCode == 200 else {
@@ -133,59 +135,75 @@ struct Provider: TimelineProvider {
                 }
             }
 
-            // Parse JSON
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let success = json["success"] as? Bool, success,
-                  let gold = json["gold"] as? Double,
-                  let silver = json["silver"] as? Double else {
+                  let metals = json["metals"] as? [[String: Any]] else {
                 print("❌ [Widget] Failed to parse JSON or success=false")
                 return nil
             }
 
-            let platinum = json["platinum"] as? Double ?? 0
-            let palladium = json["palladium"] as? Double ?? 0
+            // Parse metals array: [{symbol, price, change_pct, sparkline}, ...]
+            var gold: Double = 0, silver: Double = 0, platinum: Double = 0, palladium: Double = 0
+            var goldSparkline: [Double] = [], silverSparkline: [Double] = []
+            var platinumSparkline: [Double] = [], palladiumSparkline: [Double] = []
 
-            var goldChange: Double = 0
-            var goldChangePercent: Double = 0
-            var silverChange: Double = 0
-            var silverChangePercent: Double = 0
-            var platinumChange: Double = 0
-            var platinumChangePercent: Double = 0
-            var palladiumChange: Double = 0
-            var palladiumChangePercent: Double = 0
+            for metal in metals {
+                let symbol = metal["symbol"] as? String ?? ""
+                let price = metal["price"] as? Double ?? 0
+                let sparkline = metal["sparkline"] as? [Double] ?? []
 
-            if let change = json["change"] as? [String: Any] {
-                if let goldData = change["gold"] as? [String: Any] {
-                    goldChange = goldData["amount"] as? Double ?? 0
-                    goldChangePercent = goldData["percent"] as? Double ?? 0
-                }
-                if let silverData = change["silver"] as? [String: Any] {
-                    silverChange = silverData["amount"] as? Double ?? 0
-                    silverChangePercent = silverData["percent"] as? Double ?? 0
-                }
-                if let platinumData = change["platinum"] as? [String: Any] {
-                    platinumChange = platinumData["amount"] as? Double ?? 0
-                    platinumChangePercent = platinumData["percent"] as? Double ?? 0
-                }
-                if let palladiumData = change["palladium"] as? [String: Any] {
-                    palladiumChange = palladiumData["amount"] as? Double ?? 0
-                    palladiumChangePercent = palladiumData["percent"] as? Double ?? 0
+                switch symbol {
+                case "Au":
+                    gold = price
+                    goldSparkline = sparkline
+                case "Ag":
+                    silver = price
+                    silverSparkline = sparkline
+                case "Pt":
+                    platinum = price
+                    platinumSparkline = sparkline
+                case "Pd":
+                    palladium = price
+                    palladiumSparkline = sparkline
+                default: break
                 }
             }
 
+            // Parse change data from nested change object
+            var goldChange: Double = 0, goldChangePercent: Double = 0
+            var silverChange: Double = 0, silverChangePercent: Double = 0
+            var platinumChange: Double = 0, platinumChangePercent: Double = 0
+            var palladiumChange: Double = 0, palladiumChangePercent: Double = 0
+
+            if let change = json["change"] as? [String: Any] {
+                if let d = change["gold"] as? [String: Any] {
+                    goldChange = d["amount"] as? Double ?? 0
+                    goldChangePercent = d["percent"] as? Double ?? 0
+                }
+                if let d = change["silver"] as? [String: Any] {
+                    silverChange = d["amount"] as? Double ?? 0
+                    silverChangePercent = d["percent"] as? Double ?? 0
+                }
+                if let d = change["platinum"] as? [String: Any] {
+                    platinumChange = d["amount"] as? Double ?? 0
+                    platinumChangePercent = d["percent"] as? Double ?? 0
+                }
+                if let d = change["palladium"] as? [String: Any] {
+                    palladiumChange = d["amount"] as? Double ?? 0
+                    palladiumChangePercent = d["percent"] as? Double ?? 0
+                }
+            }
+
+            print("✅ [Widget] Parsed sparklines - Au:\(goldSparkline.count)pts, Ag:\(silverSparkline.count)pts")
+
             return SpotPrices(
-                gold: gold,
-                silver: silver,
-                platinum: platinum,
-                palladium: palladium,
-                goldChange: goldChange,
-                goldChangePercent: goldChangePercent,
-                silverChange: silverChange,
-                silverChangePercent: silverChangePercent,
-                platinumChange: platinumChange,
-                platinumChangePercent: platinumChangePercent,
-                palladiumChange: palladiumChange,
-                palladiumChangePercent: palladiumChangePercent
+                gold: gold, silver: silver, platinum: platinum, palladium: palladium,
+                goldChange: goldChange, goldChangePercent: goldChangePercent,
+                silverChange: silverChange, silverChangePercent: silverChangePercent,
+                platinumChange: platinumChange, platinumChangePercent: platinumChangePercent,
+                palladiumChange: palladiumChange, palladiumChangePercent: palladiumChangePercent,
+                goldSparkline: goldSparkline, silverSparkline: silverSparkline,
+                platinumSparkline: platinumSparkline, palladiumSparkline: palladiumSparkline
             )
 
         } catch {
@@ -242,7 +260,7 @@ struct Provider: TimelineProvider {
     }
 }
 
-/// Spot prices from backend cache
+/// Spot prices + sparklines from backend
 struct SpotPrices {
     let gold: Double
     let silver: Double
@@ -256,6 +274,10 @@ struct SpotPrices {
     let platinumChangePercent: Double
     let palladiumChange: Double
     let palladiumChangePercent: Double
+    let goldSparkline: [Double]
+    let silverSparkline: [Double]
+    let platinumSparkline: [Double]
+    let palladiumSparkline: [Double]
 }
 
 /// Timeline entry containing widget data

@@ -2888,6 +2888,10 @@ function AppContent() {
         palladiumChangePercent: spotChange?.palladium?.percent || 0,
         hasSubscription: hasGold || hasLifetimeAccess,
         hideValues: hideWidgetValues,
+        goldSparkline: sparklineData?.gold || [],
+        silverSparkline: sparklineData?.silver || [],
+        platinumSparkline: sparklineData?.platinum || [],
+        palladiumSparkline: sparklineData?.palladium || [],
       };
 
       console.log('📱 [syncWidget] Sending payload:', widgetPayload);
@@ -2905,7 +2909,7 @@ function AppContent() {
     if (dataLoaded && spotPricesLive && (hasGold || hasLifetimeAccess)) {
       syncWidget();
     }
-  }, [totalMeltValue, totalGoldOzt, totalSilverOzt, totalPlatinumOzt, totalPalladiumOzt, silverSpot, goldSpot, platinumSpot, palladiumSpot, spotChange, dataLoaded, spotPricesLive, hasGold, hasLifetimeAccess, hideWidgetValues]);
+  }, [totalMeltValue, totalGoldOzt, totalSilverOzt, totalPlatinumOzt, totalPalladiumOzt, silverSpot, goldSpot, platinumSpot, palladiumSpot, spotChange, dataLoaded, spotPricesLive, hasGold, hasLifetimeAccess, hideWidgetValues, sparklineData]);
 
   // Sync widget when app comes to foreground
   useEffect(() => {

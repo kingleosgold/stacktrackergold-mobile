@@ -446,6 +446,83 @@ app.get('/api/spot-prices', async (req, res) => {
 });
 
 /**
+ * Widget data endpoint — returns portfolio-relevant data with 7-day sparklines
+ */
+app.get('/api/widget-data', async (req, res) => {
+  try {
+    const prices = spotPriceCache.prices;
+    const change = spotPriceCache.change || {};
+
+    // Build sparkline data from price_log (last 7 days)
+    let sparklines = { gold: [], silver: [], platinum: [], palladium: [] };
+
+    if (isSupabaseAvailable()) {
+      try {
+        const supabaseClient = getSupabase();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const { data: logs } = await supabaseClient
+          .from('price_log')
+          .select('date, gold, silver, platinum, palladium')
+          .gte('date', sevenDaysAgo)
+          .order('date', { ascending: true });
+
+        if (logs && logs.length > 0) {
+          // Deduplicate by date (keep last entry per day)
+          const byDate = {};
+          for (const row of logs) {
+            byDate[row.date] = row;
+          }
+          const sorted = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+
+          sparklines.gold = sorted.map(r => r.gold || 0);
+          sparklines.silver = sorted.map(r => r.silver || 0);
+          sparklines.platinum = sorted.map(r => r.platinum || 0);
+          sparklines.palladium = sorted.map(r => r.palladium || 0);
+
+          // Pad to 7 points if fewer
+          for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
+            while (sparklines[metal].length < 7) {
+              sparklines[metal].unshift(sparklines[metal][0] || prices[metal] || 0);
+            }
+            // Append current price as latest point
+            sparklines[metal].push(prices[metal] || 0);
+            // Keep last 7
+            sparklines[metal] = sparklines[metal].slice(-7);
+          }
+        }
+      } catch (e) {
+        console.log('Widget sparkline fetch error:', e.message);
+      }
+    }
+
+    // If no sparkline data, fill with current price
+    for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
+      if (sparklines[metal].length === 0) {
+        sparklines[metal] = Array(7).fill(prices[metal] || 0);
+      }
+    }
+
+    res.json({
+      success: true,
+      portfolio_value: 0, // Widget gets this from App Group, not backend
+      daily_change: 0,
+      daily_change_pct: 0,
+      metals: [
+        { symbol: 'Au', price: prices.gold, change_pct: change.gold?.percent || 0, sparkline: sparklines.gold },
+        { symbol: 'Ag', price: prices.silver, change_pct: change.silver?.percent || 0, sparkline: sparklines.silver },
+        { symbol: 'Pt', price: prices.platinum, change_pct: change.platinum?.percent || 0, sparkline: sparklines.platinum },
+        { symbol: 'Pd', price: prices.palladium, change_pct: change.palladium?.percent || 0, sparkline: sparklines.palladium },
+      ],
+      timestamp: spotPriceCache.lastUpdated ? spotPriceCache.lastUpdated.toISOString() : new Date().toISOString(),
+      change: change,
+    });
+  } catch (error) {
+    console.error('Widget data error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * Debug endpoint - Scraper usage stats
  */
 app.get('/api/debug/api-usage', (req, res) => {

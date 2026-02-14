@@ -80,6 +80,10 @@ export const updateWidgetData = async (data) => {
       lastUpdated: new Date().toISOString(),
       hasSubscription: data.hasSubscription || false,
       hideValues: data.hideValues || false,
+      goldSparkline: data.goldSparkline || [],
+      silverSparkline: data.silverSparkline || [],
+      platinumSparkline: data.platinumSparkline || [],
+      palladiumSparkline: data.palladiumSparkline || [],
     };
 
     // Serialize to JSON and send to native module
