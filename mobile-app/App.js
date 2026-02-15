@@ -38,6 +38,7 @@ import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import AccountScreen from './src/screens/AccountScreen';
 import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { AppleLogo, GoogleLogo, ProfileIcon, DashboardIcon, HoldingsIcon, AnalyticsIcon, ToolsIcon, SettingsIcon, SortIcon, TodayIcon, BellIcon, TrendingUpIcon, CalculatorIcon, TrophyIcon } from './src/components/icons';
 import {
   fetchHoldings,
@@ -525,118 +526,19 @@ const ProgressBar = ({ value, max, color, label }) => {
 };
 
 // ============================================
-// WHEEL PICKER (scroll-based picker column)
+// DATE/TIME PICKERS (native iOS wheel pickers)
 // ============================================
-const WHEEL_ITEM_HEIGHT = 44;
-const WHEEL_VISIBLE_ITEMS = 5;
-
-const WheelPicker = ({ items, selectedIndex, onSelect, width = 80 }) => {
-  const flatListRef = useRef(null);
-  const isScrolling = useRef(false);
-
-  // Pad items with empty slots for centering
-  const padding = Math.floor(WHEEL_VISIBLE_ITEMS / 2);
-  const paddedItems = [
-    ...Array(padding).fill({ label: '', value: null }),
-    ...items,
-    ...Array(padding).fill({ label: '', value: null }),
-  ];
-
-  useEffect(() => {
-    if (flatListRef.current && !isScrolling.current) {
-      flatListRef.current.scrollToOffset({
-        offset: selectedIndex * WHEEL_ITEM_HEIGHT,
-        animated: false,
-      });
-    }
-  }, [selectedIndex]);
-
-  return (
-    <View style={{ height: WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE_ITEMS, width, overflow: 'hidden' }}>
-      <FlatList
-        ref={flatListRef}
-        data={paddedItems}
-        keyExtractor={(_, i) => i.toString()}
-        showsVerticalScrollIndicator={false}
-        snapToInterval={WHEEL_ITEM_HEIGHT}
-        decelerationRate="fast"
-        bounces={false}
-        getItemLayout={(_, index) => ({ length: WHEEL_ITEM_HEIGHT, offset: WHEEL_ITEM_HEIGHT * index, index })}
-        onScrollBeginDrag={() => { isScrolling.current = true; }}
-        onMomentumScrollEnd={(e) => {
-          isScrolling.current = false;
-          const idx = Math.round(e.nativeEvent.contentOffset.y / WHEEL_ITEM_HEIGHT);
-          if (idx >= 0 && idx < items.length && idx !== selectedIndex) {
-            onSelect(idx);
-          }
-        }}
-        renderItem={({ item, index }) => {
-          const realIndex = index - padding;
-          const isSelected = realIndex === selectedIndex;
-          return (
-            <View style={{ height: WHEEL_ITEM_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{
-                fontSize: isSelected ? 20 : 16,
-                fontWeight: isSelected ? '700' : '400',
-                color: item.value === null ? 'transparent' : (isSelected ? '#fff' : 'rgba(255,255,255,0.35)'),
-              }}>
-                {item.label}
-              </Text>
-            </View>
-          );
-        }}
-      />
-      {/* Center highlight */}
-      <View pointerEvents="none" style={{
-        position: 'absolute',
-        top: WHEEL_ITEM_HEIGHT * padding,
-        left: 0, right: 0,
-        height: WHEEL_ITEM_HEIGHT,
-        borderTopWidth: 1, borderBottomWidth: 1,
-        borderColor: 'rgba(251, 191, 36, 0.4)',
-        backgroundColor: 'rgba(251, 191, 36, 0.08)',
-      }} />
-    </View>
-  );
-};
-
 const DatePickerModal = ({ visible, onClose, onConfirm, initialDate }) => {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 50 }, (_, i) => currentYear - 49 + i);
+  const parsed = initialDate ? new Date(initialDate + 'T12:00:00') : new Date();
+  const [selectedDate, setSelectedDate] = useState(parsed);
 
-  // Parse initial date
-  const parsed = initialDate ? new Date(initialDate + 'T00:00:00') : new Date();
-  const [monthIdx, setMonthIdx] = useState(parsed.getMonth());
-  const [dayIdx, setDayIdx] = useState(parsed.getDate() - 1);
-  const [yearIdx, setYearIdx] = useState(years.indexOf(parsed.getFullYear()) >= 0 ? years.indexOf(parsed.getFullYear()) : years.length - 1);
-
-  // Reset when opened with new initial date
   useEffect(() => {
     if (visible) {
-      const p = initialDate ? new Date(initialDate + 'T00:00:00') : new Date();
-      setMonthIdx(p.getMonth());
-      setDayIdx(p.getDate() - 1);
-      setYearIdx(years.indexOf(p.getFullYear()) >= 0 ? years.indexOf(p.getFullYear()) : years.length - 1);
+      setSelectedDate(initialDate ? new Date(initialDate + 'T12:00:00') : new Date());
     }
   }, [visible]);
 
-  const daysInMonth = new Date(years[yearIdx], monthIdx + 1, 0).getDate();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  // Clamp day if month/year changed
-  const clampedDayIdx = Math.min(dayIdx, daysInMonth - 1);
-
-  const monthItems = months.map((m, i) => ({ label: m, value: i }));
-  const dayItems = days.map(d => ({ label: String(d), value: d }));
-  const yearItems = years.map(y => ({ label: String(y), value: y }));
-
-  const handleConfirm = () => {
-    const y = years[yearIdx];
-    const m = String(monthIdx + 1).padStart(2, '0');
-    const d = String(clampedDayIdx + 1).padStart(2, '0');
-    onConfirm(`${y}-${m}-${d}`);
-  };
+  if (!visible) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -649,15 +551,24 @@ const DatePickerModal = ({ visible, onClose, onConfirm, initialDate }) => {
                   <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Select Date</Text>
-                <TouchableOpacity onPress={handleConfirm}>
+                <TouchableOpacity onPress={() => {
+                  const y = selectedDate.getFullYear();
+                  const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                  const d = String(selectedDate.getDate()).padStart(2, '0');
+                  onConfirm(`${y}-${m}-${d}`);
+                }}>
                   <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '600' }}>Done</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'center', paddingVertical: 8 }}>
-                <WheelPicker items={monthItems} selectedIndex={monthIdx} onSelect={setMonthIdx} width={80} />
-                <WheelPicker items={dayItems} selectedIndex={clampedDayIdx} onSelect={setDayIdx} width={60} />
-                <WheelPicker items={yearItems} selectedIndex={yearIdx} onSelect={setYearIdx} width={80} />
-              </View>
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={(event, date) => { if (date) setSelectedDate(date); }}
+                themeVariant="dark"
+                style={{ height: 200 }}
+              />
             </View>
           </TouchableWithoutFeedback>
         </View>
@@ -667,30 +578,21 @@ const DatePickerModal = ({ visible, onClose, onConfirm, initialDate }) => {
 };
 
 const TimePickerModal = ({ visible, onClose, onConfirm, initialTime }) => {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const minutes = Array.from({ length: 60 }, (_, i) => i);
-
-  // Parse initial time
-  const parts = (initialTime || '').split(':');
-  const [hourIdx, setHourIdx] = useState(parts.length === 2 ? parseInt(parts[0]) || 0 : 12);
-  const [minuteIdx, setMinuteIdx] = useState(parts.length === 2 ? parseInt(parts[1]) || 0 : 0);
+  const parseTime = (t) => {
+    const parts = (t || '').split(':');
+    const d = new Date();
+    d.setHours(parts.length === 2 ? parseInt(parts[0]) || 12 : 12);
+    d.setMinutes(parts.length === 2 ? parseInt(parts[1]) || 0 : 0);
+    d.setSeconds(0);
+    return d;
+  };
+  const [selectedTime, setSelectedTime] = useState(parseTime(initialTime));
 
   useEffect(() => {
-    if (visible) {
-      const p = (initialTime || '').split(':');
-      setHourIdx(p.length === 2 ? parseInt(p[0]) || 0 : 12);
-      setMinuteIdx(p.length === 2 ? parseInt(p[1]) || 0 : 0);
-    }
+    if (visible) setSelectedTime(parseTime(initialTime));
   }, [visible]);
 
-  const hourItems = hours.map(h => ({ label: String(h).padStart(2, '0'), value: h }));
-  const minuteItems = minutes.map(m => ({ label: String(m).padStart(2, '0'), value: m }));
-
-  const handleConfirm = () => {
-    const h = String(hourIdx).padStart(2, '0');
-    const m = String(minuteIdx).padStart(2, '0');
-    onConfirm(`${h}:${m}`);
-  };
+  if (!visible) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -703,15 +605,23 @@ const TimePickerModal = ({ visible, onClose, onConfirm, initialTime }) => {
                   <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Select Time</Text>
-                <TouchableOpacity onPress={handleConfirm}>
+                <TouchableOpacity onPress={() => {
+                  const h = String(selectedTime.getHours()).padStart(2, '0');
+                  const m = String(selectedTime.getMinutes()).padStart(2, '0');
+                  onConfirm(`${h}:${m}`);
+                }}>
                   <Text style={{ color: '#fbbf24', fontSize: 16, fontWeight: '600' }}>Done</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8 }}>
-                <WheelPicker items={hourItems} selectedIndex={hourIdx} onSelect={setHourIdx} width={70} />
-                <Text style={{ color: '#fff', fontSize: 24, fontWeight: '700', marginHorizontal: 4 }}>:</Text>
-                <WheelPicker items={minuteItems} selectedIndex={minuteIdx} onSelect={setMinuteIdx} width={70} />
-              </View>
+              <DateTimePicker
+                value={selectedTime}
+                mode="time"
+                display="spinner"
+                is24Hour={true}
+                onChange={(event, date) => { if (date) setSelectedTime(date); }}
+                themeVariant="dark"
+                style={{ height: 200 }}
+              />
             </View>
           </TouchableWithoutFeedback>
         </View>
