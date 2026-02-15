@@ -16,14 +16,12 @@ struct StackTrackerWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             StackTrackerWidgetEntryView(entry: entry)
-                .containerBackground(for: .widget) {
-                    Color.black
-                }
+                .widgetBackground(Color.black)
         }
         .configurationDisplayName("Stack Tracker Gold")
         .description("View your precious metals portfolio value and live spot prices.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
-        .contentMarginsDisabled()
+        .contentMarginsDisabledIfAvailable()
     }
 }
 

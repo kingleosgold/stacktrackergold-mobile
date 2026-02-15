@@ -969,6 +969,30 @@ struct LargeSpotGrid: View {
 
 // MARK: - Color Extension
 
+// MARK: - iOS 17 Availability Extensions
+
+extension View {
+    func widgetBackground(_ color: Color) -> some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            return containerBackground(color, for: .widget)
+        } else {
+            return background(color)
+        }
+    }
+}
+
+extension WidgetConfiguration {
+    func contentMarginsDisabledIfAvailable() -> some WidgetConfiguration {
+        if #available(iOSApplicationExtension 17.0, *) {
+            return self.contentMarginsDisabled()
+        } else {
+            return self
+        }
+    }
+}
+
+// MARK: - Color Extension
+
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
