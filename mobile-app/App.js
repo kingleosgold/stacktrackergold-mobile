@@ -768,6 +768,37 @@ const ModalWrapper = ({ visible, onClose, title, children, colors, isDarkMode })
 // MAIN APP
 // ============================================
 
+/**
+ * Client-side market hours check (fallback for backend)
+ * Markets open: Sunday 6pm ET → Friday 5pm ET
+ * Markets closed: Friday 5pm ET → Sunday 6pm ET
+ */
+function isMarketClosedClientSide() {
+  try {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+    });
+    const parts = {};
+    for (const p of fmt.formatToParts(now)) {
+      parts[p.type] = p.value;
+    }
+    const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const day = dayMap[parts.weekday];
+    const hour = parseInt(parts.hour, 10);
+
+    const closed = (day === 6) || (day === 0 && hour < 18) || (day === 5 && hour >= 17);
+    console.log(`🕐 Client market check: ET ${parts.weekday} ${hour}:${String(parseInt(parts.minute, 10)).padStart(2, '0')} → ${closed ? 'CLOSED' : 'OPEN'}`);
+    return closed;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Main app content (wrapped by ErrorBoundary below)
 function AppContent() {
   // Safe area insets for proper spacing around system UI (navigation bar, notch, etc.)
@@ -3760,10 +3791,13 @@ function AppContent() {
           if (__DEV__) console.log('📈 Change data:', data.change);
         }
 
-        // Capture markets closed status
-        setMarketsClosed(data.marketsClosed === true);
-        if (data.marketsClosed) {
-          if (__DEV__) console.log('🔒 Markets are closed (Fri 5pm - Sun 6pm ET)');
+        // Capture markets closed status (combine backend + client-side fallback)
+        const clientClosed = isMarketClosedClientSide();
+        const serverClosed = data.marketsClosed === true;
+        const effectivelyClosed = serverClosed || clientClosed;
+        setMarketsClosed(effectivelyClosed);
+        if (effectivelyClosed) {
+          console.log(`🔒 Markets closed — server: ${serverClosed}, client: ${clientClosed}`);
         }
 
         if (__DEV__) console.log(`💰 Prices updated: Gold $${data.gold}, Silver $${data.silver} (Source: ${data.source})`);
@@ -5668,7 +5702,7 @@ function AppContent() {
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
                             <Text style={{ color: m.color, fontSize: 13, fontWeight: '700' }}>{m.label}</Text>
-                            {idx === 0 && Math.abs(m.pct) > 0.1 && (
+                            {idx === 0 && !marketsClosed && Math.abs(m.pct) > 0.1 && (
                               <View style={{ backgroundColor: 'rgba(248,113,113,0.15)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
                                 <Text style={{ color: '#F87171', fontSize: 9, fontWeight: '700' }}>HOT</Text>
                               </View>
@@ -5685,7 +5719,7 @@ function AppContent() {
                                   const y = 18 - ((v - min) / range) * 16;
                                   return `${i === 0 ? 'M' : 'L'}${x},${y}`;
                                 }).join(' ')}
-                                stroke={m.color}
+                                stroke={marketsClosed ? '#71717a' : m.color}
                                 strokeWidth={1.5}
                                 fill="none"
                               />
@@ -5699,7 +5733,7 @@ function AppContent() {
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {marketsClosed ? (
-                            <Text style={{ color: '#4CAF50', fontSize: 12, fontWeight: '600' }}>+0.0%</Text>
+                            <Text style={{ color: '#71717a', fontSize: 12, fontWeight: '600' }}>+0.0%</Text>
                           ) : (
                             <>
                               <Text style={{ color: m.change >= 0 ? '#4CAF50' : '#F44336', fontSize: 12, fontWeight: '600' }}>
@@ -6729,7 +6763,7 @@ function AppContent() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><BellIcon size={18} color={colors.gold} /><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Price Alerts</Text></View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><View style={{ width: 18, height: 18, justifyContent: 'center', alignItems: 'center' }}><BellIcon size={18} color={colors.gold} /></View><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium, marginBottom: 0 }]}>Price Alerts</Text></View>
                     {hasGoldAccess && priceAlerts.length > 0 && (
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{priceAlerts.length} active</Text>
                     )}
@@ -6744,7 +6778,7 @@ function AppContent() {
                 <View onLayout={(e) => { sectionOffsets.current['speculationTool'] = e.nativeEvent.layout.y; }}>
                 <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => { if (!hasGoldAccess) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); return; } setShowSpeculationModal(true); }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><TrendingUpIcon size={18} color={colors.gold} /><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Speculation Tool</Text></View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><View style={{ width: 18, height: 18, justifyContent: 'center', alignItems: 'center' }}><TrendingUpIcon size={18} color={colors.gold} /></View><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium, marginBottom: 0 }]}>Speculation Tool</Text></View>
                     {!hasGoldAccess && <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>}
                   </View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>What if silver hits $100? What if gold hits $10,000?</Text>
@@ -6753,7 +6787,7 @@ function AppContent() {
 
                 <View onLayout={(e) => { sectionOffsets.current['junkSilver'] = e.nativeEvent.layout.y; }}>
                 <TouchableOpacity style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]} onPress={() => setShowJunkCalcModal(true)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><CalculatorIcon size={18} color={colors.gold} /><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Junk Silver Calculator</Text></View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><View style={{ width: 18, height: 18, justifyContent: 'center', alignItems: 'center' }}><CalculatorIcon size={18} color={colors.gold} /></View><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium, marginBottom: 0 }]}>Junk Silver Calculator</Text></View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Calculate melt value of constitutional silver</Text>
                 </TouchableOpacity>
                 </View>
@@ -6772,7 +6806,7 @@ function AppContent() {
                 >
                   <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><TrophyIcon size={18} color={colors.gold} /><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Stack Milestones</Text></View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><View style={{ width: 18, height: 18, justifyContent: 'center', alignItems: 'center' }}><TrophyIcon size={18} color={colors.gold} /></View><Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium, marginBottom: 0 }]}>Stack Milestones</Text></View>
                       {hasGoldAccess ? (
                         <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>Tap to edit</Text>
                       ) : (

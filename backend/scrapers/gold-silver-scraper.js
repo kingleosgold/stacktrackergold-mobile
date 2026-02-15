@@ -20,32 +20,37 @@ const { findClosestLoggedPrice } = require('../services/priceLogger');
  * @returns {boolean} true if markets are closed
  */
 function areMarketsClosed() {
-  // Get current time in Eastern Time
+  // Get current time in Eastern Time using Intl.DateTimeFormat.formatToParts
+  // This is reliable on all servers regardless of system timezone
   const now = new Date();
-  const etOptions = { timeZone: 'America/New_York', hour12: false };
-  const etString = now.toLocaleString('en-US', etOptions);
-  const etDate = new Date(etString);
-
-  const dayOfWeek = etDate.getDay(); // 0=Sunday, 5=Friday, 6=Saturday
-  const hour = etDate.getHours();
-
-  // Saturday: always closed
-  if (dayOfWeek === 6) {
-    return true;
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    weekday: 'short',
+    hour: 'numeric',
+    minute: 'numeric',
+  });
+  const parts = {};
+  for (const p of fmt.formatToParts(now)) {
+    parts[p.type] = p.value;
   }
 
-  // Sunday: closed before 6pm ET (hour < 18)
-  if (dayOfWeek === 0 && hour < 18) {
-    return true;
-  }
+  const dayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dayOfWeek = dayMap[parts.weekday];
+  const hour = parseInt(parts.hour, 10);
+  const minute = parseInt(parts.minute, 10);
 
-  // Friday: closed after 5pm ET (hour >= 17)
-  if (dayOfWeek === 5 && hour >= 17) {
-    return true;
-  }
+  const closed = (
+    // Saturday: always closed
+    dayOfWeek === 6 ||
+    // Sunday: closed before 6pm ET
+    (dayOfWeek === 0 && hour < 18) ||
+    // Friday: closed after 5pm ET
+    (dayOfWeek === 5 && hour >= 17)
+  );
 
-  // All other times: markets are open
-  return false;
+  console.log(`🕐 Market hours check: ET ${parts.weekday} ${hour}:${String(minute).padStart(2, '0')} → ${closed ? 'CLOSED' : 'OPEN'}`);
+  return closed;
 }
 
 // Store yesterday's closing prices for calculating change when using MetalPriceAPI
