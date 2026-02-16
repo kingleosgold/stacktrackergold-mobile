@@ -386,11 +386,11 @@ const detectDealerFromHeaders = (headers, fileContent = '') => {
 // REUSABLE COMPONENTS
 // ============================================
 
-const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, prefix, editable = true, colors, isDarkMode, scaledFonts }) => {
+const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, prefix, editable = true, colors, isDarkMode, scaledFonts, required, error }) => {
   // Default colors for backwards compatibility
   const labelColor = colors ? colors.muted : '#a1a1aa';
   const inputBg = colors ? (isDarkMode ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.05)') : 'rgba(0,0,0,0.3)';
-  const borderColor = colors ? colors.border : 'rgba(255,255,255,0.1)';
+  const borderColor = error ? '#EF4444' : (colors ? colors.border : 'rgba(255,255,255,0.1)');
   const textColor = colors ? colors.text : '#fff';
   const prefixColor = colors ? colors.muted : '#71717a';
   const disabledBg = colors ? (isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.1)') : 'rgba(0,0,0,0.5)';
@@ -402,7 +402,9 @@ const FloatingInput = ({ label, value, onChangeText, placeholder, keyboardType, 
 
   return (
     <View style={styles.floatingContainer}>
-      <Text style={[styles.floatingLabel, { color: labelColor, fontSize: labelFontSize }]}>{label}</Text>
+      <Text style={[styles.floatingLabel, { color: labelColor, fontSize: labelFontSize }]}>
+        {label}{required && <Text style={{ color: '#EF4444' }}> *</Text>}
+      </Text>
       <View style={[styles.inputRow, { backgroundColor: inputBg, borderColor: borderColor }, !editable && { backgroundColor: disabledBg }]}>
         {prefix && <Text style={[styles.inputPrefix, { color: prefixColor, fontSize: prefixFontSize }]}>{prefix}</Text>}
         <TextInput
@@ -1047,9 +1049,10 @@ function AppContent() {
   // Form State
   const [form, setForm] = useState({
     productName: '', source: '', datePurchased: '', timePurchased: '', ozt: '',
-    quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
+    quantity: '', unitPrice: '', taxes: '', shipping: '',
     spotPrice: '', premium: '0', costBasis: '',
   });
+  const [formErrors, setFormErrors] = useState({});
   const [spotPriceSource, setSpotPriceSource] = useState(null); // Tracks data source for spot price warnings
   const [historicalSpotSuggestion, setHistoricalSpotSuggestion] = useState(null); // Suggested historical spot price for comparison
 
@@ -4840,6 +4843,7 @@ function AppContent() {
 
     // Store the index so we can update it after editing
     setEditingItem({ ...item, scannedIndex: index });
+    setFormErrors({});
 
     // Close preview modal and open edit modal
     setShowScannedItemsPreview(false);
@@ -4861,10 +4865,10 @@ function AppContent() {
       source: item.source || '',
       datePurchased: item.datePurchased || '',
       ozt: item.ozt ? item.ozt.toString() : '',
-      quantity: item.quantity ? item.quantity.toString() : '1',
+      quantity: item.quantity ? item.quantity.toString() : '',
       unitPrice: item.unitPrice ? item.unitPrice.toString() : '',
-      taxes: '0',
-      shipping: '0',
+      taxes: '',
+      shipping: '',
       spotPrice: '0',
       premium: '0',
       costBasis: defaultCostBasis.toString(),
@@ -4876,6 +4880,7 @@ function AppContent() {
 
     // Store the index so we can update it after editing
     setEditingItem({ ...item, importIndex: index });
+    setFormErrors({});
 
     // Close preview modal and open edit modal
     setShowImportPreview(false);
@@ -4889,12 +4894,17 @@ function AppContent() {
   const savePurchase = () => {
     Keyboard.dismiss();
 
-    const missing = [];
-    if (!form.productName) missing.push('Product Name');
-    if (!form.ozt || parseFloat(form.ozt) <= 0) missing.push('OZT per unit');
-    if (!form.unitPrice || parseFloat(form.unitPrice) <= 0) missing.push('Unit Price');
-    if (missing.length > 0) {
-      Alert.alert('Required Fields', `Please enter: ${missing.join(', ')}`);
+    const errors = {};
+    if (!form.productName) errors.productName = true;
+    if (!form.quantity || parseInt(form.quantity) <= 0) errors.quantity = true;
+    if (!form.unitPrice || parseFloat(form.unitPrice) <= 0) errors.unitPrice = true;
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      const names = [];
+      if (errors.productName) names.push('Product Name');
+      if (errors.quantity) names.push('Quantity');
+      if (errors.unitPrice) names.push('Unit Price');
+      Alert.alert('Required Fields', `Please fill in: ${names.join(', ')}`);
       return;
     }
 
@@ -5012,12 +5022,13 @@ function AppContent() {
   const resetForm = () => {
     setForm({
       productName: '', source: '', datePurchased: '', timePurchased: '', ozt: '',
-      quantity: '1', unitPrice: '', taxes: '0', shipping: '0',
+      quantity: '', unitPrice: '', taxes: '', shipping: '',
       spotPrice: '', premium: '0', costBasis: '',
     });
     setEditingItem(null);
     setSpotPriceSource(null);
     setHistoricalSpotSuggestion(null);
+    setFormErrors({});
   };
 
   const deleteItem = (id, metal) => {
@@ -5131,6 +5142,7 @@ function AppContent() {
     setEditingItem(item);
     setSpotPriceSource(null); // Clear source warning when editing existing item
     setHistoricalSpotSuggestion(null); // Clear any previous suggestion
+    setFormErrors({});
     setShowAddModal(true);
 
     // Always fetch historical spot price if date is present (for comparison/auto-fill)
@@ -8457,7 +8469,7 @@ function AppContent() {
                     ))}
                   </View>
 
-                  <FloatingInput label="Product Name *" value={form.productName} onChangeText={v => setForm(p => ({ ...p, productName: v }))} placeholder="American Silver Eagle" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
+                  <FloatingInput label="Product Name" value={form.productName} onChangeText={v => { setForm(p => ({ ...p, productName: v })); if (v) setFormErrors(e => ({ ...e, productName: false })); }} placeholder={{ gold: 'e.g. American Gold Eagle', silver: 'e.g. American Silver Eagle', platinum: 'e.g. American Platinum Eagle', palladium: 'e.g. Canadian Palladium Maple Leaf' }[metalTab] || 'e.g. American Silver Eagle'} colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} required error={formErrors.productName} />
                   <FloatingInput label="Dealer" value={form.source} onChangeText={v => setForm(p => ({ ...p, source: v }))} placeholder="APMEX" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} />
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity style={{ flex: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border }} onPress={() => { Keyboard.dismiss(); setShowDatePicker(true); }}>
@@ -8471,12 +8483,12 @@ function AppContent() {
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit *" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => setForm(p => ({ ...p, quantity: v }))} placeholder="1" keyboardType="number-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => { setForm(p => ({ ...p, quantity: v })); if (v && parseInt(v) > 0) setFormErrors(e => ({ ...e, quantity: false })); }} placeholder="Quantity" keyboardType="number-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} required error={formErrors.quantity} /></View>
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="Unit Price *" value={form.unitPrice} onChangeText={v => setForm(p => ({ ...p, unitPrice: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Unit Price" value={form.unitPrice} onChangeText={v => { setForm(p => ({ ...p, unitPrice: v })); if (v && parseFloat(v) > 0) setFormErrors(e => ({ ...e, unitPrice: false })); }} placeholder="0.00" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} required error={formErrors.unitPrice} /></View>
                     <View style={{ flex: 1 }}><FloatingInput label="Spot at Purchase" value={form.spotPrice} onChangeText={v => { setForm(p => ({ ...p, spotPrice: v })); setSpotPriceSource(null); }} placeholder="Auto" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                   </View>
 
@@ -8536,8 +8548,8 @@ function AppContent() {
                   })()}
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
-                    <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Taxes" value={form.taxes} onChangeText={v => setForm(p => ({ ...p, taxes: v }))} placeholder="0.00" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="Shipping" value={form.shipping} onChangeText={v => setForm(p => ({ ...p, shipping: v }))} placeholder="0.00" keyboardType="decimal-pad" prefix="$" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
                   </View>
 
                   {/* Total Cost Basis - editable for adjustments */}
