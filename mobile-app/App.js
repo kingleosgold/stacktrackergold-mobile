@@ -5474,6 +5474,10 @@ function AppContent() {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.8)', borderBottomColor: colors.border }]}>
         <View style={styles.headerContent}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity onPress={openDrawer} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ paddingRight: 6 }}>
+            <Text style={{ color: '#D4A843', fontSize: 22, fontWeight: '300' }}>☰</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={openDrawer} activeOpacity={0.7} style={styles.logo}>
             <Image source={require('./assets/icon.png')} style={{ width: 40, height: 40, borderRadius: 8 }} />
             <Text style={[styles.logoTitle, { color: colors.text }]}>Stack Tracker Gold</Text>
@@ -5492,6 +5496,7 @@ function AppContent() {
               </TouchableOpacity>
             )}
           </TouchableOpacity>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {supabaseUser ? (
               // Signed in - show profile icon that goes to account
@@ -5555,13 +5560,14 @@ function AppContent() {
           const todayDate = new Date();
           const dateStr = todayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-          // Metal movers data
+          // Metal movers data (fixed grid: Ag top-left, Au top-right, Pt bottom-left, Pd bottom-right)
           const metalMovers = [
-            { symbol: 'Au', label: 'Gold', spot: goldSpot, change: spotChange?.gold?.amount || 0, pct: spotChange?.gold?.percent || 0, color: '#D4A843' },
             { symbol: 'Ag', label: 'Silver', spot: silverSpot, change: spotChange?.silver?.amount || 0, pct: spotChange?.silver?.percent || 0, color: '#9ca3af' },
+            { symbol: 'Au', label: 'Gold', spot: goldSpot, change: spotChange?.gold?.amount || 0, pct: spotChange?.gold?.percent || 0, color: '#D4A843' },
             { symbol: 'Pt', label: 'Platinum', spot: platinumSpot, change: spotChange?.platinum?.amount || 0, pct: spotChange?.platinum?.percent || 0, color: '#7BB3D4' },
             { symbol: 'Pd', label: 'Palladium', spot: palladiumSpot, change: spotChange?.palladium?.amount || 0, pct: spotChange?.palladium?.percent || 0, color: '#6BBF8A' },
-          ].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+          ];
+          const biggestMoverSymbol = metalMovers.reduce((best, m) => Math.abs(m.pct) > Math.abs(best.pct) ? m : best, metalMovers[0]).symbol;
 
           // Portfolio impact per metal (only metals held)
           const holdingsImpact = [
@@ -5577,7 +5583,7 @@ function AppContent() {
           }).sort((a, b) => Math.abs(b.dollarChange) - Math.abs(a.dollarChange));
 
           // AI summary generation (client-side)
-          const biggestMover = metalMovers[0];
+          const biggestMover = metalMovers.reduce((best, m) => Math.abs(m.pct) > Math.abs(best.pct) ? m : best, metalMovers[0]);
           const gainedLost = dailyChange >= 0 ? 'gained' : 'lost';
           const rallyDecline = biggestMover?.pct >= 0 ? 'rally' : 'decline';
           const aiSummary = marketsClosed
@@ -5752,26 +5758,30 @@ function AppContent() {
                     const points = sparklineData?.[metalKey] || [];
                     const isUp = points.length >= 2 ? points[points.length - 1] >= points[0] : true;
                     const sparkColor = isUp ? '#4CAF50' : '#F44336';
+                    const isBiggestMover = m.symbol === biggestMoverSymbol && !marketsClosed && Math.abs(m.pct) > 0.1;
+                    const glowColor = isBiggestMover ? (m.pct >= 0 ? '#4CAF50' : '#F44336') : 'transparent';
                     return (
                       <View key={m.symbol} style={{
                         backgroundColor: todayCardBg,
                         borderRadius: 12,
                         borderWidth: 1,
-                        borderColor: todayCardBorder,
+                        borderColor: isBiggestMover ? glowColor + '40' : todayCardBorder,
                         padding: 14,
                         width: (SCREEN_WIDTH - 32 - 10) / 2,
                         overflow: 'hidden',
+                        ...(isBiggestMover ? {
+                          shadowColor: glowColor,
+                          shadowOffset: { width: 0, height: 0 },
+                          shadowOpacity: 0.5,
+                          shadowRadius: 8,
+                          elevation: 6,
+                        } : {}),
                       }}>
                         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: m.color }} />
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
                           <Text style={{ color: m.color, fontSize: 13, fontWeight: '700' }}>{m.label}</Text>
-                          {idx === 0 && !marketsClosed && Math.abs(m.pct) > 0.1 && (
-                            <View style={{ backgroundColor: 'rgba(248,113,113,0.15)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
-                              <Text style={{ color: '#F87171', fontSize: 9, fontWeight: '700' }}>HOT</Text>
-                            </View>
-                          )}
                         </View>
 
                         {points.length >= 2 && (() => {
