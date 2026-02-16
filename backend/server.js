@@ -533,6 +533,7 @@ app.get('/api/sparkline-24h', async (req, res) => {
   try {
     const prices = spotPriceCache.prices;
     let sparklines = { gold: [], silver: [], platinum: [], palladium: [] };
+    let timestamps = [];
 
     if (isSupabaseAvailable()) {
       try {
@@ -556,6 +557,7 @@ app.get('/api/sparkline-24h', async (req, res) => {
           }
           const sorted = Object.entries(byHour).sort(([a], [b]) => a.localeCompare(b));
 
+          timestamps = sorted.map(([, r]) => r.timestamp);
           sparklines.gold = sorted.map(([, r]) => parseFloat(r.gold_price) || 0);
           sparklines.silver = sorted.map(([, r]) => parseFloat(r.silver_price) || 0);
           sparklines.platinum = sorted.map(([, r]) => parseFloat(r.platinum_price) || 0);
@@ -567,15 +569,17 @@ app.get('/api/sparkline-24h', async (req, res) => {
     }
 
     // Append current price as latest point
+    timestamps.push(new Date().toISOString());
     for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {
       sparklines[metal].push(prices[metal] || 0);
       // Fallback: if still < 2 points, use current price twice
       if (sparklines[metal].length < 2) {
         sparklines[metal] = [prices[metal] || 0, prices[metal] || 0];
+        timestamps = [new Date(Date.now() - 3600000).toISOString(), new Date().toISOString()];
       }
     }
 
-    res.json({ success: true, sparklines });
+    res.json({ success: true, sparklines, timestamps });
   } catch (error) {
     console.error('Sparkline-24h error:', error);
     res.status(500).json({ success: false, error: error.message });

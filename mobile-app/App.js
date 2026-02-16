@@ -30,7 +30,7 @@ import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitl
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import { registerBackgroundFetch, getBackgroundFetchStatus } from './src/utils/backgroundTasks';
 import { LineChart } from 'react-native-chart-kit';
-import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Line, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import GoldPaywall from './src/components/GoldPaywall';
 import Tutorial from './src/components/Tutorial';
 import ViewShot from 'react-native-view-shot';
@@ -929,6 +929,162 @@ const SwipeableAlertRow = ({ alert, colors, onDelete, onTap, spotPrices }) => {
   );
 };
 
+/**
+ * ScrubSparkline — sparkline with long-press-to-scrub crosshair and tooltip.
+ * Uses onTouchStart/Move/End so it doesn't block ScrollView scroll.
+ * Long press (~200ms) activates scrubbing; moving before that lets scroll happen.
+ */
+const ScrubSparkline = ({ dataPoints, timestamps, svgW, svgH, strokeColor, gradientId, formatValue, label, style }) => {
+  const [scrubIndex, setScrubIndex] = useState(null);
+  const scrubIndexRef = useRef(null);
+  const containerRef = useRef(null);
+  const containerX = useRef(0);
+  const containerW = useRef(0);
+  const longPressTimer = useRef(null);
+  const isActive = useRef(false);
+  const startPageX = useRef(0);
+  const startPageY = useRef(0);
+
+  const min = Math.min(...dataPoints);
+  const max = Math.max(...dataPoints);
+  const range = max - min || 1;
+
+  const pathD = dataPoints.map((v, i) => {
+    const x = (i / (dataPoints.length - 1)) * svgW;
+    const y = 4 + (svgH - 8) * (1 - (v - min) / range);
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const fillD = `${pathD} L${svgW},${svgH} L0,${svgH} Z`;
+
+  const getScrubDataIndex = (pageX) => {
+    const relX = pageX - containerX.current;
+    const pct = Math.max(0, Math.min(1, relX / containerW.current));
+    return Math.round(pct * (dataPoints.length - 1));
+  };
+
+  const updateScrub = (pageX) => {
+    const idx = getScrubDataIndex(pageX);
+    if (idx !== scrubIndexRef.current) {
+      scrubIndexRef.current = idx;
+      setScrubIndex(idx);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    const { pageX, pageY } = e.nativeEvent;
+    startPageX.current = pageX;
+    startPageY.current = pageY;
+    // Measure container position fresh on each touch
+    containerRef.current?.measureInWindow?.((x, _y, w) => {
+      containerX.current = x;
+      containerW.current = w;
+    });
+    longPressTimer.current = setTimeout(() => {
+      isActive.current = true;
+      updateScrub(pageX);
+    }, 200);
+  };
+
+  const handleTouchMove = (e) => {
+    const { pageX, pageY } = e.nativeEvent;
+    if (isActive.current) {
+      updateScrub(pageX);
+    } else if (longPressTimer.current) {
+      // If finger moved >10px before long press fired, cancel — let scroll happen
+      const dx = Math.abs(pageX - startPageX.current);
+      const dy = Math.abs(pageY - startPageY.current);
+      if (dx > 10 || dy > 10) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    isActive.current = false;
+    scrubIndexRef.current = null;
+    setScrubIndex(null);
+  };
+
+  // Crosshair position in SVG coords
+  const scrubXSvg = scrubIndex !== null ? (scrubIndex / (dataPoints.length - 1)) * svgW : 0;
+  const scrubYSvg = scrubIndex !== null ? 4 + (svgH - 8) * (1 - (dataPoints[scrubIndex] - min) / range) : 0;
+
+  const formatTime = (isoStr) => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  };
+
+  return (
+    <View
+      ref={containerRef}
+      onLayout={(e) => { containerW.current = e.nativeEvent.layout.width; }}
+      style={style}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      // When scrub is active, tell parent ScrollView not to steal the touch
+      onStartShouldSetResponder={() => false}
+      onMoveShouldSetResponder={() => isActive.current}
+      onResponderTerminationRequest={() => !isActive.current}
+    >
+      {/* Floating tooltip */}
+      {scrubIndex !== null && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: -38,
+            left: Math.max(0, Math.min((scrubIndex / (dataPoints.length - 1)) * containerW.current - 60, containerW.current - 120)),
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            zIndex: 10,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.15)',
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+            {label ? `${label}: ` : ''}{formatValue ? formatValue(dataPoints[scrubIndex]) : `$${dataPoints[scrubIndex].toFixed(2)}`}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>
+            {timestamps && timestamps[scrubIndex] ? formatTime(timestamps[scrubIndex]) : ''}
+          </Text>
+        </View>
+      )}
+      <Svg width="100%" height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="none">
+        <Defs>
+          <SvgLinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={strokeColor} stopOpacity="0.3" />
+            <Stop offset="1" stopColor={strokeColor} stopOpacity="0" />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d={fillD} fill={`url(#${gradientId})`} />
+        <Path d={pathD} stroke={strokeColor} strokeWidth={svgH > 40 ? 2 : 1.5} fill="none" />
+        {/* Crosshair line + dot */}
+        {scrubIndex !== null && (
+          <>
+            <Line x1={scrubXSvg} y1={0} x2={scrubXSvg} y2={svgH} stroke="rgba(255,255,255,0.4)" strokeWidth={1} strokeDasharray="3,2" />
+            <Circle cx={scrubXSvg} cy={scrubYSvg} r={4} fill={strokeColor} stroke="#fff" strokeWidth={1.5} />
+          </>
+        )}
+      </Svg>
+    </View>
+  );
+};
+
 // Main app content (wrapped by ErrorBoundary below)
 function AppContent() {
   // Safe area insets for proper spacing around system UI (navigation bar, notch, etc.)
@@ -1102,7 +1258,7 @@ function AppContent() {
   });
 
   // Sparkline data for Metal Movers + Portfolio Pulse (24-hour trend)
-  const [sparklineData, setSparklineData] = useState(null); // { gold: [N numbers], silver: [...], ... }
+  const [sparklineData, setSparklineData] = useState(null); // { gold: [N numbers], silver: [...], timestamps: [...] }
   const sparklineFetchedRef = useRef(false);
 
   // Share My Stack
@@ -3546,6 +3702,7 @@ function AppContent() {
             silver: s.silver || [],
             platinum: s.platinum || [],
             palladium: s.palladium || [],
+            timestamps: result.timestamps || [],
           });
           sparklineFetchedRef.current = true;
         }
@@ -5916,10 +6073,9 @@ function AppContent() {
                 borderColor: todayCardBorder,
                 padding: 20,
                 marginBottom: 16,
-                overflow: 'hidden',
               }}>
                 {/* Gold accent line */}
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: '#D4A843' }} />
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: '#D4A843', borderTopLeftRadius: 16, borderTopRightRadius: 16 }} />
 
                 <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '500', marginBottom: 4, marginTop: 4 }}>Today, {dateStr}</Text>
 
@@ -5929,34 +6085,20 @@ function AppContent() {
                   const goldPts = sparklineData.gold;
                   const silverPts = sparklineData.silver;
                   const portfolioPoints = goldPts.map((g, i) => (totalGoldOzt * g) + (totalSilverOzt * (silverPts[i] || 0)) + (totalPlatinumOzt * (sparklineData.platinum[i] || 0)) + (totalPalladiumOzt * (sparklineData.palladium[i] || 0)));
-                  const min = Math.min(...portfolioPoints);
-                  const max = Math.max(...portfolioPoints);
-                  const range = max - min || 1;
                   const isUp = portfolioPoints[portfolioPoints.length - 1] >= portfolioPoints[0];
                   const sparkColor = isUp ? '#4CAF50' : '#F44336';
-                  const svgW = 300;
-                  const svgH = 60;
-                  const pathD = portfolioPoints.map((v, i) => {
-                    const x = (i / (portfolioPoints.length - 1)) * svgW;
-                    const y = 4 + (svgH - 8) * (1 - (v - min) / range);
-                    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-                  }).join(' ');
-                  const firstX = '0';
-                  const lastX = svgW.toFixed(1);
-                  const fillD = `${pathD} L${lastX},${svgH} L${firstX},${svgH} Z`;
                   return (
-                    <View style={{ marginBottom: 4 }}>
-                      <Svg width="100%" height={60} viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="none">
-                        <Defs>
-                          <SvgLinearGradient id="portfolioGrad" x1="0" y1="0" x2="0" y2="1">
-                            <Stop offset="0" stopColor={sparkColor} stopOpacity="0.3" />
-                            <Stop offset="1" stopColor={sparkColor} stopOpacity="0" />
-                          </SvgLinearGradient>
-                        </Defs>
-                        <Path d={fillD} fill="url(#portfolioGrad)" />
-                        <Path d={pathD} stroke={sparkColor} strokeWidth={2} fill="none" />
-                      </Svg>
-                    </View>
+                    <ScrubSparkline
+                      dataPoints={portfolioPoints}
+                      timestamps={sparklineData.timestamps}
+                      svgW={300}
+                      svgH={60}
+                      strokeColor={sparkColor}
+                      gradientId="portfolioGrad"
+                      formatValue={(v) => `$${formatCurrency(v, 0)}`}
+                      label="Portfolio"
+                      style={{ marginBottom: 4 }}
+                    />
                   );
                 })()}
 
@@ -5991,7 +6133,7 @@ function AppContent() {
                         borderColor: isBiggestMover ? glowColor + '40' : todayCardBorder,
                         padding: 14,
                         width: (SCREEN_WIDTH - 32 - 10) / 2,
-                        overflow: 'hidden',
+                        zIndex: 1,
                         ...(isBiggestMover ? {
                           shadowColor: glowColor,
                           shadowOffset: { width: 0, height: 0 },
@@ -6000,41 +6142,26 @@ function AppContent() {
                           elevation: 6,
                         } : {}),
                       }}>
-                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: m.color }} />
+                        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: m.color, borderTopLeftRadius: 12, borderTopRightRadius: 12 }} />
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
                           <Text style={{ color: m.color, fontSize: 13, fontWeight: '700' }}>{m.label}</Text>
                         </View>
 
-                        {points.length >= 2 && (() => {
-                          const min = Math.min(...points);
-                          const max = Math.max(...points);
-                          const range = max - min || 1;
-                          const svgW = 120;
-                          const svgH = 32;
-                          const pathD = points.map((v, i) => {
-                            const x = (i / (points.length - 1)) * svgW;
-                            const y = 2 + (svgH - 4) * (1 - (v - min) / range);
-                            return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-                          }).join(' ');
-                          const fillD = `${pathD} L${svgW},${svgH} L0,${svgH} Z`;
-                          const gradId = `metalGrad_${m.symbol}`;
-                          return (
-                            <View style={{ alignItems: 'center', marginBottom: 6 }}>
-                              <Svg width="100%" height={32} viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="none">
-                                <Defs>
-                                  <SvgLinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                                    <Stop offset="0" stopColor={sparkColor} stopOpacity="0.3" />
-                                    <Stop offset="1" stopColor={sparkColor} stopOpacity="0" />
-                                  </SvgLinearGradient>
-                                </Defs>
-                                <Path d={fillD} fill={`url(#${gradId})`} />
-                                <Path d={pathD} stroke={sparkColor} strokeWidth={1.5} fill="none" />
-                              </Svg>
-                            </View>
-                          );
-                        })()}
+                        {points.length >= 2 && (
+                          <ScrubSparkline
+                            dataPoints={points}
+                            timestamps={sparklineData?.timestamps}
+                            svgW={120}
+                            svgH={32}
+                            strokeColor={sparkColor}
+                            gradientId={`metalGrad_${m.symbol}`}
+                            formatValue={(v) => `$${m.symbol === 'Ag' ? v.toFixed(2) : formatCurrency(v, 0)}`}
+                            label={m.label}
+                            style={{ alignItems: 'center', marginBottom: 6 }}
+                          />
+                        )}
 
                         <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 4 }}>
                           ${m.symbol === 'Ag' ? m.spot.toFixed(2) : formatCurrency(m.spot, 0)}
