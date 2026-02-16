@@ -2790,99 +2790,70 @@ app.delete('/api/push-token/delete', validate('pushTokenDelete'), async (req, re
 /**
  * Sync price alerts from mobile app
  */
-app.post('/api/price-alerts/sync', validate('priceAlertsSync'), async (req, res) => {
+/**
+ * Create a single price alert
+ */
+app.post('/api/price-alerts', async (req, res) => {
   try {
-    const { alerts, user_id, device_id } = req.body;
-    console.log('🔔 [Alert Sync] Request:', { alertCount: alerts?.length, user_id: user_id?.substring(0, 8), device_id });
+    const { id, userId, device_id, metal, targetPrice, direction, enabled } = req.body;
+
+    if (!metal || !targetPrice || !direction) {
+      return res.status(400).json({ success: false, error: 'metal, targetPrice, and direction are required' });
+    }
+    if (!['gold', 'silver', 'platinum', 'palladium'].includes(metal)) {
+      return res.status(400).json({ success: false, error: 'Invalid metal' });
+    }
+    if (!['above', 'below'].includes(direction)) {
+      return res.status(400).json({ success: false, error: 'direction must be above or below' });
+    }
+    if (!userId && !device_id) {
+      return res.status(400).json({ success: false, error: 'Either userId or device_id is required' });
+    }
 
     if (!isSupabaseAvailable()) {
-      console.error('🔔 [Alert Sync] Supabase not available!');
       return res.status(503).json({ success: false, error: 'Database not configured' });
     }
 
     const supabase = getSupabase();
-    const results = [];
 
-    for (const alert of alerts) {
-      try {
-        console.log(`🔔 [Alert Sync] Processing alert: ${alert.id} (${alert.metal} ${alert.direction} $${alert.target_price})`);
-
-        const { data: existing, error: selectError } = await supabase
-          .from('price_alerts')
-          .select('id')
-          .eq('id', alert.id)
-          .single();
-
-        if (selectError && selectError.code !== 'PGRST116') {
-          console.error(`🔔 [Alert Sync] Error checking alert ${alert.id}:`, selectError);
-        }
-
-        if (existing) {
-          console.log(`🔔 [Alert Sync] Alert ${alert.id} exists, updating...`);
-          const { error: updateError } = await supabase
-            .from('price_alerts')
-            .update({
-              metal: alert.metal,
-              target_price: alert.target_price,
-              direction: alert.direction,
-              enabled: alert.enabled !== false,
-            })
-            .eq('id', alert.id);
-
-          if (updateError) {
-            console.error(`🔔 [Alert Sync] Update failed for ${alert.id}:`, updateError);
-            results.push({ id: alert.id, success: false, error: updateError.message });
-          } else {
-            console.log(`✅ [Alert Sync] Updated alert ${alert.id}`);
-            results.push({ id: alert.id, success: true, action: 'updated' });
-          }
-        } else {
-          console.log(`🔔 [Alert Sync] Alert ${alert.id} is new, inserting...`);
-          const { data: inserted, error: insertError } = await supabase
-            .from('price_alerts')
-            .insert({
-              id: alert.id,
-              user_id: user_id || null,
-              device_id: device_id || null,
-              metal: alert.metal,
-              target_price: alert.target_price,
-              direction: alert.direction,
-              enabled: alert.enabled !== false,
-            })
-            .select()
-            .single();
-
-          if (insertError) {
-            console.error(`🔔 [Alert Sync] Insert failed for ${alert.id}:`, insertError);
-            results.push({ id: alert.id, success: false, error: insertError.message });
-          } else {
-            console.log(`✅ [Alert Sync] Created alert ${inserted.id}`);
-            results.push({ id: inserted.id, success: true, action: 'created' });
-          }
-        }
-      } catch (alertError) {
-        console.error(`❌ [Alert Sync] Exception for alert ${alert.id}:`, alertError);
-        results.push({ id: alert.id, success: false, error: alertError.message });
-      }
+    const row = {
+      metal,
+      target_price: parseFloat(targetPrice),
+      direction,
+      enabled: enabled !== false,
+      device_id: device_id || null,
+    };
+    if (id) row.id = id;
+    // Only set user_id if it looks like a valid UUID (skip non-UUID strings)
+    if (userId && userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/i)) {
+      row.user_id = userId;
     }
 
-    const successCount = results.filter(r => r.success).length;
-    console.log(`🔔 [Alert Sync] Complete: ${successCount}/${alerts.length} synced`);
-    console.log('🔔 [Alert Sync] Results:', JSON.stringify(results));
+    const { data, error } = await supabase
+      .from('price_alerts')
+      .upsert(row, { onConflict: 'id' })
+      .select()
+      .single();
 
-    res.json({ success: true, results, total: alerts.length, synced: successCount });
+    if (error) {
+      console.error('🔔 Error creating price alert:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    console.log(`✅ Created price alert: ${data.id} (${metal} ${direction} $${targetPrice})`);
+    res.json({ success: true, alert: data });
   } catch (error) {
-    console.error('❌ [Alert Sync] Error:', error);
+    console.error('Error in POST /api/price-alerts:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
- * Delete a price alert
+ * Delete a price alert by ID
  */
-app.delete('/api/price-alerts/delete', validate('priceAlertDelete'), async (req, res) => {
+app.delete('/api/price-alerts/:id', async (req, res) => {
   try {
-    const { alert_id } = req.body;
+    const alertId = req.params.id;
 
     if (!isSupabaseAvailable()) {
       return res.status(503).json({ success: false, error: 'Database not configured' });
@@ -2893,17 +2864,55 @@ app.delete('/api/price-alerts/delete', validate('priceAlertDelete'), async (req,
     const { error } = await supabase
       .from('price_alerts')
       .delete()
-      .eq('id', alert_id);
+      .eq('id', alertId);
 
     if (error) {
       console.error('Error deleting price alert:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    console.log(`✅ Deleted price alert: ${alert_id}`);
+    console.log(`✅ Deleted price alert: ${alertId}`);
     res.json({ success: true });
   } catch (error) {
-    console.error('Error in /api/price-alerts/delete:', error);
+    console.error('Error in DELETE /api/price-alerts/:id:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Toggle a price alert on/off
+ */
+app.patch('/api/price-alerts/:id', async (req, res) => {
+  try {
+    const alertId = req.params.id;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled (boolean) is required' });
+    }
+
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ success: false, error: 'Database not configured' });
+    }
+
+    const supabase = getSupabase();
+
+    const { data, error } = await supabase
+      .from('price_alerts')
+      .update({ enabled, updated_at: new Date().toISOString() })
+      .eq('id', alertId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error toggling price alert:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    console.log(`✅ Toggled price alert ${alertId}: enabled=${enabled}`);
+    res.json({ success: true, alert: data });
+  } catch (error) {
+    console.error('Error in PATCH /api/price-alerts/:id:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -2926,11 +2935,11 @@ app.get('/api/price-alerts', async (req, res) => {
     const supabase = getSupabase();
     let query = supabase.from('price_alerts').select('*');
 
-    if (user_id) {
-      query = query.eq('user_id', user_id);
-    } else {
-      query = query.eq('device_id', device_id);
-    }
+    // Build OR condition with available identifiers
+    const orConditions = [];
+    if (user_id) orConditions.push(`user_id.eq.${user_id}`);
+    if (device_id) orConditions.push(`device_id.eq.${device_id}`);
+    query = query.or(orConditions.join(','));
 
     const { data, error } = await query.order('created_at', { ascending: false });
 

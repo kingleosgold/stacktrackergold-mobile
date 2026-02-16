@@ -2187,13 +2187,13 @@ function AppContent() {
     }
   }, [isAuthenticated]);
 
-  // Sync existing price alerts to backend on app load (after auth + data loaded)
+  // Sync price alerts from backend on app load (works for anonymous + authenticated users)
   useEffect(() => {
-    if (isAuthenticated && dataLoaded && priceAlerts.length > 0) {
-      console.log('🔄 [Push] App loaded — syncing', priceAlerts.length, 'existing alerts to backend');
-      syncAlertsToBackend(priceAlerts);
+    if (dataLoaded) {
+      console.log('🔄 [Push] App loaded — syncing price alerts from backend');
+      syncAlertsFromBackend();
     }
-  }, [isAuthenticated, dataLoaded]);
+  }, [dataLoaded]);
 
   // Handle notification received in foreground (for logging)
   useEffect(() => {
@@ -2724,12 +2724,23 @@ function AppContent() {
 
   // ============================================
   // PRICE ALERTS (Gold/Lifetime Feature)
-  // Alerts stored locally in AsyncStorage and synced to backend via /api/price-alerts/sync.
+  // Alerts synced to Supabase price_alerts table via REST API. Backend checker sends push notifications.
   // Backend priceAlertChecker runs every 5 min, sends push via Expo when triggered.
   // TODO v2.1: Implement ATH alerts with backend tracking
   // ============================================
 
   // Load price alerts from AsyncStorage
+  // Get device_id for alert identification (works for anonymous + authenticated users)
+  const getDeviceId = async () => {
+    let deviceId = await AsyncStorage.getItem('device_id');
+    if (!deviceId) {
+      deviceId = Constants.deviceId || `anon-${Date.now()}`;
+      await AsyncStorage.setItem('device_id', deviceId);
+    }
+    return deviceId;
+  };
+
+  // Load price alerts from local storage
   const fetchPriceAlerts = async () => {
     try {
       const val = await AsyncStorage.getItem('stack_price_alerts');
@@ -2752,53 +2763,64 @@ function AppContent() {
     }
   };
 
-  // TODO v2.1: toggleAthAlert removed — implement with backend tracking
-
-  // Sync price alerts to backend for push notifications
-  // Accepts optional alertsList to avoid stale React state closure issues
-  const syncAlertsToBackend = async (alertsList) => {
-    const alertsToSync = alertsList || priceAlerts;
-    console.log('🔄 [Push] syncAlertsToBackend called with', alertsToSync.length, 'alerts');
-
+  // Fetch alerts from backend and merge with local (backend is source of truth)
+  const syncAlertsFromBackend = async () => {
     try {
-      let deviceId = await AsyncStorage.getItem('device_id');
-      if (!deviceId) {
-        deviceId = Constants.deviceId || `anon-${Date.now()}`;
-        await AsyncStorage.setItem('device_id', deviceId);
-      }
-
-      const payload = {
-        alerts: alertsToSync.map(alert => ({
-          id: alert.id,
-          metal: alert.metal,
-          target_price: alert.targetPrice,
-          direction: alert.direction,
-          enabled: true,
-        })),
-        user_id: user?.id || null,
-        device_id: deviceId,
-      };
-      console.log('🔄 [Push] Sync payload:', JSON.stringify(payload, null, 2));
-
-      const response = await fetch(`${API_BASE_URL}/api/price-alerts/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
+      const deviceId = await getDeviceId();
+      const userId = supabaseUser?.id || null;
+      const params = userId ? `user_id=${userId}&device_id=${deviceId}` : `device_id=${deviceId}`;
+      const response = await fetch(`${API_BASE_URL}/api/price-alerts?${params}`);
       const result = await response.json();
-      console.log('🔄 [Push] Sync response:', JSON.stringify(result));
 
-      if (!result.success) {
-        console.error('❌ [Push] Sync failed:', result.error, result.details);
+      if (result.success && result.alerts) {
+        const backendAlerts = result.alerts
+          .filter(a => !a.triggered) // Don't show triggered alerts
+          .map(a => ({
+            id: a.id,
+            metal: a.metal,
+            direction: a.direction,
+            targetPrice: parseFloat(a.target_price),
+            enabled: a.enabled,
+            createdAt: a.created_at,
+          }));
+
+        // Merge: use backend alerts as base, add any local-only alerts (not yet synced)
+        const localAlerts = await AsyncStorage.getItem('stack_price_alerts');
+        const localParsed = localAlerts ? JSON.parse(localAlerts) : [];
+        const backendIds = new Set(backendAlerts.map(a => a.id));
+        const localOnly = localParsed.filter(a => !backendIds.has(a.id));
+
+        // Push local-only alerts to backend
+        for (const alert of localOnly) {
+          try {
+            const deviceId2 = await getDeviceId();
+            await fetch(`${API_BASE_URL}/api/price-alerts`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: alert.id,
+                userId: supabaseUser?.id || null,
+                device_id: deviceId2,
+                metal: alert.metal,
+                targetPrice: alert.targetPrice,
+                direction: alert.direction,
+                enabled: alert.enabled !== false,
+              }),
+            });
+          } catch (e) { /* silent */ }
+        }
+
+        const merged = [...backendAlerts, ...localOnly];
+        setPriceAlerts(merged);
+        await savePriceAlerts(merged);
+        console.log(`🔔 [Push] Synced from backend: ${backendAlerts.length} remote, ${localOnly.length} local-only pushed`);
       }
     } catch (error) {
-      console.error('❌ [Push] Failed to sync alerts to backend:', error);
-      // Don't fail the operation if backend sync fails
+      console.error('❌ [Push] Failed to sync alerts from backend:', error);
     }
   };
 
-  // Create a new custom price alert
+  // Create a new custom price alert (saves to backend + local)
   const createPriceAlert = async () => {
     const targetPrice = parseFloat(newAlert.targetPrice);
     if (isNaN(targetPrice) || targetPrice <= 0) {
@@ -2808,21 +2830,43 @@ function AppContent() {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    const alertId = generateUUID();
+    const deviceId = await getDeviceId();
+
+    // Save to backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/price-alerts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: alertId,
+          userId: supabaseUser?.id || null,
+          device_id: deviceId,
+          metal: newAlert.metal,
+          targetPrice: targetPrice,
+          direction: newAlert.direction,
+          enabled: true,
+        }),
+      });
+      const result = await response.json();
+      console.log('🔔 [Push] Backend create response:', JSON.stringify(result));
+    } catch (error) {
+      console.error('❌ [Push] Failed to create alert on backend:', error);
+    }
+
+    // Also save locally
     const alert = {
-      id: generateUUID(),
+      id: alertId,
       metal: newAlert.metal,
       direction: newAlert.direction,
       targetPrice: targetPrice,
+      enabled: true,
       createdAt: new Date().toISOString(),
     };
-    console.log('🔔 [Push] Creating price alert:', JSON.stringify(alert));
 
     const updated = [alert, ...priceAlerts];
     setPriceAlerts(updated);
     await savePriceAlerts(updated);
-
-    // Sync to backend for push notifications (pass updated list to avoid stale state)
-    syncAlertsToBackend(updated);
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setNewAlert({ metal: 'silver', targetPrice: '', direction: 'above' });
@@ -2850,21 +2894,16 @@ function AppContent() {
             setPriceAlerts(updated);
             await savePriceAlerts(updated);
 
-            // Delete from backend (explicit DELETE call)
+            // Delete from backend
             try {
-              const response = await fetch(`${API_BASE_URL}/api/price-alerts/delete`, {
+              const response = await fetch(`${API_BASE_URL}/api/price-alerts/${alertId}`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ alert_id: alertId }),
               });
               const result = await response.json();
               console.log('🗑️ [Push] Backend delete response:', JSON.stringify(result));
             } catch (error) {
               console.error('❌ [Push] Failed to delete alert from backend:', error);
             }
-
-            // Also re-sync remaining alerts (pass updated list to avoid stale state)
-            syncAlertsToBackend(updated);
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
