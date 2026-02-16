@@ -827,15 +827,23 @@ const SwipeableAlertRow = ({ alert, colors, onDelete, onTap, spotPrices }) => {
 
   const translateX = useRef(new Animated.Value(0)).current;
   const isSwipedOpen = useRef(false);
+  const isSwiping = useRef(false);
 
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 10 && Math.abs(gs.dx) > Math.abs(gs.dy),
+    onMoveShouldSetPanResponder: (_, gs) => {
+      if (Math.abs(gs.dx) > 10 && Math.abs(gs.dx) > Math.abs(gs.dy)) {
+        isSwiping.current = true;
+        return true;
+      }
+      return false;
+    },
     onPanResponderMove: (_, gs) => {
       if (gs.dx < 0) translateX.setValue(gs.dx);
       else if (isSwipedOpen.current) translateX.setValue(-80 + Math.min(gs.dx, 80));
     },
     onPanResponderRelease: (_, gs) => {
+      isSwiping.current = false;
       if (gs.dx < -60) {
         isSwipedOpen.current = true;
         Animated.spring(translateX, { toValue: -80, useNativeDriver: true }).start();
@@ -844,6 +852,7 @@ const SwipeableAlertRow = ({ alert, colors, onDelete, onTap, spotPrices }) => {
         Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
       }
     },
+    onPanResponderTerminate: () => { isSwiping.current = false; },
   })).current;
 
   const handleDelete = () => {
@@ -853,6 +862,7 @@ const SwipeableAlertRow = ({ alert, colors, onDelete, onTap, spotPrices }) => {
   };
 
   const handleTap = () => {
+    if (isSwiping.current) return;
     if (isSwipedOpen.current) {
       isSwipedOpen.current = false;
       Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
@@ -869,52 +879,51 @@ const SwipeableAlertRow = ({ alert, colors, onDelete, onTap, spotPrices }) => {
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Delete</Text>
         </TouchableOpacity>
       </View>
-      {/* Swipeable card */}
-      <Animated.View
-        style={{ transform: [{ translateX }] }}
-        {...panResponder.panHandlers}
-      >
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={handleTap}
-          style={{
-            flexDirection: 'row', alignItems: 'center',
-            backgroundColor: '#1e1e1e',
-            borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Left accent bar */}
-          <View style={{ width: 4, alignSelf: 'stretch', backgroundColor: accentColor }} />
-          {/* Content */}
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingLeft: 12, paddingRight: 10 }}>
-            {/* Left side: metal + target */}
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <Text style={{ color: accentColor, fontWeight: '700', fontSize: 15 }}>{metalLabel}</Text>
-                <Text style={{ color: alert.direction === 'above' ? '#4CAF50' : '#F44336', fontWeight: '700', fontSize: 15 }}>
-                  {arrow} {alert.direction === 'above' ? 'Above' : 'Below'}
-                </Text>
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>${parseFloat(alert.targetPrice).toFixed(2)}</Text>
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
-                Current: ${currentSpot > 0 ? currentSpot.toFixed(2) : '—'}/oz
-              </Text>
-            </View>
-            {/* Right side: status badge + chevron */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{
-                paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
-                backgroundColor: isActive ? 'rgba(76,175,80,0.2)' : 'rgba(255,255,255,0.1)',
-              }}>
-                <Text style={{ color: isActive ? '#4CAF50' : 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '600' }}>
-                  {isActive ? 'Active' : 'Paused'}
+      {/* Swipeable card — pan handlers on outer View, tap on inner TouchableOpacity */}
+      <Animated.View style={{ transform: [{ translateX }] }}>
+        <View {...panResponder.panHandlers}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleTap}
+            style={{
+              flexDirection: 'row', alignItems: 'center',
+              backgroundColor: '#1e1e1e',
+              borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Left accent bar */}
+            <View style={{ width: 4, alignSelf: 'stretch', backgroundColor: accentColor }} />
+            {/* Content */}
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingLeft: 12, paddingRight: 10 }}>
+              {/* Left side: metal + target */}
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                  <Text style={{ color: accentColor, fontWeight: '700', fontSize: 15 }}>{metalLabel}</Text>
+                  <Text style={{ color: alert.direction === 'above' ? '#4CAF50' : '#F44336', fontWeight: '700', fontSize: 15 }}>
+                    {arrow} {alert.direction === 'above' ? 'Above' : 'Below'}
+                  </Text>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>${parseFloat(alert.targetPrice).toFixed(2)}</Text>
+                </View>
+                <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
+                  Current: ${currentSpot > 0 ? currentSpot.toFixed(2) : '—'}/oz
                 </Text>
               </View>
-              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 18 }}>›</Text>
+              {/* Right side: status badge + chevron */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{
+                  paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+                  backgroundColor: isActive ? 'rgba(76,175,80,0.2)' : 'rgba(255,255,255,0.1)',
+                }}>
+                  <Text style={{ color: isActive ? '#4CAF50' : 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '600' }}>
+                    {isActive ? 'Active' : 'Paused'}
+                  </Text>
+                </View>
+                <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 18 }}>›</Text>
+              </View>
             </View>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </Animated.View>
     </View>
   );
@@ -3548,17 +3557,60 @@ function AppContent() {
    * Fetch portfolio snapshots for analytics charts
    * Fetches ALL data once and caches it - subsequent range changes filter client-side
    * If user has holdings but no snapshots, calculates historical data
+   * Uses AsyncStorage cache for instant render on app load
    */
   const fetchAnalyticsSnapshots = async (forceRefresh = false) => {
     if (!hasGold && !hasLifetimeAccess) return;
 
     const cache = snapshotsCacheRef.current;
 
-    // If we have cached data and not forcing refresh, just apply the filter
+    // If we have in-memory cached data and not forcing refresh, just apply the filter
     if (!forceRefresh && cache.fetched && cache.primaryData) {
-      if (__DEV__) console.log('📊 Using cached snapshots data');
+      if (__DEV__) console.log('📊 Using in-memory cached snapshots data');
       applyRangeFilter(analyticsRange);
       return;
+    }
+
+    // Try to load from AsyncStorage for instant render (before network)
+    const diskCacheKey = 'portfolio_chart_cache';
+    let showedCachedData = false;
+    if (!forceRefresh && !cache.fetched) {
+      try {
+        const diskRaw = await AsyncStorage.getItem(diskCacheKey);
+        if (diskRaw) {
+          const diskCache = JSON.parse(diskRaw);
+          const cacheAge = Date.now() - (diskCache.timestamp || 0);
+          const fifteenMin = 15 * 60 * 1000;
+          if (diskCache.data && diskCache.data.length > 0) {
+            // Show cached data immediately
+            cache.primaryData = diskCache.data;
+            cache.fetched = true;
+            const filtered = filterSnapshotsByRange(diskCache.data, analyticsRange);
+            if (filtered.length === 0 && analyticsRange !== '1D' && diskCache.data.length > 0) {
+              setAnalyticsSnapshots(diskCache.data);
+            } else {
+              setAnalyticsSnapshots(filtered);
+            }
+            showedCachedData = true;
+            if (__DEV__) console.log(`📊 Loaded ${diskCache.data.length} points from disk cache (${Math.round(cacheAge / 1000)}s old)`);
+
+            // If cache is fresh (<15 min) and it's outside market hours, skip network fetch
+            if (cacheAge < fifteenMin) {
+              const now = new Date();
+              const hour = now.getUTCHours();
+              const day = now.getUTCDay();
+              const isWeekend = day === 0 || day === 6;
+              const isAfterHours = hour < 13 || hour > 22; // rough market hours UTC
+              if (isWeekend || isAfterHours) {
+                if (__DEV__) console.log('📊 Disk cache is fresh and markets closed — skipping fetch');
+                return;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Disk cache read failed, proceed normally
+      }
     }
 
     // Cancel any in-progress fetch
@@ -3570,7 +3622,8 @@ function AppContent() {
     const controller = new AbortController();
     analyticsAbortRef.current = controller;
 
-    setAnalyticsLoading(true);
+    // Only show loading spinner if we don't have cached data to display
+    if (!showedCachedData) setAnalyticsLoading(true);
     const hasHoldings = silverItems.length > 0 || goldItems.length > 0 || platinumItems.length > 0 || palladiumItems.length > 0;
 
     try {
@@ -3654,22 +3707,35 @@ function AppContent() {
         if (__DEV__) console.log('📊 Using today-only fallback');
       }
 
+      // Only update UI if data actually changed from what we're showing
+      const prevJson = showedCachedData ? JSON.stringify(cache.primaryData) : '';
+      const newJson = JSON.stringify(finalData);
+      const dataChanged = prevJson !== newJson;
+
       // Store and apply
       cache.primaryData = finalData;
       cache.fetched = true;
 
-      const filtered = filterSnapshotsByRange(finalData, analyticsRange);
-      if (filtered.length === 0 && analyticsRange !== '1D' && finalData.length > 0) {
-        setAnalyticsSnapshots(finalData);
-      } else {
-        setAnalyticsSnapshots(filtered);
+      if (dataChanged || !showedCachedData) {
+        const filtered = filterSnapshotsByRange(finalData, analyticsRange);
+        if (filtered.length === 0 && analyticsRange !== '1D' && finalData.length > 0) {
+          setAnalyticsSnapshots(finalData);
+        } else {
+          setAnalyticsSnapshots(filtered);
+        }
       }
-      if (__DEV__) console.log(`📊 Final: ${finalData.length} total points, ${filtered.length} shown for ${analyticsRange}`);
+      if (__DEV__) console.log(`📊 Final: ${finalData.length} total points, dataChanged=${dataChanged}`);
+
+      // Persist to AsyncStorage for next app launch
+      AsyncStorage.setItem(diskCacheKey, JSON.stringify({
+        data: finalData,
+        timestamp: Date.now(),
+      })).catch(() => {});
     } catch (error) {
       if (error.name === 'AbortError' || controller.signal.aborted) return;
       console.error('❌ Error in analytics fetch:', error.message);
       cache.fetched = true;
-      setAnalyticsSnapshots([]);
+      if (!showedCachedData) setAnalyticsSnapshots([]);
     } finally {
       if (!controller.signal.aborted) {
         setAnalyticsLoading(false);
@@ -7270,7 +7336,6 @@ function AppContent() {
 
                     return (
                       <>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                           <LineChart
                             key={`chart-1D-${currentValue}`}
                             data={{
@@ -7281,7 +7346,7 @@ function AppContent() {
                                 strokeWidth: 2,
                               }],
                             }}
-                            width={SCREEN_WIDTH - 48}
+                            width={SCREEN_WIDTH - 80}
                             height={200}
                             yAxisLabel="$"
                             yAxisSuffix=""
@@ -7310,7 +7375,6 @@ function AppContent() {
                             bezier
                             style={{ borderRadius: 8 }}
                           />
-                        </ScrollView>
                         {/* Daily change summary */}
                         <View style={{ marginTop: 12, paddingHorizontal: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
                           <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Today's Change:</Text>
@@ -7363,7 +7427,6 @@ function AppContent() {
                     const chartData = sampledData.map(s => s.total_value || 0);
 
                     return (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       <LineChart
                         key={`chart-${analyticsRange}-${sampledData.length}`}
                         data={{
@@ -7374,7 +7437,7 @@ function AppContent() {
                             strokeWidth: 2,
                           }],
                         }}
-                        width={SCREEN_WIDTH - 48}
+                        width={SCREEN_WIDTH - 80}
                         height={200}
                         yAxisLabel="$"
                         yAxisSuffix=""
@@ -7403,7 +7466,6 @@ function AppContent() {
                         bezier
                         style={{ borderRadius: 8 }}
                       />
-                    </ScrollView>
                     );
                   })() : (
                     <View style={{ alignItems: 'center', paddingVertical: 40 }}>
@@ -7507,7 +7569,7 @@ function AppContent() {
                                 strokeWidth: 2,
                               }],
                             }}
-                            width={SCREEN_WIDTH - 48}
+                            width={SCREEN_WIDTH - 80}
                             height={160}
                             yAxisLabel="$"
                             chartConfig={{
