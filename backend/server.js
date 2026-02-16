@@ -461,26 +461,30 @@ app.get('/api/widget-data', async (req, res) => {
       try {
         const supabaseClient = getSupabase();
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        const { data: logs } = await supabaseClient
+        const { data: logs, error: logError } = await supabaseClient
           .from('price_log')
-          .select('date, gold, silver, platinum, palladium')
-          .gte('date', sevenDaysAgo)
-          .order('date', { ascending: true });
+          .select('timestamp, gold_price, silver_price, platinum_price, palladium_price')
+          .gte('timestamp', sevenDaysAgo + 'T00:00:00')
+          .order('timestamp', { ascending: true });
 
+        if (logError) {
+          console.log(`[Widget] price_log query error:`, logError.message);
+        }
         console.log(`[Widget] price_log query: ${logs ? logs.length : 0} rows from ${sevenDaysAgo}`);
         if (logs && logs.length > 0) {
           // Deduplicate by date (keep last entry per day)
           const byDate = {};
           for (const row of logs) {
-            byDate[row.date] = row;
+            const dateKey = row.timestamp.split('T')[0];
+            byDate[dateKey] = row;
           }
-          const sorted = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
-          console.log(`[Widget] Deduplicated to ${sorted.length} days:`, sorted.map(r => ({ date: r.date, gold: r.gold, silver: r.silver })));
+          const sorted = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b));
+          console.log(`[Widget] Deduplicated to ${sorted.length} days:`, sorted.map(([date, r]) => ({ date, gold: r.gold_price, silver: r.silver_price })));
 
-          sparklines.gold = sorted.map(r => r.gold || 0);
-          sparklines.silver = sorted.map(r => r.silver || 0);
-          sparklines.platinum = sorted.map(r => r.platinum || 0);
-          sparklines.palladium = sorted.map(r => r.palladium || 0);
+          sparklines.gold = sorted.map(([, r]) => parseFloat(r.gold_price) || 0);
+          sparklines.silver = sorted.map(([, r]) => parseFloat(r.silver_price) || 0);
+          sparklines.platinum = sorted.map(([, r]) => parseFloat(r.platinum_price) || 0);
+          sparklines.palladium = sorted.map(([, r]) => parseFloat(r.palladium_price) || 0);
 
           // Pad to 7 points if fewer
           for (const metal of ['gold', 'silver', 'platinum', 'palladium']) {

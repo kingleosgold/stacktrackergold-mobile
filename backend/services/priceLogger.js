@@ -29,10 +29,12 @@ async function logPriceFetch(prices, source = 'metalpriceapi') {
   }
 
   try {
+    const now = new Date().toISOString();
+    console.log(`[PriceLog] Inserting: ${now} — Gold $${prices.gold}, Silver $${prices.silver}, Pt $${prices.platinum}, Pd $${prices.palladium} (${source})`);
     const { error } = await supabase
       .from('price_log')
       .insert({
-        timestamp: new Date().toISOString(),
+        timestamp: now,
         gold_price: prices.gold,
         silver_price: prices.silver,
         platinum_price: prices.platinum || null,
@@ -41,10 +43,12 @@ async function logPriceFetch(prices, source = 'metalpriceapi') {
       });
 
     if (error) {
-      console.error('Error logging price:', error);
+      console.error('[PriceLog] Insert error:', error);
+    } else {
+      console.log(`[PriceLog] Insert success`);
     }
   } catch (err) {
-    console.error('Price logging failed:', err.message);
+    console.error('[PriceLog] Insert failed:', err.message);
   }
 }
 
