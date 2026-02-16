@@ -1385,8 +1385,8 @@ function AppContent() {
   const [midnightSnapshot, setMidnightSnapshot] = useState(null);
   // Format: { silverOzt, goldOzt, silverSpot, goldSpot, date, timestamp }
 
-  // Entitlements
-  const [hasGold, setHasGold] = useState(false);
+  // Entitlements (__DEV__ is automatically false in production builds, so this never affects real users)
+  const [hasGold, setHasGold] = useState(__DEV__ ? true : false);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true); // Don't show upgrade prompts until loaded
 
   // Server-side scan tracking
@@ -2694,14 +2694,14 @@ function AppContent() {
       if (__DEV__) console.log('📋 RevenueCat User ID:', userId);
       if (__DEV__) console.log('🏆 Has Gold:', isGold, 'Has Lifetime:', isLifetime);
 
-      setHasGold(isGold);
-      setHasLifetimeAccess(isLifetime);
+      setHasGold(__DEV__ ? true : isGold);
+      setHasLifetimeAccess(__DEV__ ? true : isLifetime);
       setRevenueCatUserId(userId);
 
-      return isGold || isLifetime;
+      return __DEV__ || isGold || isLifetime;
     } catch (error) {
       if (__DEV__) console.log('❌ Error checking entitlements:', error);
-      return false;
+      return __DEV__ || false;
     }
   };
 
@@ -6266,7 +6266,7 @@ function AppContent() {
                   const goldPts = sparklineData.gold;
                   const silverPts = sparklineData.silver;
                   const portfolioPoints = goldPts.map((g, i) => (totalGoldOzt * g) + (totalSilverOzt * (silverPts[i] || 0)) + (totalPlatinumOzt * (sparklineData.platinum[i] || 0)) + (totalPalladiumOzt * (sparklineData.palladium[i] || 0)));
-                  const isUp = portfolioPoints[portfolioPoints.length - 1] >= portfolioPoints[0];
+                  const isUp = displayDailyChangePct >= 0;
                   const sparkColor = isUp ? '#4CAF50' : '#F44336';
                   return (
                     <ScrubSparkline
@@ -6302,7 +6302,7 @@ function AppContent() {
                   {metalMovers.map((m, idx) => {
                     const metalKey = m.label.toLowerCase();
                     const points = sparklineData?.[metalKey] || [];
-                    const isUp = points.length >= 2 ? points[points.length - 1] >= points[0] : true;
+                    const isUp = m.pct >= 0;
                     const sparkColor = isUp ? '#4CAF50' : '#F44336';
                     const isBiggestMover = m.symbol === biggestMoverSymbol && !marketsClosed && Math.abs(m.pct) > 0.1;
                     const glowColor = isBiggestMover ? (m.pct >= 0 ? '#4CAF50' : '#F44336') : 'transparent';
