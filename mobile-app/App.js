@@ -648,7 +648,7 @@ const DatePickerModal = ({ visible, onClose, onConfirm, initialDate }) => {
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} />
       </TouchableWithoutFeedback>
-      <View style={{ backgroundColor: '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 }}>
+      <View style={{ backgroundColor: '#1a1a2e', borderRadius: 20, marginHorizontal: 16, marginBottom: 20, paddingBottom: 20 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Cancel</Text>
@@ -674,39 +674,52 @@ const DatePickerModal = ({ visible, onClose, onConfirm, initialDate }) => {
 };
 
 const TimePickerModal = ({ visible, onClose, onConfirm, initialTime }) => {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const minutes = Array.from({ length: 60 }, (_, i) => i);
+  // Parse 24h time into 12h components
+  const parse24h = (t) => {
+    const p = (t || '').split(':');
+    const h24 = p.length === 2 ? parseInt(p[0]) || 0 : 12;
+    const min = p.length === 2 ? parseInt(p[1]) || 0 : 0;
+    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+    const ampm = h24 >= 12 ? 1 : 0;
+    return { hourIdx: h12 - 1, minuteIdx: min, amPmIdx: ampm };
+  };
 
-  const parts = (initialTime || '').split(':');
-  const [hourIdx, setHourIdx] = useState(parts.length === 2 ? parseInt(parts[0]) || 0 : 12);
-  const [minuteIdx, setMinuteIdx] = useState(parts.length === 2 ? parseInt(parts[1]) || 0 : 0);
+  const init = parse24h(initialTime);
+  const [hourIdx, setHourIdx] = useState(init.hourIdx);
+  const [minuteIdx, setMinuteIdx] = useState(init.minuteIdx);
+  const [amPmIdx, setAmPmIdx] = useState(init.amPmIdx);
 
   useEffect(() => {
     if (visible) {
-      const p = (initialTime || '').split(':');
-      setHourIdx(p.length === 2 ? parseInt(p[0]) || 0 : 12);
-      setMinuteIdx(p.length === 2 ? parseInt(p[1]) || 0 : 0);
+      const v = parse24h(initialTime);
+      setHourIdx(v.hourIdx);
+      setMinuteIdx(v.minuteIdx);
+      setAmPmIdx(v.amPmIdx);
     }
   }, [visible]);
 
   if (!visible) return null;
 
-  const hourItems = hours.map(h => ({ label: String(h).padStart(2, '0'), value: h }));
-  const minuteItems = minutes.map(m => ({ label: String(m).padStart(2, '0'), value: m }));
+  const hourItems = Array.from({ length: 12 }, (_, i) => ({ label: String(i + 1), value: i + 1 }));
+  const minuteItems = Array.from({ length: 60 }, (_, i) => ({ label: String(i).padStart(2, '0'), value: i }));
+  const amPmItems = [{ label: 'AM', value: 0 }, { label: 'PM', value: 1 }];
 
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} />
       </TouchableWithoutFeedback>
-      <View style={{ backgroundColor: '#1a1a2e', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 40 }}>
+      <View style={{ backgroundColor: '#1a1a2e', borderRadius: 20, marginHorizontal: 16, marginBottom: 20, paddingBottom: 20 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Cancel</Text>
           </TouchableOpacity>
           <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600' }}>Select Time</Text>
           <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => {
-            const h = String(hourIdx).padStart(2, '0');
+            // Convert 12h back to 24h for storage
+            const h12 = hourIdx + 1;
+            const h24 = amPmIdx === 0 ? (h12 === 12 ? 0 : h12) : (h12 === 12 ? 12 : h12 + 12);
+            const h = String(h24).padStart(2, '0');
             const m = String(minuteIdx).padStart(2, '0');
             onConfirm(`${h}:${m}`);
           }}>
@@ -714,9 +727,10 @@ const TimePickerModal = ({ visible, onClose, onConfirm, initialTime }) => {
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8 }}>
-          <WheelPicker items={hourItems} selectedIndex={hourIdx} onSelect={setHourIdx} width={70} />
-          <Text style={{ color: '#fff', fontSize: 24, fontWeight: '700', marginHorizontal: 4 }}>:</Text>
-          <WheelPicker items={minuteItems} selectedIndex={minuteIdx} onSelect={setMinuteIdx} width={70} />
+          <WheelPicker items={hourItems} selectedIndex={hourIdx} onSelect={setHourIdx} width={60} />
+          <Text style={{ color: '#fff', fontSize: 24, fontWeight: '700', marginHorizontal: 2 }}>:</Text>
+          <WheelPicker items={minuteItems} selectedIndex={minuteIdx} onSelect={setMinuteIdx} width={60} />
+          <WheelPicker items={amPmItems} selectedIndex={amPmIdx} onSelect={setAmPmIdx} width={56} />
         </View>
       </View>
     </View>
@@ -4066,6 +4080,35 @@ function AppContent() {
     }
   };
 
+  // Handle metal tab change — auto-update spot price for the new metal
+  const handleMetalTabChange = async (newMetal) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setMetalTab(newMetal);
+
+    // Map metal keys to current live spot prices
+    const liveSpots = { gold: goldSpot, silver: silverSpot, platinum: platinumSpot, palladium: palladiumSpot };
+
+    if (form.datePurchased && form.datePurchased.length === 10) {
+      // Date is set — fetch historical spot for the new metal
+      setSpotPriceSource(null);
+      setHistoricalSpotSuggestion(null);
+      const result = await fetchHistoricalSpot(form.datePurchased, newMetal, form.timePurchased || null);
+      if (result.price) {
+        setForm(prev => ({ ...prev, spotPrice: result.price.toString() }));
+        setSpotPriceSource(result.source);
+        setHistoricalSpotSuggestion({ price: result.price, source: result.source, date: form.datePurchased });
+      } else {
+        // Fallback to current live spot
+        setForm(prev => ({ ...prev, spotPrice: String(liveSpots[newMetal] || 0) }));
+        setSpotPriceSource('current-fallback');
+      }
+    } else {
+      // No date — use current live spot price for the new metal
+      setForm(prev => ({ ...prev, spotPrice: String(liveSpots[newMetal] || 0) }));
+      setSpotPriceSource('current-spot');
+    }
+  };
+
   // ============================================
   // RECEIPT SCANNING
   // ============================================
@@ -4896,12 +4939,14 @@ function AppContent() {
 
     const errors = {};
     if (!form.productName) errors.productName = true;
+    if (!form.ozt || parseFloat(form.ozt) <= 0) errors.ozt = true;
     if (!form.quantity || parseInt(form.quantity) <= 0) errors.quantity = true;
     if (!form.unitPrice || parseFloat(form.unitPrice) <= 0) errors.unitPrice = true;
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       const names = [];
       if (errors.productName) names.push('Product Name');
+      if (errors.ozt) names.push('OZT per unit');
       if (errors.quantity) names.push('Quantity');
       if (errors.unitPrice) names.push('Unit Price');
       Alert.alert('Required Fields', `Please fill in: ${names.join(', ')}`);
@@ -8463,7 +8508,7 @@ function AppContent() {
                       { key: 'platinum', label: 'Platinum', color: colors.platinum },
                       { key: 'palladium', label: 'Palladium', color: colors.palladium },
                     ].map(m => (
-                      <TouchableOpacity key={m.key} style={[styles.metalTab, { borderColor: metalTab === m.key ? m.color : colors.border, backgroundColor: metalTab === m.key ? `${m.color}22` : 'transparent' }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMetalTab(m.key); }}>
+                      <TouchableOpacity key={m.key} style={[styles.metalTab, { borderColor: metalTab === m.key ? m.color : colors.border, backgroundColor: metalTab === m.key ? `${m.color}22` : 'transparent' }]} onPress={() => handleMetalTabChange(m.key)}>
                         <Text style={{ color: metalTab === m.key ? m.color : colors.muted, fontSize: scaledFonts.normal }}>{m.label}</Text>
                       </TouchableOpacity>
                     ))}
@@ -8474,16 +8519,16 @@ function AppContent() {
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity style={{ flex: 2, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border }} onPress={() => { Keyboard.dismiss(); setShowDatePicker(true); }}>
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginBottom: 2 }}>Date</Text>
-                      <Text style={{ color: form.datePurchased ? colors.text : colors.muted, fontSize: scaledFonts.normal }}>{form.datePurchased || 'Tap to select'}</Text>
+                      <Text style={{ color: form.datePurchased ? colors.text : colors.muted, fontSize: scaledFonts.normal }}>{form.datePurchased ? (() => { const [y,m,d] = form.datePurchased.split('-'); return `${m}-${d}-${y}`; })() : 'Tap to select'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={{ flex: 1, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border }} onPress={() => { Keyboard.dismiss(); setShowTimePicker(true); }}>
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginBottom: 2 }}>Time</Text>
-                      <Text style={{ color: form.timePurchased ? colors.text : colors.muted, fontSize: scaledFonts.normal }}>{form.timePurchased || 'Optional'}</Text>
+                      <Text style={{ color: form.timePurchased ? colors.text : colors.muted, fontSize: scaledFonts.normal }}>{form.timePurchased ? (() => { const [h,m] = form.timePurchased.split(':').map(Number); const p = h >= 12 ? 'PM' : 'AM'; const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h; return `${h12}:${String(m).padStart(2,'0')} ${p}`; })() : 'Optional'}</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit" value={form.ozt} onChangeText={v => setForm(p => ({ ...p, ozt: v }))} placeholder="1" keyboardType="decimal-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} /></View>
+                    <View style={{ flex: 1 }}><FloatingInput label="OZT per unit" value={form.ozt} onChangeText={v => { setForm(p => ({ ...p, ozt: v })); if (v && parseFloat(v) > 0) setFormErrors(e => ({ ...e, ozt: false })); }} placeholder="1, 10, 100..." keyboardType="decimal-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} required error={formErrors.ozt} /></View>
                     <View style={{ flex: 1 }}><FloatingInput label="Quantity" value={form.quantity} onChangeText={v => { setForm(p => ({ ...p, quantity: v })); if (v && parseInt(v) > 0) setFormErrors(e => ({ ...e, quantity: false })); }} placeholder="Quantity" keyboardType="number-pad" colors={colors} isDarkMode={isDarkMode} scaledFonts={scaledFonts} required error={formErrors.quantity} /></View>
                   </View>
 
