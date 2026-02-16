@@ -467,6 +467,7 @@ app.get('/api/widget-data', async (req, res) => {
           .gte('date', sevenDaysAgo)
           .order('date', { ascending: true });
 
+        console.log(`[Widget] price_log query: ${logs ? logs.length : 0} rows from ${sevenDaysAgo}`);
         if (logs && logs.length > 0) {
           // Deduplicate by date (keep last entry per day)
           const byDate = {};
@@ -474,6 +475,7 @@ app.get('/api/widget-data', async (req, res) => {
             byDate[row.date] = row;
           }
           const sorted = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+          console.log(`[Widget] Deduplicated to ${sorted.length} days:`, sorted.map(r => ({ date: r.date, gold: r.gold, silver: r.silver })));
 
           sparklines.gold = sorted.map(r => r.gold || 0);
           sparklines.silver = sorted.map(r => r.silver || 0);
@@ -490,6 +492,7 @@ app.get('/api/widget-data', async (req, res) => {
             // Keep last 7
             sparklines[metal] = sparklines[metal].slice(-7);
           }
+          console.log(`[Widget] Final sparklines — Gold: [${sparklines.gold.join(', ')}], Silver: [${sparklines.silver.join(', ')}]`);
         }
       } catch (e) {
         console.log('Widget sparkline fetch error:', e.message);
