@@ -4585,6 +4585,9 @@ app.post('/api/daily-brief/generate', async (req, res) => {
 
     const result = await generateDailyBrief(userId);
 
+    // Generate portfolio intelligence alongside the daily brief
+    try { await generatePortfolioIntelligence(userId); } catch (piErr) { console.log(`🧠 [Portfolio Intelligence] Skipped for ${userId}: ${piErr.message}`); }
+
     // Send push notification after successful generation
     if (result && result.brief && result.brief.brief_text && isSupabaseAvailable()) {
       try {
@@ -4617,6 +4620,28 @@ app.post('/api/daily-brief/generate', async (req, res) => {
   } catch (error) {
     console.error('❌ [Daily Brief] Generate error:', error.message);
     return res.status(500).json({ error: error.message || 'Failed to generate daily brief' });
+  }
+});
+
+// POST /api/portfolio-intelligence/generate — Manual trigger for testing
+app.post('/api/portfolio-intelligence/generate', async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+
+    const result = await generatePortfolioIntelligence(userId);
+    if (!result) {
+      return res.json({ success: true, intelligence: null, message: 'No holdings found' });
+    }
+
+    return res.json({ success: true, intelligence: { text: result.text, date: result.date } });
+
+  } catch (error) {
+    console.error('❌ [Portfolio Intelligence] Generate error:', error.message);
+    return res.status(500).json({ error: error.message || 'Failed to generate portfolio intelligence' });
   }
 });
 

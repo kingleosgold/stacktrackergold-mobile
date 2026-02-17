@@ -1056,10 +1056,11 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const gradientId = `scrubChartFill-${chartId}`;
 
   // Chart layout
-  const yLabelW = 44;
+  const yLabelW = 52;
   const xLabelH = 18;
   const topPad = 6;
-  const chartW = width - yLabelW - 4;
+  const rightPad = 8;
+  const chartW = width - yLabelW - rightPad;
   const chartH = height - xLabelH - topPad;
 
   // Data bounds
@@ -1083,30 +1084,35 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   }).join(' ');
   const fillD = `${pathD} L${svgW},${topPad + svgH} L0,${topPad + svgH} Z`;
 
-  // Y-axis labels (3 levels)
-  const yLabels = [maxVal, (maxVal + minVal) / 2, minVal];
+  // Y-axis labels (5 levels)
+  const yLabelCount = 5;
+  const yLabels = [];
+  for (let i = 0; i < yLabelCount; i++) {
+    yLabels.push(maxVal - (i / (yLabelCount - 1)) * (maxVal - minVal));
+  }
   const formatY = (v) => {
-    if (v >= 10000) return `$${(v / 1000).toFixed(0)}k`;
-    if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
-    return `$${v.toFixed(0)}`;
+    if (v >= 100000) return `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
+    return `$${Math.round(v).toLocaleString('en-US')}`;
   };
 
-  // X-axis labels (5 evenly spaced)
+  // X-axis labels (5 evenly spaced, deduplicated)
   const xLabelCount = 5;
-  const xStep = Math.max(1, Math.floor(data.length / (xLabelCount - 1)));
   const xLabels = [];
-  for (let i = 0; i < data.length; i++) {
-    if (i === 0 || i === data.length - 1 || i % xStep === 0) {
-      const d = new Date(data[i].date + 'T12:00:00');
-      let label;
-      if (range === 'ALL' || range === '5Y') label = `${d.getFullYear()}`;
-      else if (range === '1Y') label = `${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
-      else label = `${d.getMonth() + 1}/${d.getDate()}`;
+  const seenLabels = new Set();
+  for (let n = 0; n < xLabelCount; n++) {
+    const i = n === xLabelCount - 1 ? data.length - 1 : Math.round(n * (data.length - 1) / (xLabelCount - 1));
+    const d = new Date(data[i].date + 'T12:00:00');
+    let label;
+    if (range === 'ALL' || range === '5Y') label = `${d.getFullYear()}`;
+    else if (range === '1Y') label = `${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
+    else label = `${d.getMonth() + 1}/${d.getDate()}`;
+    if (!seenLabels.has(label)) {
+      seenLabels.add(label);
       xLabels.push({ i, label, x: (i / (data.length - 1)) * svgW });
     }
   }
 
-  // Grid lines (3 horizontal)
+  // Grid lines
   const gridYs = yLabels.map(v => topPad + svgH * (1 - (v - niceMin) / niceRange));
 
   // Scrub touch handlers
@@ -7570,24 +7576,6 @@ function AppContent() {
         {/* ANALYTICS TAB */}
         {tab === 'analytics' && (
           <>
-            {/* Analytics Header */}
-            <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Portfolio Analytics</Text>
-                  {!hasGoldAccess && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
-                    </View>
-                  )}
-                </View>
-                {analyticsLoading && hasGoldAccess && <ActivityIndicator size="small" color={colors.gold} />}
-              </View>
-              <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>
-                Track your portfolio performance with historical data and insights
-              </Text>
-            </View>
-
             {/* Inline upgrade bar for non-Gold */}
             {!hasGoldAccess && (
               <>
@@ -7667,7 +7655,19 @@ function AppContent() {
               <>
                 {/* Portfolio Value Chart */}
                 <View onLayout={(e) => { sectionOffsets.current['portfolioValueChart'] = e.nativeEvent.layout.y; }} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Portfolio Value</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Portfolio Value</Text>
+                    {analyticsSnapshots.length > 1 && (() => {
+                      const first = analyticsSnapshots[0].total_value || 0;
+                      const last = analyticsSnapshots[analyticsSnapshots.length - 1].total_value || 0;
+                      const pct = first > 0 ? ((last - first) / first * 100) : 0;
+                      return (
+                        <Text style={{ color: pct >= 0 ? '#4CAF50' : '#F44336', fontSize: scaledFonts.small, fontWeight: '600' }}>
+                          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+                        </Text>
+                      );
+                    })()}
+                  </View>
 
                   {/* Time Range Pills */}
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -7725,7 +7725,9 @@ function AppContent() {
                 </View>
 
                 {/* Spot Price History — 4 Individual Metal Charts */}
-                <View onLayout={(e) => { sectionOffsets.current['spotPriceHistory'] = e.nativeEvent.layout.y; }} />
+                <View onLayout={(e) => { sectionOffsets.current['spotPriceHistory'] = e.nativeEvent.layout.y; }} style={{ marginBottom: 10, marginLeft: 4 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' }}>Historical Spot Prices</Text>
+                </View>
                 {[
                   { key: 'gold', label: 'Gold', spot: goldSpot, color: '#D4A843', fillColor: 'rgba(212, 168, 67, 0.15)' },
                   { key: 'silver', label: 'Silver', spot: silverSpot, color: '#C0C0C0', fillColor: 'rgba(192, 192, 192, 0.15)' },
