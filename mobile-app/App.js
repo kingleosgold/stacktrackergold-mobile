@@ -5957,7 +5957,7 @@ function AppContent() {
 
   const drawerSections = [
     { key: 'today', label: 'Today', items: [
-      { key: 'morningBrief', label: 'Morning Brief' },
+      { key: 'morningBrief', label: 'Daily Brief' },
       { key: 'portfolioPulse', label: 'Portfolio Pulse' },
       { key: 'metalMovers', label: 'Metal Movers' },
       { key: 'whatChanged', label: 'What Changed Today' },
@@ -6196,7 +6196,7 @@ function AppContent() {
                   marginBottom: 16,
                 }}>
                   <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>
-                    {'☀\uFE0F'} Your Morning Brief · {dailyBrief && dailyBrief.date && !dailyBrief.is_current
+                    {'☀\uFE0F'} Your Daily Brief · {dailyBrief && dailyBrief.date && !dailyBrief.is_current
                       ? new Date(dailyBrief.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                       : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </Text>
@@ -6235,10 +6235,10 @@ function AppContent() {
                   onPress={() => setShowPaywallModal(true)}
                 >
                   <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 4 }}>
-                    {'☀\uFE0F'} Your Morning Brief
+                    {'☀\uFE0F'} Your Daily Brief
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: 13 }}>
-                    Get your personalized morning brief with Gold
+                    Get your personalized daily brief with Gold
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
                     <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '600' }}>UPGRADE</Text>

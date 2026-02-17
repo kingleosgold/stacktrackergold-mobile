@@ -4324,9 +4324,9 @@ async function generateDailyBrief(userId) {
     .join('\n');
 
   // Call Gemini 2.0 Flash (plain text, no Google Search tool)
-  const systemPrompt = `You are a senior precious metals market analyst writing a personalized morning briefing for an investor. Be concise, insightful, and specific to their portfolio. Write 3-4 short paragraphs. Use plain text, no markdown headers or bullet points. Address the reader as "you" and reference their actual holdings.`;
+  const systemPrompt = `You are a senior precious metals market analyst writing a personalized daily briefing for an investor. Be concise, insightful, and specific to their portfolio. Write 3-4 short paragraphs. Use plain text, no markdown headers or bullet points. Address the reader as "you" and reference their actual holdings. Do NOT start with "Good morning" or any time-of-day greeting — jump straight into the market analysis.`;
 
-  const userPrompt = `Write a morning market brief for today (${today}).
+  const userPrompt = `Write a daily market brief for today (${today}).
 
 PORTFOLIO:
 Total Value: $${totalValue.toFixed(2)} | Cost Basis: $${totalCost.toFixed(2)} | ${totalValue >= totalCost ? 'Gain' : 'Loss'}: $${Math.abs(totalValue - totalCost).toFixed(2)}
@@ -4453,7 +4453,7 @@ app.post('/api/daily-brief/generate', async (req, res) => {
           const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
           const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
           await sendPushNotification(tokenData.expo_push_token, {
-            title: '☀️ Your Morning Brief is Ready',
+            title: '☀️ Your Daily Brief is Ready',
             body,
             data: { type: 'daily_brief' },
             sound: 'default',
@@ -4986,7 +4986,7 @@ fetchLiveSpotPrices().then(() => {
                     const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
                     const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
                     await sendPushNotification(tokenData.expo_push_token, {
-                      title: '\u2600\uFE0F Your Morning Brief is Ready',
+                      title: '\u2600\uFE0F Your Daily Brief is Ready',
                       body,
                       data: { type: 'daily_brief' },
                       sound: 'default',
