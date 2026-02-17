@@ -4375,6 +4375,153 @@ Write a personalized briefing covering: 1) How today's market moves affect their
   return { success: true, brief: { brief_text: briefText, generated_at: new Date().toISOString(), date: today } };
 }
 
+// Generate portfolio intelligence analysis for a user
+async function generatePortfolioIntelligence(userId) {
+  if (!GEMINI_API_KEY) throw new Error('Gemini API key not configured');
+  if (!isSupabaseAvailable()) throw new Error('Database not available');
+  if (!isUUID(userId)) throw new Error('Invalid userId');
+
+  const supabaseClient = getSupabase();
+
+  // Fetch user's holdings
+  const { data: holdings } = await supabaseClient
+    .from('holdings')
+    .select('metal, type, weight, weight_unit, quantity, purchase_price')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+
+  const userHoldings = holdings || [];
+  if (userHoldings.length === 0) return null;
+
+  const prices = spotPriceCache.prices;
+  const metalTotals = { gold: { oz: 0, cost: 0, items: 0 }, silver: { oz: 0, cost: 0, items: 0 }, platinum: { oz: 0, cost: 0, items: 0 }, palladium: { oz: 0, cost: 0, items: 0 } };
+
+  for (const h of userHoldings) {
+    const metal = h.metal;
+    if (!metalTotals[metal]) continue;
+    const weightOz = h.weight || 0;
+    const qty = h.quantity || 1;
+    metalTotals[metal].oz += weightOz * qty;
+    metalTotals[metal].cost += (h.purchase_price || 0) * qty;
+    metalTotals[metal].items += qty;
+  }
+
+  const totalValue = Object.keys(metalTotals).reduce((sum, m) => sum + metalTotals[m].oz * (prices[m] || 0), 0);
+  const totalCost = Object.keys(metalTotals).reduce((sum, m) => sum + metalTotals[m].cost, 0);
+
+  // Build allocation breakdown
+  const allocation = Object.entries(metalTotals)
+    .filter(([_, v]) => v.oz > 0)
+    .map(([m, v]) => {
+      const val = v.oz * (prices[m] || 0);
+      const pct = totalValue > 0 ? ((val / totalValue) * 100).toFixed(1) : '0';
+      const gain = val - v.cost;
+      const gainPct = v.cost > 0 ? ((gain / v.cost) * 100).toFixed(1) : 'N/A';
+      return `${m.charAt(0).toUpperCase() + m.slice(1)}: ${v.oz.toFixed(2)} oz, $${val.toFixed(0)} (${pct}% of portfolio), cost basis $${v.cost.toFixed(0)}, ${gain >= 0 ? '+' : ''}$${gain.toFixed(0)} (${gainPct}%)`;
+    }).join('\n');
+
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+  const systemPrompt = `You are a senior precious metals portfolio strategist. Write a concise portfolio intelligence analysis. Focus on STRATEGY and PORTFOLIO ANALYSIS — allocation, diversification, concentration risk, cost basis trends, and performance insights. Do NOT cover daily market moves or news. Do NOT start with any greeting. Jump straight into the analysis. Write 3-4 short paragraphs. Use plain text, no markdown headers or bullet points. Address the reader as "you".`;
+
+  const userPrompt = `Analyze this precious metals portfolio (${today}).
+
+PORTFOLIO OVERVIEW:
+Total Value: $${totalValue.toFixed(0)} | Total Cost: $${totalCost.toFixed(0)} | ${totalValue >= totalCost ? 'Gain' : 'Loss'}: $${Math.abs(totalValue - totalCost).toFixed(0)} (${totalCost > 0 ? ((totalValue - totalCost) / totalCost * 100).toFixed(1) : '0'}%)
+Items: ${userHoldings.length}
+
+ALLOCATION:
+${allocation}
+
+SPOT PRICES:
+Gold: $${prices.gold}, Silver: $${prices.silver}, Platinum: $${prices.platinum}, Palladium: $${prices.palladium}
+Gold/Silver Ratio: ${prices.silver > 0 ? (prices.gold / prices.silver).toFixed(1) : 'N/A'}
+
+Analyze: 1) Portfolio allocation and diversification assessment, 2) Cost basis performance by metal, 3) Concentration risk or opportunities, 4) One strategic consideration. Keep it under 200 words.`;
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const geminiResp = await axios.post(geminiUrl, {
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+  }, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000,
+  });
+
+  const intelligenceText = geminiResp.data?.candidates?.[0]?.content?.parts
+    ?.filter(p => p.text)
+    ?.map(p => p.text)
+    ?.join('') || '';
+
+  if (!intelligenceText) throw new Error('Gemini returned empty response');
+
+  // Upsert into daily_briefs.portfolio_intelligence column
+  const { error: upsertError } = await supabaseClient
+    .from('daily_briefs')
+    .upsert({
+      user_id: userId,
+      date: today,
+      portfolio_intelligence: intelligenceText,
+      generated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,date' });
+
+  if (upsertError) throw new Error(`Failed to save portfolio intelligence: ${upsertError.message}`);
+
+  console.log(`🧠 [Portfolio Intelligence] Generated for user ${userId}: ${intelligenceText.length} chars`);
+  return { success: true, text: intelligenceText, date: today };
+}
+
+// GET /api/portfolio-intelligence — Fetch portfolio intelligence for a user
+app.get('/api/portfolio-intelligence', async (req, res) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ error: 'Database not available' });
+    }
+
+    const supabaseClient = getSupabase();
+
+    // Tier check
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('id', userId)
+      .single();
+
+    const tier = profile?.subscription_tier || 'free';
+    if (tier !== 'gold' && tier !== 'lifetime') {
+      return res.status(403).json({ error: 'Portfolio intelligence requires Gold' });
+    }
+
+    // Get latest entry with portfolio_intelligence
+    const { data, error } = await supabaseClient
+      .from('daily_briefs')
+      .select('portfolio_intelligence, date, generated_at')
+      .eq('user_id', userId)
+      .not('portfolio_intelligence', 'is', null)
+      .order('date', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data || !data.portfolio_intelligence) {
+      return res.json({ success: true, intelligence: null });
+    }
+
+    const todayEST = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    return res.json({ success: true, intelligence: { text: data.portfolio_intelligence, date: data.date, is_current: data.date === todayEST } });
+
+  } catch (error) {
+    console.error('❌ [Portfolio Intelligence] Fetch error:', error.message);
+    return res.status(500).json({ error: 'Failed to fetch portfolio intelligence' });
+  }
+});
+
 // GET /api/daily-brief — Fetch the latest daily brief for a user
 app.get('/api/daily-brief', async (req, res) => {
   try {
@@ -4968,6 +5115,8 @@ fetchLiveSpotPrices().then(() => {
           for (const user of goldUsers) {
             try {
               const result = await generateDailyBrief(user.id);
+              // Generate portfolio intelligence alongside the daily brief
+              try { await generatePortfolioIntelligence(user.id); } catch (piErr) { console.log(`🧠 [Portfolio Intelligence Cron] Skipped for ${user.id}: ${piErr.message}`); }
               success++;
               console.log(`📝 [Daily Brief Cron] ✅ ${success}/${goldUsers.length} — user ${user.id}`);
 

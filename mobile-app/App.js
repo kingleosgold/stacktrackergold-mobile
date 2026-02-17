@@ -1452,6 +1452,11 @@ function AppContent() {
   const [dailyBriefLoading, setDailyBriefLoading] = useState(false);
   const [briefExpanded, setBriefExpanded] = useState(false);
 
+  // Analytics Tab - Portfolio Intelligence
+  const [portfolioIntel, setPortfolioIntel] = useState(null); // { text, date, is_current }
+  const [portfolioIntelLoading, setPortfolioIntelLoading] = useState(false);
+  const [portfolioIntelExpanded, setPortfolioIntelExpanded] = useState(false);
+
   // Side Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [expandedDrawerTab, setExpandedDrawerTab] = useState(null);
@@ -3798,6 +3803,9 @@ function AppContent() {
       case '1Y':
         startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
         break;
+      case '5Y':
+        startDate = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+        break;
       case 'ALL':
       default:
         return snapshots; // Return all
@@ -4100,6 +4108,9 @@ function AppContent() {
       if (__DEV__) console.log('📊 Analytics: waiting for subscription info...', { revenueCatUserId: !!revenueCatUserId, hasGold, hasLifetimeAccess });
       return;
     }
+
+    // Fetch portfolio intelligence if not already loaded
+    if (!portfolioIntel && supabaseUser) fetchPortfolioIntelligence();
 
     // Check if we already have cached data
     const cache = snapshotsCacheRef.current;
@@ -4445,7 +4456,10 @@ function AppContent() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     // Clear cache and force refresh
     snapshotsCacheRef.current = { primaryData: null, fetched: false };
-    await fetchAnalyticsSnapshots(true); // forceRefresh = true
+    await Promise.all([
+      fetchAnalyticsSnapshots(true),
+      fetchPortfolioIntelligence(),
+    ]);
     setIsRefreshing(false);
   };
 
@@ -4478,6 +4492,24 @@ function AppContent() {
       console.error('📰 [Brief] Fetch error:', error.message);
     } finally {
       setDailyBriefLoading(false);
+    }
+  };
+
+  const fetchPortfolioIntelligence = async () => {
+    if (!supabaseUser || !hasGoldAccess) return;
+    try {
+      setPortfolioIntelLoading(true);
+      const response = await fetch(`${API_BASE_URL}/api/portfolio-intelligence?userId=${supabaseUser.id}`);
+      const data = await response.json();
+      if (data.success && data.intelligence) {
+        setPortfolioIntel(data.intelligence);
+      } else {
+        setPortfolioIntel(null);
+      }
+    } catch (error) {
+      console.error('🧠 [Portfolio Intel] Fetch error:', error.message);
+    } finally {
+      setPortfolioIntelLoading(false);
     }
   };
 
@@ -7572,19 +7604,79 @@ function AppContent() {
               </>
             )}
 
+            {/* Portfolio Intelligence */}
+            {hasGoldAccess ? (
+              <View style={{
+                backgroundColor: colors.cardBg,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderLeftWidth: 3,
+                borderLeftColor: '#D4A843',
+                padding: 16,
+                marginHorizontal: 16,
+                marginBottom: 12,
+              }}>
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>
+                  {'\u2726'} Portfolio Intelligence
+                </Text>
+                {portfolioIntelLoading ? (
+                  <ActivityIndicator size="small" color="#D4A843" style={{ paddingVertical: 8 }} />
+                ) : portfolioIntel && portfolioIntel.text ? (
+                  <>
+                    <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }} numberOfLines={portfolioIntelExpanded ? undefined : 2}>{portfolioIntel.text}</Text>
+                    <TouchableOpacity onPress={() => setPortfolioIntelExpanded(!portfolioIntelExpanded)} style={{ marginTop: 4, paddingVertical: 12 }}>
+                      <Text style={{ color: '#D4A843', fontSize: 15, fontWeight: '700' }}>{portfolioIntelExpanded ? 'See less' : 'See more'}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={{ color: colors.muted, fontSize: 13, fontStyle: 'italic' }}>
+                    Your portfolio intelligence will be available after 6:30 AM EST.
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={{
+                  backgroundColor: colors.cardBg,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderLeftWidth: 3,
+                  borderLeftColor: '#D4A843',
+                  padding: 16,
+                  marginHorizontal: 16,
+                  marginBottom: 12,
+                }}
+                onPress={() => setShowPaywallModal(true)}
+              >
+                <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600', marginBottom: 4 }}>
+                  {'\u2726'} Portfolio Intelligence
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 13 }}>
+                  Get AI-powered portfolio strategy analysis with Gold
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                  <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '600' }}>UPGRADE</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {/* Analytics Content */}
             <View>
               <>
-                {/* Time Range Selector */}
-                <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Time Range</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'].map((range) => (
+                {/* Portfolio Value Chart */}
+                <View onLayout={(e) => { sectionOffsets.current['portfolioValueChart'] = e.nativeEvent.layout.y; }} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Portfolio Value</Text>
+
+                  {/* Time Range Pills */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    {['1M', '3M', '6M', '1Y', '5Y', 'ALL'].map((range) => (
                       <TouchableOpacity
                         key={range}
                         style={{
-                          paddingHorizontal: 16,
-                          paddingVertical: 8,
+                          paddingHorizontal: 14,
+                          paddingVertical: 6,
                           borderRadius: 8,
                           backgroundColor: analyticsRange === range ? colors.gold : (isDarkMode ? '#27272a' : '#f4f4f5'),
                         }}
@@ -7596,197 +7688,37 @@ function AppContent() {
                         <Text style={{
                           color: analyticsRange === range ? '#000' : colors.text,
                           fontWeight: analyticsRange === range ? '600' : '400',
-                          fontSize: scaledFonts.normal,
+                          fontSize: scaledFonts.small,
                         }}>
-                          {range === 'ALL' ? 'All Time' : range}
+                          {range === 'ALL' ? 'All' : range}
                         </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
-                </View>
 
-                {/* Portfolio Value Chart */}
-                <View onLayout={(e) => { sectionOffsets.current['portfolioValueChart'] = e.nativeEvent.layout.y; }} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                  <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Portfolio Value</Text>
-                  {/* Special handling for 1D range */}
-                  {analyticsRange === '1D' ? (() => {
-                    // Check if we have midnight snapshot for today
-                    const today = new Date().toDateString();
-                    const hasTodaySnapshot = midnightSnapshot && midnightSnapshot.date === today;
-
-                    if (!hasTodaySnapshot || (silverItems.length === 0 && goldItems.length === 0 && platinumItems.length === 0 && palladiumItems.length === 0)) {
-                      // No snapshot yet - show message
-                      return (
-                        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                          <Text style={{ fontSize: 24, marginBottom: 12, color: colors.muted }}>—</Text>
-                          <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>
-                            {silverItems.length === 0 && goldItems.length === 0 && platinumItems.length === 0 && palladiumItems.length === 0
-                              ? 'Add some holdings to see your portfolio analytics!'
-                              : 'Not enough data for 1D view yet.\nCheck back after midnight!'}
-                          </Text>
-                        </View>
-                      );
-                    }
-
-                    // Calculate baseline from midnight snapshot
-                    const midnightValue = (midnightSnapshot.silverOzt * midnightSnapshot.silverSpot) +
-                                        (midnightSnapshot.goldOzt * midnightSnapshot.goldSpot) +
-                                        ((midnightSnapshot.platinumOzt || 0) * (midnightSnapshot.platinumSpot || platinumSpot)) +
-                                        ((midnightSnapshot.palladiumOzt || 0) * (midnightSnapshot.palladiumSpot || palladiumSpot));
-                    const currentValue = totalMeltValue;
-
-                    // Create 2-point chart data
-                    const chartLabels = ['12 AM', 'Now'];
-                    const chartData = [midnightValue, currentValue];
-
-                    // Calculate day change
-                    const dayChange = currentValue - midnightValue;
-                    const dayChangePercent = midnightValue > 0 ? ((dayChange / midnightValue) * 100) : 0;
-
-                    return (
-                      <>
-                          <LineChart
-                            key={`chart-1D-${currentValue}`}
-                            data={{
-                              labels: chartLabels,
-                              datasets: [{
-                                data: chartData,
-                                color: (opacity = 1) => `rgba(251, 191, 36, ${opacity})`,
-                                strokeWidth: 2,
-                              }],
-                            }}
-                            width={SCREEN_WIDTH - 80}
-                            height={200}
-                            yAxisLabel="$"
-                            yAxisSuffix=""
-                            chartConfig={{
-                              backgroundColor: colors.cardBg,
-                              backgroundGradientFrom: colors.cardBg,
-                              backgroundGradientTo: colors.cardBg,
-                              decimalPlaces: 0,
-                              color: (opacity = 1) => `rgba(251, 191, 36, ${opacity})`,
-                              labelColor: (opacity = 1) => colors.muted,
-                              style: { borderRadius: 8 },
-                              propsForDots: {
-                                r: '5',
-                                strokeWidth: '2',
-                                stroke: colors.gold,
-                              },
-                              formatYLabel: (value) => {
-                                const num = parseFloat(value);
-                                if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-                                if (num >= 1000) return `${(num / 1000).toFixed(0)}k`;
-                                return num.toFixed(0);
-                              },
-                            }}
-                            fromZero={false}
-                            segments={4}
-                            bezier
-                            style={{ borderRadius: 8 }}
-                          />
-                        {/* Daily change summary */}
-                        <View style={{ marginTop: 12, paddingHorizontal: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
-                          <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Today's Change:</Text>
-                          <Text style={{
-                            color: dayChange >= 0 ? colors.success : colors.error,
-                            fontSize: scaledFonts.small,
-                            fontWeight: '600'
-                          }}>
-                            {dayChange >= 0 ? '+' : ''}{formatCurrency(dayChange)} ({dayChangePercent >= 0 ? '+' : ''}{dayChangePercent.toFixed(2)}%)
-                          </Text>
-                        </View>
-                      </>
-                    );
-                  })() : analyticsSnapshots.length > 1 ? (() => {
-                    // Sample down to 6-8 evenly spaced data points for clean chart display
-                    const maxPoints = 7;
-                    const step = Math.max(1, Math.floor((analyticsSnapshots.length - 1) / (maxPoints - 1)));
-
-                    const sampledData = [];
-                    for (let i = 0; i < analyticsSnapshots.length; i += step) {
-                      sampledData.push(analyticsSnapshots[i]);
-                    }
-                    // Always include the last point
-                    if (sampledData[sampledData.length - 1] !== analyticsSnapshots[analyticsSnapshots.length - 1]) {
-                      sampledData.push(analyticsSnapshots[analyticsSnapshots.length - 1]);
-                    }
-
-                    // Determine label format based on date range
-                    const firstDate = new Date(sampledData[0]?.date + 'T12:00:00');
-                    const lastDate = new Date(sampledData[sampledData.length - 1]?.date + 'T12:00:00');
-                    const spanDays = Math.ceil((lastDate - firstDate) / (1000 * 60 * 60 * 24));
-                    const spanYears = lastDate.getFullYear() !== firstDate.getFullYear();
-
-                    // Format label based on time span
-                    const formatLabel = (dateStr) => {
-                      const d = new Date(dateStr + 'T12:00:00');
-                      const month = d.getMonth() + 1;
-                      const day = d.getDate();
-                      const year = String(d.getFullYear()).slice(-2);
-
-                      if (spanYears || spanDays > 180) {
-                        return `${month}/${year}`; // M/YY for long ranges
-                      } else {
-                        return `${month}/${day}`; // M/D for short ranges
-                      }
-                    };
-
-                    // Generate labels for each sampled point
-                    const chartLabels = sampledData.map(s => formatLabel(s.date));
-                    const chartData = sampledData.map(s => s.total_value || 0);
-
-                    return (
-                      <LineChart
-                        key={`chart-${analyticsRange}-${sampledData.length}`}
-                        data={{
-                          labels: chartLabels,
-                          datasets: [{
-                            data: chartData,
-                            color: (opacity = 1) => `rgba(251, 191, 36, ${opacity})`,
-                            strokeWidth: 2,
-                          }],
-                        }}
+                  {analyticsLoading ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                      <ActivityIndicator size="small" color={colors.gold} />
+                    </View>
+                  ) : analyticsSnapshots.length > 1 ? (
+                    <View style={{ marginTop: 4 }}>
+                      <ScrubChart
+                        data={analyticsSnapshots.map(s => ({ date: s.date, value: s.total_value || 0 }))}
+                        color="#D4A843"
+                        fillColor="rgba(212, 168, 67, 0.15)"
                         width={SCREEN_WIDTH - 80}
-                        height={200}
-                        yAxisLabel="$"
-                        yAxisSuffix=""
-                        chartConfig={{
-                          backgroundColor: colors.cardBg,
-                          backgroundGradientFrom: colors.cardBg,
-                          backgroundGradientTo: colors.cardBg,
-                          decimalPlaces: 0,
-                          color: (opacity = 1) => `rgba(251, 191, 36, ${opacity})`,
-                          labelColor: (opacity = 1) => colors.muted,
-                          style: { borderRadius: 8 },
-                          propsForDots: {
-                            r: '5',
-                            strokeWidth: '2',
-                            stroke: colors.gold,
-                          },
-                          formatYLabel: (value) => {
-                            const num = parseFloat(value);
-                            if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-                            if (num >= 1000) return `${(num / 1000).toFixed(0)}k`;
-                            return num.toFixed(0);
-                          },
-                        }}
-                        fromZero={false}
-                        segments={4}
-                        bezier
-                        style={{ borderRadius: 8 }}
+                        height={190}
+                        range={analyticsRange}
+                        decimalPlaces={0}
+                        chartId="portfolio"
                       />
-                    );
-                  })() : (
+                    </View>
+                  ) : (
                     <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                      <Text style={{ fontSize: 24, marginBottom: 12, color: colors.muted }}>—</Text>
                       <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>
-                        {analyticsSnapshots.length === 0
-                          ? (silverItems.length === 0 && goldItems.length === 0
-                            ? 'Add some holdings to see your portfolio analytics!'
-                            : (analyticsLoading
-                              ? 'Loading historical data...'
-                              : 'Pull down to refresh'))
-                          : 'Need at least 2 data points to show a chart.'}
+                        {silverItems.length === 0 && goldItems.length === 0
+                          ? 'Add some holdings to see your portfolio analytics!'
+                          : 'Pull down to refresh'}
                       </Text>
                     </View>
                   )}
