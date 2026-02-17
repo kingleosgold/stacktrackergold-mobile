@@ -6752,7 +6752,7 @@ function AppContent() {
                           <View style={{ height: 1, backgroundColor: 'rgba(212,168,67,0.15)', marginHorizontal: 16 }} />
 
                           {/* Mini trend chart */}
-                          {chartDataPoints.length >= 3 && (
+                          {chartDataPoints.length >= 2 ? (
                             hasGoldAccess ? (
                               <View style={{ paddingVertical: 12, paddingHorizontal: 4 }}>
                                 <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 12 }}>Registered Inventory (30d)</Text>
@@ -6782,7 +6782,11 @@ function AppContent() {
                                 <Text style={{ color: colors.gold, fontSize: 13, fontWeight: '600' }}>Available with Gold</Text>
                               </TouchableOpacity>
                             )
-                          )}
+                          ) : chartDataPoints.length > 0 ? (
+                            <View style={{ paddingVertical: 16, paddingHorizontal: 16 }}>
+                              <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center', fontStyle: 'italic' }}>Chart available after 2+ days of data collection</Text>
+                            </View>
+                          ) : null}
 
                           {/* Source footer */}
                           <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4 }}>
@@ -9433,13 +9437,21 @@ function AppContent() {
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Guest mode keeps data only on your device</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Receipt images are processed in memory and deleted immediately after scanning</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Analytics snapshots are stored to power your portfolio charts</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Push notification tokens are stored only to deliver alerts you've opted into</Text>
+        </View>
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: '#007AFF' }]}>AI-Powered Features</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Daily Brief and Portfolio Intelligence use Google Gemini AI</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Portfolio data is sent to the AI provider for analysis only</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• AI-generated content is for informational purposes, not financial advice</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Your data is not shared beyond the AI provider</Text>
         </View>
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.error }]}>What We Never Do</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Sell or share your data with third parties</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Share your information with advertisers</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Track your browsing or behavior outside the app</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Access your portfolio data for any purpose other than providing the service</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Use push tokens for advertising or tracking</Text>
         </View>
         <View style={[styles.card, { backgroundColor: `${colors.success}22` }]}>
           <Text style={{ color: colors.success, fontWeight: '600' }}>Your Data, Your Control</Text>
@@ -9530,7 +9542,7 @@ function AppContent() {
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Support</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Email stacktrackerpro@gmail.com for help</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Email stacktrackergold@gmail.com for help</Text>
           <Text style={[styles.privacyItem, { color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }]}>Your Support ID is in Settings {'\u2192'} Account</Text>
         </View>
       </ModalWrapper>

@@ -193,5 +193,5 @@ Gold benefits:
 7. AI Deal Finder (coming soon)
 
 ## Contact & Support
-- Support email: stacktrackerpro@gmail.com
+- Support email: stacktrackergold@gmail.com
 - Users can find Support ID in Settings → Advanced
