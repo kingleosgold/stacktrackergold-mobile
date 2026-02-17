@@ -29,7 +29,7 @@ import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
 import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitlements, restorePurchases } from './src/utils/entitlements';
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import { registerBackgroundFetch, getBackgroundFetchStatus } from './src/utils/backgroundTasks';
-import { LineChart } from 'react-native-chart-kit';
+// LineChart removed — all charts now use ScrubChart
 import Svg, { Path, Circle, Line, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import GoldPaywall from './src/components/GoldPaywall';
@@ -1043,7 +1043,7 @@ const ScrubSparkline = ({ dataPoints, timestamps, svgW, svgH, strokeColor, gradi
  * ScrubChart — larger chart with y-axis labels, x-axis date labels, and long-press scrubber.
  * Replaces react-native-chart-kit LineChart for Analytics spot price charts.
  */
-const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlaces = 0, chartId = 'default' }) => {
+const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlaces = 0, chartId = 'default', yFormat, tooltipFormat }) => {
   const [scrubIndex, setScrubIndex] = useState(null);
   const scrubIndexRef = useRef(null);
   const containerRef = useRef(null);
@@ -1090,10 +1090,10 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   for (let i = 0; i < yLabelCount; i++) {
     yLabels.push(maxVal - (i / (yLabelCount - 1)) * (maxVal - minVal));
   }
-  const formatY = (v) => {
+  const formatY = yFormat || ((v) => {
     if (v >= 100000) return `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
     return `$${Math.round(v).toLocaleString('en-US')}`;
-  };
+  });
 
   // X-axis labels (5 evenly spaced, deduplicated)
   const xLabelCount = 5;
@@ -1178,10 +1178,10 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
   };
 
-  const formatPrice = (v) => {
+  const formatPrice = tooltipFormat || ((v) => {
     if (decimalPlaces > 0) return `$${v.toFixed(decimalPlaces)}`;
     return `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
-  };
+  });
 
   return (
     <View
@@ -1464,6 +1464,9 @@ function AppContent() {
   const [portfolioIntelExpanded, setPortfolioIntelExpanded] = useState(false);
   const [costBasisIntelExpanded, setCostBasisIntelExpanded] = useState(false);
   const [purchaseStatsIntelExpanded, setPurchaseStatsIntelExpanded] = useState(false);
+
+  // Notification Preferences
+  const [notifPrefs, setNotifPrefs] = useState({ daily_brief: true, price_alerts: true, breaking_news: true });
 
   // Side Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -2649,6 +2652,43 @@ function AppContent() {
           console.log('🔔 [Push] No token obtained (permission denied or error)');
         }
       });
+    }
+  }, [isAuthenticated]);
+
+  // Fetch notification preferences from backend
+  const fetchNotifPrefs = async () => {
+    if (!supabaseUser?.id) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/notification-preferences?userId=${supabaseUser.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setNotifPrefs({ daily_brief: data.daily_brief !== false, price_alerts: data.price_alerts !== false, breaking_news: data.breaking_news !== false });
+      }
+    } catch (err) {
+      if (__DEV__) console.log('🔔 [NotifPrefs] Fetch error:', err.message);
+    }
+  };
+
+  // Save a single notification preference toggle
+  const saveNotifPref = async (key, value) => {
+    const updated = { ...notifPrefs, [key]: value };
+    setNotifPrefs(updated);
+    if (!supabaseUser?.id) return;
+    try {
+      await fetch(`${API_BASE_URL}/api/notification-preferences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: supabaseUser.id, ...updated }),
+      });
+    } catch (err) {
+      if (__DEV__) console.log('🔔 [NotifPrefs] Save error:', err.message);
+    }
+  };
+
+  // Fetch notification preferences after authentication
+  useEffect(() => {
+    if (isAuthenticated && supabaseUser?.id) {
+      fetchNotifPrefs();
     }
   }, [isAuthenticated]);
 
@@ -6686,44 +6726,20 @@ function AppContent() {
                             hasGoldAccess ? (
                               <View style={{ paddingVertical: 12, paddingHorizontal: 4 }}>
                                 <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 12 }}>Registered Inventory (30d)</Text>
-                                <LineChart
-                                  data={{
-                                    labels: sparseLabels,
-                                    datasets: [{
-                                      data: chartDataPoints,
-                                      color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
-                                      strokeWidth: 2,
-                                    }],
-                                  }}
+                                <ScrubChart
+                                  data={currentVaultData.filter(d => d.registered_oz > 0).map(d => ({ date: d.date, value: d.registered_oz }))}
+                                  color="#D4A843"
                                   width={SCREEN_WIDTH - 56}
                                   height={160}
-                                  yAxisSuffix=""
-                                  chartConfig={{
-                                    backgroundColor: 'transparent',
-                                    backgroundGradientFrom: isDarkMode ? '#0d0d0d' : '#fafafa',
-                                    backgroundGradientTo: isDarkMode ? '#0d0d0d' : '#fafafa',
-                                    decimalPlaces: 0,
-                                    color: (opacity = 1) => `rgba(212, 168, 67, ${opacity})`,
-                                    labelColor: () => colors.muted,
-                                    style: { borderRadius: 8 },
-                                    propsForDots: { r: '0' },
-                                    fillShadowGradientFrom: 'rgba(212, 168, 67, 0.3)',
-                                    fillShadowGradientTo: 'rgba(212, 168, 67, 0.0)',
-                                    fillShadowGradientFromOpacity: 0.3,
-                                    fillShadowGradientToOpacity: 0,
-                                    formatYLabel: (value) => {
-                                      const num = parseFloat(value);
-                                      if (num >= 1e9) return `${(num / 1e9).toFixed(1)}B`;
-                                      if (num >= 1e6) return `${(num / 1e6).toFixed(0)}M`;
-                                      if (num >= 1e3) return `${(num / 1e3).toFixed(0)}K`;
-                                      return num.toFixed(0);
-                                    },
+                                  range="1M"
+                                  chartId="vaultWatch"
+                                  yFormat={(v) => {
+                                    if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+                                    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+                                    if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+                                    return v.toLocaleString();
                                   }}
-                                  fromZero={false}
-                                  segments={3}
-                                  bezier
-                                  withShadow={true}
-                                  style={{ borderRadius: 8, marginLeft: -8 }}
+                                  tooltipFormat={(v) => `${Math.round(v).toLocaleString()} oz`}
                                 />
                               </View>
                             ) : (
@@ -8457,6 +8473,48 @@ function AppContent() {
                 </View>
               </View>
               <SectionFooter text={themePreference === 'system' ? 'Following system appearance settings' : `${themePreference === 'dark' ? 'Dark' : 'Light'} mode enabled`} />
+
+              {/* Notifications Section */}
+              <SectionHeader title="Notifications" />
+              <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                {[
+                  { key: 'daily_brief', label: 'Daily Brief', description: 'Morning market summary push' },
+                  { key: 'price_alerts', label: 'Price Alerts', description: 'Triggered when targets are hit' },
+                  { key: 'breaking_news', label: 'Breaking News & COMEX', description: 'Major market events and vault changes' },
+                ].map((item, idx, arr) => (
+                  <React.Fragment key={item.key}>
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: groupBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      ...(idx === 0 && arr.length === 1 ? { borderRadius: 10 } : {}),
+                      ...(idx === 0 && arr.length > 1 ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {}),
+                      ...(idx === arr.length - 1 && arr.length > 1 ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {}),
+                    }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{item.label}</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>{item.description}</Text>
+                      </View>
+                      <Switch
+                        value={notifPrefs[item.key]}
+                        onValueChange={(value) => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          saveNotifPref(item.key, value);
+                        }}
+                        trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
+                        thumbColor="#fff"
+                        ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
+                      />
+                    </View>
+                    {idx < arr.length - 1 && <RowSeparator />}
+                  </React.Fragment>
+                ))}
+              </View>
+              <SectionFooter text="Control which push notifications you receive. Changes apply immediately." />
 
               {/* Accessibility Section */}
               <SectionHeader title="Accessibility" />

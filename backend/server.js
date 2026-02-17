@@ -97,7 +97,7 @@ const path = require('path');
 // Import web scraper for live spot prices and historical prices
 const { scrapeGoldSilverPrices, fetchHistoricalPrices, areMarketsClosed, saveFridayClose, getFridayClose } = require(path.join(__dirname, 'scrapers', 'gold-silver-scraper.js'));
 const { checkPriceAlerts, startPriceAlertChecker, getLastCheckInfo } = require(path.join(__dirname, 'services', 'priceAlertChecker.js'));
-const { sendPushNotification, isValidExpoPushToken } = require(path.join(__dirname, 'services', 'expoPushNotifications.js'));
+const { sendPushNotification, sendBatchPushNotifications, isValidExpoPushToken } = require(path.join(__dirname, 'services', 'expoPushNotifications.js'));
 
 // Import historical price services
 const { isSupabaseAvailable, getSupabase } = require('./supabaseClient');
@@ -3771,6 +3771,110 @@ async function runIntelligenceGeneration() {
         errors.push(`Vault ${metal}: ${err.message}`);
       }
     }
+    // ── COMEX AUTO-ALERTS: check for >2% registered inventory changes ──
+    if (vaultInserted > 0) {
+      try {
+        const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const { data: yesterdayData } = await sb.from('vault_data')
+          .select('metal, registered_oz')
+          .eq('date', yesterday)
+          .eq('source', 'comex');
+
+        if (yesterdayData && yesterdayData.length > 0) {
+          const yesterdayMap = {};
+          for (const row of yesterdayData) {
+            yesterdayMap[row.metal] = row.registered_oz;
+          }
+
+          const comexAlerts = [];
+          for (const metal of metalsWithData) {
+            const todayReg = parseFloat(vaultMerged[metal].registered_oz) || 0;
+            const yestReg = yesterdayMap[metal];
+            if (!yestReg || yestReg === 0 || todayReg === 0) continue;
+
+            const changePct = ((todayReg - yestReg) / yestReg) * 100;
+            if (Math.abs(changePct) >= 2) {
+              const changeOz = todayReg - yestReg;
+              const direction = changePct > 0 ? 'rose' : 'dropped';
+              const metalName = metal.charAt(0).toUpperCase() + metal.slice(1);
+              const fmtOz = (v) => {
+                const abs = Math.abs(v);
+                if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+                if (abs >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
+                return v.toLocaleString();
+              };
+              comexAlerts.push({
+                title: `🏦 ${metalName} COMEX Alert`,
+                body: `Registered inventory ${direction} ${fmtOz(Math.abs(changeOz))} oz (${changePct > 0 ? '+' : ''}${changePct.toFixed(1)}%) today`,
+                metal,
+                severity: Math.abs(changePct) >= 5 ? 'high' : 'medium',
+              });
+            }
+          }
+
+          if (comexAlerts.length > 0) {
+            console.log(`🏦 [COMEX Alert] ${comexAlerts.length} metals with >2% change detected`);
+
+            // Get all push tokens for users with breaking_news enabled
+            const { data: tokens } = await sb.from('push_tokens')
+              .select('expo_push_token, user_id')
+              .order('last_active', { ascending: false });
+
+            const { data: disabledPrefs } = await sb
+              .from('notification_preferences')
+              .select('user_id')
+              .eq('breaking_news', false);
+
+            const disabledUserIds = new Set((disabledPrefs || []).map(p => p.user_id));
+
+            const seenUsers = new Set();
+            const validTokens = [];
+            for (const t of (tokens || [])) {
+              if (!isValidExpoPushToken(t.expo_push_token)) continue;
+              if (t.user_id && disabledUserIds.has(t.user_id)) continue;
+              const key = t.user_id || t.expo_push_token;
+              if (seenUsers.has(key)) continue;
+              seenUsers.add(key);
+              validTokens.push(t.expo_push_token);
+            }
+
+            for (const alert of comexAlerts) {
+              // Insert breaking news record
+              try {
+                await sb.from('breaking_news').insert({
+                  title: alert.title,
+                  body: alert.body,
+                  metal: alert.metal,
+                  severity: alert.severity,
+                });
+              } catch (e) { console.log(`🏦 [COMEX Alert] Insert error: ${e.message}`); }
+
+              // Send batch push
+              if (validTokens.length > 0) {
+                try {
+                  const notifications = validTokens.map(token => ({
+                    token,
+                    notification: {
+                      title: alert.title,
+                      body: alert.body,
+                      data: { type: 'breaking_news' },
+                      sound: 'default',
+                    },
+                  }));
+                  const results = await sendBatchPushNotifications(notifications);
+                  const sent = results.filter(r => r.success).length;
+                  console.log(`🏦 [COMEX Alert] ${alert.metal}: pushed to ${sent}/${validTokens.length} devices`);
+                } catch (pushErr) {
+                  console.error(`🏦 [COMEX Alert] Push error for ${alert.metal}: ${pushErr.message}`);
+                }
+              }
+            }
+          }
+        }
+      } catch (alertErr) {
+        console.error(`🏦 [COMEX Alert] Error: ${alertErr.message}`);
+      }
+    }
   } else {
     console.log(`🏦 [Vault] ⚠️ No vault data found — previous day's data remains`);
   }
@@ -4625,27 +4729,39 @@ app.post('/api/daily-brief/generate', async (req, res) => {
     // Generate portfolio intelligence alongside the daily brief
     try { await generatePortfolioIntelligence(userId); } catch (piErr) { console.log(`🧠 [Portfolio Intelligence] Skipped for ${userId}: ${piErr.message}`); }
 
-    // Send push notification after successful generation
+    // Send push notification after successful generation (if user has daily_brief enabled)
     if (result && result.brief && result.brief.brief_text && isSupabaseAvailable()) {
       try {
-        const { data: tokenData } = await getSupabase()
-          .from('push_tokens')
-          .select('expo_push_token')
+        // Check notification preferences
+        const { data: notifPref } = await getSupabase()
+          .from('notification_preferences')
+          .select('daily_brief')
           .eq('user_id', userId)
-          .order('last_active', { ascending: false })
-          .limit(1)
           .single();
+        const briefEnabled = !notifPref || notifPref.daily_brief !== false;
 
-        if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
-          const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
-          const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
-          await sendPushNotification(tokenData.expo_push_token, {
-            title: '☀️ Your Daily Brief is Ready',
-            body,
-            data: { type: 'daily_brief' },
-            sound: 'default',
-          });
-          console.log(`📝 [Daily Brief] Push sent to ${userId}`);
+        if (briefEnabled) {
+          const { data: tokenData } = await getSupabase()
+            .from('push_tokens')
+            .select('expo_push_token')
+            .eq('user_id', userId)
+            .order('last_active', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
+            const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
+            const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
+            await sendPushNotification(tokenData.expo_push_token, {
+              title: '☀️ Your Daily Brief is Ready',
+              body,
+              data: { type: 'daily_brief' },
+              sound: 'default',
+            });
+            console.log(`📝 [Daily Brief] Push sent to ${userId}`);
+          }
+        } else {
+          console.log(`📝 [Daily Brief] Push skipped for ${userId} (disabled in preferences)`);
         }
       } catch (pushErr) {
         console.log(`📝 [Daily Brief] Push skipped for ${userId}: ${pushErr.message}`);
@@ -4679,6 +4795,166 @@ app.post('/api/portfolio-intelligence/generate', async (req, res) => {
   } catch (error) {
     console.error('❌ [Portfolio Intelligence] Generate error:', error.message);
     return res.status(500).json({ error: error.message || 'Failed to generate portfolio intelligence' });
+  }
+});
+
+// ============================================
+// BREAKING NEWS + NOTIFICATION PREFERENCES
+// ============================================
+
+// POST /api/breaking-news — Send a breaking news push to all eligible users
+app.post('/api/breaking-news', async (req, res) => {
+  try {
+    const apiKey = req.headers['x-api-key'] || req.query.api_key;
+    if (!apiKey || apiKey !== process.env.INTELLIGENCE_API_KEY) {
+      return res.status(401).json({ success: false, error: 'Invalid API key' });
+    }
+
+    const { title, body, metal, severity } = req.body;
+    if (!title || !body) {
+      return res.status(400).json({ success: false, error: 'title and body are required' });
+    }
+
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ success: false, error: 'Database not configured' });
+    }
+
+    const sb = getSupabase();
+
+    // Insert breaking news record
+    const { data: newsRecord, error: insertError } = await sb
+      .from('breaking_news')
+      .insert({ title, body, metal: metal || null, severity: severity || 'info' })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('❌ [Breaking News] Insert error:', insertError.message);
+      return res.status(500).json({ success: false, error: insertError.message });
+    }
+
+    // Get all push tokens
+    const { data: tokens, error: tokenError } = await sb
+      .from('push_tokens')
+      .select('expo_push_token, user_id')
+      .order('last_active', { ascending: false });
+
+    if (tokenError || !tokens) {
+      return res.json({ success: true, newsId: newsRecord.id, pushSent: 0, error: 'Failed to fetch tokens' });
+    }
+
+    // Filter out users who have disabled breaking_news notifications
+    const { data: disabledPrefs } = await sb
+      .from('notification_preferences')
+      .select('user_id')
+      .eq('breaking_news', false);
+
+    const disabledUserIds = new Set((disabledPrefs || []).map(p => p.user_id));
+
+    // Deduplicate by user_id (most recent token per user)
+    const seenUsers = new Set();
+    const validTokens = [];
+    for (const t of tokens) {
+      if (!isValidExpoPushToken(t.expo_push_token)) continue;
+      if (t.user_id && disabledUserIds.has(t.user_id)) continue;
+      const key = t.user_id || t.expo_push_token;
+      if (seenUsers.has(key)) continue;
+      seenUsers.add(key);
+      validTokens.push(t.expo_push_token);
+    }
+
+    // Send batch push notifications
+    let pushSent = 0;
+    if (validTokens.length > 0) {
+      try {
+        const notifications = validTokens.map(token => ({
+          token,
+          notification: {
+            title,
+            body,
+            data: { type: 'breaking_news', newsId: newsRecord.id },
+            sound: 'default',
+          },
+        }));
+        const results = await sendBatchPushNotifications(notifications);
+        pushSent = results.filter(r => r.success).length;
+      } catch (batchErr) {
+        console.error('❌ [Breaking News] Batch push error:', batchErr.message);
+      }
+    }
+
+    console.log(`📰 [Breaking News] Created: "${title}" — pushed to ${pushSent}/${validTokens.length} devices`);
+    res.json({ success: true, newsId: newsRecord.id, pushSent, totalTargeted: validTokens.length });
+  } catch (error) {
+    console.error('❌ [Breaking News] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /api/notification-preferences — Get user's notification preferences
+app.get('/api/notification-preferences', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+
+    if (!isSupabaseAvailable()) {
+      return res.json({ daily_brief: true, price_alerts: true, breaking_news: true });
+    }
+
+    const { data, error } = await getSupabase()
+      .from('notification_preferences')
+      .select('daily_brief, price_alerts, breaking_news')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      // No preferences saved yet — return defaults (all enabled)
+      return res.json({ daily_brief: true, price_alerts: true, breaking_news: true });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error('❌ [Notification Prefs] Get error:', error.message);
+    res.json({ daily_brief: true, price_alerts: true, breaking_news: true });
+  }
+});
+
+// POST /api/notification-preferences — Save user's notification preferences
+app.post('/api/notification-preferences', async (req, res) => {
+  try {
+    const { userId, daily_brief, price_alerts, breaking_news } = req.body;
+    if (!userId || !isUUID(userId)) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+
+    if (!isSupabaseAvailable()) {
+      return res.status(503).json({ error: 'Database not configured' });
+    }
+
+    const sb = getSupabase();
+    const prefs = {
+      user_id: userId,
+      daily_brief: daily_brief !== false,
+      price_alerts: price_alerts !== false,
+      breaking_news: breaking_news !== false,
+    };
+
+    const { error } = await sb
+      .from('notification_preferences')
+      .upsert(prefs, { onConflict: 'user_id' });
+
+    if (error) {
+      console.error('❌ [Notification Prefs] Save error:', error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`🔔 [Notification Prefs] Saved for ${userId}: brief=${prefs.daily_brief}, alerts=${prefs.price_alerts}, breaking=${prefs.breaking_news}`);
+    res.json({ success: true, ...prefs });
+  } catch (error) {
+    console.error('❌ [Notification Prefs] Save error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -5182,27 +5458,37 @@ fetchLiveSpotPrices().then(() => {
               success++;
               console.log(`📝 [Daily Brief Cron] ✅ ${success}/${goldUsers.length} — user ${user.id}`);
 
-              // Send push notification if user has a valid push token
+              // Send push notification if user has a valid push token and daily_brief enabled
               if (result && result.brief && result.brief.brief_text) {
                 try {
-                  const { data: tokenData } = await supabaseClient
-                    .from('push_tokens')
-                    .select('expo_push_token')
+                  // Check notification preferences
+                  const { data: notifPref } = await supabaseClient
+                    .from('notification_preferences')
+                    .select('daily_brief')
                     .eq('user_id', user.id)
-                    .order('last_active', { ascending: false })
-                    .limit(1)
                     .single();
+                  const briefEnabled = !notifPref || notifPref.daily_brief !== false;
 
-                  if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
-                    const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
-                    const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
-                    await sendPushNotification(tokenData.expo_push_token, {
-                      title: '\u2600\uFE0F Your Daily Brief is Ready',
-                      body,
-                      data: { type: 'daily_brief' },
-                      sound: 'default',
-                    });
-                    pushSent++;
+                  if (briefEnabled) {
+                    const { data: tokenData } = await supabaseClient
+                      .from('push_tokens')
+                      .select('expo_push_token')
+                      .eq('user_id', user.id)
+                      .order('last_active', { ascending: false })
+                      .limit(1)
+                      .single();
+
+                    if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
+                      const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
+                      const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
+                      await sendPushNotification(tokenData.expo_push_token, {
+                        title: '\u2600\uFE0F Your Daily Brief is Ready',
+                        body,
+                        data: { type: 'daily_brief' },
+                        sound: 'default',
+                      });
+                      pushSent++;
+                    }
                   }
                 } catch (pushErr) {
                   console.log(`📝 [Daily Brief Cron] Push skipped for ${user.id}: ${pushErr.message}`);

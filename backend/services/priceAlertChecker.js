@@ -146,6 +146,24 @@ async function checkPriceAlerts(currentPrices) {
           continue;
         }
 
+        // Check notification preferences (price_alerts)
+        if (alert.user_id) {
+          try {
+            const { data: notifPref } = await supabase
+              .from('notification_preferences')
+              .select('price_alerts')
+              .eq('user_id', alert.user_id)
+              .single();
+            if (notifPref && notifPref.price_alerts === false) {
+              console.log(`   ⏭️  Alert ${alert.id}: price_alerts disabled for user ${alert.user_id}`);
+              await markAlertTriggered(alert.id, currentPrice, false, 'Price alerts disabled in preferences');
+              continue;
+            }
+          } catch (prefErr) {
+            // No prefs row = defaults (enabled), continue sending
+          }
+        }
+
         // Send push notification
         try {
           const notification = {
