@@ -6553,15 +6553,22 @@ function AppContent() {
                   { key: 'platinum', label: 'Pt', color: '#A8D8EA' },
                   { key: 'palladium', label: 'Pd', color: '#4CAF50' },
                 ];
-                // Only show tabs for metals that have data
+                // Only show tabs for metals that have meaningful data (at least one row with registered_oz > 0)
                 const vaultMetals = vaultMetalsAll.filter(m => {
                   const data = vaultData[m.key] || [];
-                  return data.length > 0;
+                  return data.length > 0 && data.some(d => (d.registered_oz || 0) > 0);
                 });
 
-                const currentVaultData = vaultData[vaultMetal] || [];
+                // If current selected metal has no data, auto-switch to first available
+                const activeMetal = vaultMetals.some(m => m.key === vaultMetal) ? vaultMetal : (vaultMetals[0]?.key || 'silver');
+                if (activeMetal !== vaultMetal) {
+                  // Schedule state update after render to avoid setState during render
+                  setTimeout(() => setVaultMetal(activeMetal), 0);
+                }
+
+                const currentVaultData = vaultData[activeMetal] || [];
                 const latestVault = currentVaultData.length > 0 ? currentVaultData[currentVaultData.length - 1] : null;
-                const currentVaultColor = (vaultMetalsAll.find(m => m.key === vaultMetal) || {}).color || '#D4A843';
+                const currentVaultColor = (vaultMetalsAll.find(m => m.key === activeMetal) || {}).color || '#D4A843';
 
                 // Format large oz numbers compactly: 101394888 → "101.4M"
                 const formatOzCompact = (val) => {
@@ -6623,16 +6630,16 @@ function AppContent() {
                               paddingVertical: 6,
                               paddingHorizontal: 14,
                               borderRadius: 16,
-                              backgroundColor: vaultMetal === m.key ? `${m.color}20` : 'transparent',
+                              backgroundColor: activeMetal === m.key ? `${m.color}20` : 'transparent',
                               borderWidth: 1,
-                              borderColor: vaultMetal === m.key ? m.color : isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                              borderColor: activeMetal === m.key ? m.color : isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
                             }}
                             onPress={() => {
                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                               setVaultMetal(m.key);
                             }}
                           >
-                            <Text style={{ color: vaultMetal === m.key ? m.color : colors.muted, fontSize: 13, fontWeight: '700' }}>{m.label}</Text>
+                            <Text style={{ color: activeMetal === m.key ? m.color : colors.muted, fontSize: 13, fontWeight: '700' }}>{m.label}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -8487,6 +8494,63 @@ function AppContent() {
                   />
                 </View>
                 <SectionFooter text="Backups include all holdings and settings. Export to Files, iCloud Drive, or any storage." />
+
+                {/* Clear All Data */}
+                <View style={{ marginTop: 40 }}>
+                  <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                    <TouchableOpacity
+                      style={{
+                        backgroundColor: groupBg,
+                        paddingVertical: 12,
+                        paddingHorizontal: 16,
+                        minHeight: 44,
+                        borderRadius: 10,
+                        alignItems: 'center',
+                      }}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        Alert.alert(
+                          'Clear All Data',
+                          'Are you sure? This will permanently delete all your holdings and settings.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Continue',
+                              style: 'destructive',
+                              onPress: () => {
+                                Alert.prompt(
+                                  'This cannot be undone',
+                                  'Type DELETE to confirm.',
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                      text: 'Clear Everything',
+                                      style: 'destructive',
+                                      onPress: (text) => {
+                                        if (text === 'DELETE') {
+                                          clearAllData();
+                                        } else {
+                                          Alert.alert('Not deleted', 'You must type DELETE exactly to confirm.');
+                                        }
+                                      },
+                                    },
+                                  ],
+                                  'plain-text',
+                                  '',
+                                  'default'
+                                );
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
+                      <Text style={{ color: '#FF3B30', fontSize: scaledFonts.normal }}>Clear All Data</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <SectionFooter text="This will permanently delete all holdings, settings, and preferences. This action cannot be undone." />
+                </View>
+
                 <View style={{ height: 50 }} />
               </View>
             );
@@ -8760,52 +8824,6 @@ function AppContent() {
                   </View>
                 </>
               )}
-
-              {/* Clear All Data */}
-              <View style={{ marginTop: supabaseUser ? 16 : 32 }}>
-                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                  <TouchableOpacity
-                    style={{
-                      backgroundColor: groupBg,
-                      paddingVertical: 12,
-                      paddingHorizontal: 16,
-                      minHeight: 44,
-                      borderRadius: 10,
-                      alignItems: 'center',
-                    }}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      Alert.alert(
-                        'Clear All Data',
-                        'Are you sure? This will permanently delete all your holdings, settings, and preferences.',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Continue',
-                            style: 'destructive',
-                            onPress: () => {
-                              Alert.alert(
-                                'Final Warning',
-                                'This cannot be undone. Are you absolutely sure you want to erase all your data?',
-                                [
-                                  { text: 'Cancel', style: 'cancel' },
-                                  {
-                                    text: 'Yes, Clear Everything',
-                                    style: 'destructive',
-                                    onPress: clearAllData,
-                                  },
-                                ]
-                              );
-                            },
-                          },
-                        ]
-                      );
-                    }}
-                  >
-                    <Text style={{ color: '#FF3B30', fontSize: scaledFonts.normal }}>Clear All Data</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
 
               {/* Extra padding at bottom */}
               <View style={{ height: 50 }} />
@@ -9435,89 +9453,85 @@ function AppContent() {
         </TouchableOpacity>
       </ModalWrapper>
 
-      {/* Help & Tips Modal */}
+      {/* Help Guide Modal */}
       <ModalWrapper
         visible={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Help & Tips"
+        title="Help Guide"
         colors={colors}
         isDarkMode={isDarkMode}
       >
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Getting Started</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Add purchases manually by tapping "+" on the Holdings tab</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Or use AI Receipt Scanner to automatically extract data from receipts</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Pull down on the Dashboard to refresh live spot prices</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Export your holdings as CSV from the Dashboard</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Today Tab</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Portfolio Pulse — Daily P/L and portfolio snapshot</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Metal Movers — Spot price changes across all metals</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Vault Watch — COMEX warehouse inventory for Ag, Au, Pt</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Market Intelligence — AI-curated news and analysis</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Daily Brief — AI market summary delivered to your feed</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>AI Receipt Scanner</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Tap "Take Photo" to capture a receipt with your camera</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Tap "Upload Photo" to select an existing image</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• The AI extracts product name, quantity, price, dealer, and date</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Portfolio Tab</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Add holdings manually with the "+" button</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} AI Receipt Scanner — Snap a photo to auto-extract purchase data</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Swipe left on a holding to edit or delete</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Pull down to refresh live spot prices</Text>
           <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.15)', padding: 10, borderRadius: 8, marginTop: 8 }}>
-            <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Tip: Digital screenshots of online receipts work best!</Text>
-            <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }}>Clear text and good lighting improve accuracy</Text>
+            <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Tip: Digital screenshots of online receipts work best for scanning!</Text>
           </View>
-          <Text style={[styles.privacyItem, { marginTop: 8, color: colors.text, fontSize: scaledFonts.small }]}>• Free users: 5 scans per month</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Gold/Lifetime: Unlimited scans</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Tools</Text>
-            <View style={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-              <Text style={{ color: '#4CAF50', fontSize: scaledFonts.tiny, fontWeight: '600' }}>FREE</Text>
-            </View>
-          </View>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Price Alerts — Get notified when metals hit your target price</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• What If Scenarios — See portfolio value at hypothetical spot prices</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Junk Silver Calculator — Calculate melt value of constitutional silver</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Stack Milestones — Set and track oz goals for your stack</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Share My Stack — Create a shareable image of your portfolio</Text>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Analytics</Text>
+            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Analytics Tab</Text>
             <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
               <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
             </View>
           </View>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Portfolio value charts (1D, 1W, 1M, 3M, 1Y, All Time)</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Cost basis analysis and unrealized P/L</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Break-Even Analysis — See what spot price you need to break even</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Premium Analysis — View premiums paid across your holdings</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Holdings breakdown with pie chart</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Portfolio Intelligence — AI analysis of your holdings</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Portfolio Value Chart — Track value over 1D to All Time</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Spot Price History — Historical charts for each metal</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Cost Basis Analysis — Total cost, P/L, and avg premium per metal</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Break-Even Analysis — Spot price needed to break even</Text>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Tools Tab</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Price Alerts — Push notifications when metals hit your target</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Share My Stack — Generate a shareable portfolio image</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Speculation Tool — Model portfolio value at hypothetical prices</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Junk Silver Calculator — Melt value for constitutional silver</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Stack Milestones — Set and track oz goals</Text>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Settings</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Notifications — Toggle daily brief, price alerts, breaking news</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Appearance — Light, dark, or auto theme</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Export & Backup — Backup, restore, or export CSV</Text>
         </View>
 
         {Platform.OS === 'ios' && (
           <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Home Screen Widgets</Text>
-              <View style={{ backgroundColor: 'rgba(251, 191, 36, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
-              </View>
-            </View>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• See your portfolio value, spot prices, and daily changes at a glance</Text>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Long-press your home screen → tap "+" → search "Stack Tracker Gold"</Text>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Choose small, medium, or large widget size</Text>
+            <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Widgets</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Home screen widgets with live portfolio value and spot prices</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Long-press home screen {'\u2192'} "+" {'\u2192'} search "Stack Tracker Gold"</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Small, medium, and large sizes available</Text>
           </View>
         )}
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Your Data & Cloud Sync</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Sign in to sync your portfolio across devices automatically</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Guest mode keeps everything local on your device</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Use Backup/Restore for manual exports to iCloud Drive, Google Drive, etc.</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Export CSV from the Dashboard for spreadsheets and tax prep</Text>
+          <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Push Notifications</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Daily Brief — Daily market summary push</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Price Alerts — Triggered when your targets are hit</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Breaking News & COMEX — Major events and vault changes</Text>
+          <Text style={[styles.privacyItem, { color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }]}>Manage in Settings {'\u2192'} Notifications</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Support</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>• Need help? Email stacktrackerpro@gmail.com</Text>
-          <Text style={[styles.privacyItem, { marginTop: 4, color: colors.muted, fontSize: scaledFonts.small }]}>Include your Support ID (Settings → Advanced) for faster help</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Email stacktrackerpro@gmail.com for help</Text>
+          <Text style={[styles.privacyItem, { color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }]}>Your Support ID is in Settings {'\u2192'} Account</Text>
         </View>
       </ModalWrapper>
 
