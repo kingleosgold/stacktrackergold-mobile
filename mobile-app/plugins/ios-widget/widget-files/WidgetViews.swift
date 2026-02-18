@@ -692,55 +692,42 @@ struct MediumSubscribed: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            panels
+            MediumHeader(data: data)
+            MediumSparkline(data: data)
+            GoldDivider().padding(.vertical, 4)
+            MediumMetalRows(data: data)
+            Spacer(minLength: 2)
         }
-    }
-
-    private var panels: some View {
-        HStack(spacing: 0) {
-            MediumLeft(data: data)
-            MediumDivider()
-            MediumRight(data: data)
-        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
     }
 }
 
-struct MediumDivider: View {
-    var body: some View {
-        Rectangle()
-            .fill(wGold.opacity(0.15))
-            .frame(width: 1)
-            .padding(.vertical, 10)
-    }
-}
-
-struct MediumLeft: View {
+struct MediumHeader: View {
     let data: WidgetData
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            valueText
-            changeRow
-            Spacer(minLength: 2)
-            sparklineSection
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                valueText
+                Spacer(minLength: 8)
+                changeRow
+            }
         }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
         PortfolioLabel(iconSize: 16, fontSize: 8)
-            .padding(.top, 6)
+            .padding(.top, 8)
             .padding(.bottom, 4)
     }
 
     private var valueText: some View {
         WBoldCurrencyText(
             text: wPrivacy(wFormatCurrency(data.portfolioValue), data.hideValues),
-            size: 24
+            size: 28
         )
-        .padding(.bottom, 2)
     }
 
     private var changeRow: some View {
@@ -748,66 +735,72 @@ struct MediumLeft: View {
             amount: data.dailyChangeAmount,
             percent: data.dailyChangePercent,
             hideValues: data.hideValues,
-            arrowSize: 9, amountSize: 11, pctSize: 9
+            arrowSize: 10, amountSize: 13, pctSize: 11
         )
     }
+}
 
-    @ViewBuilder
-    private var sparklineSection: some View {
+struct MediumSparkline: View {
+    let data: WidgetData
+
+    var body: some View {
         let pts = data.portfolioSparkline()
         if pts.count >= 2 {
             SparklineView(data: pts, color: wSparklineColor(pts), lineWidth: 1.5, showFill: true)
-                .frame(maxHeight: 48)
-                .padding(.bottom, 4)
+                .frame(height: 32)
+                .padding(.top, 2)
         }
     }
 }
 
-struct MediumRight: View {
+struct MediumMetalRows: View {
     let data: WidgetData
 
     var body: some View {
-        VStack(spacing: 6) {
-            spotLabel
-            goldRow
-            thinDivider
-            silverRow
-            Spacer(minLength: 4)
+        HStack(spacing: 12) {
+            MediumMetalRow(
+                symbol: "Au", price: data.goldSpot,
+                changePct: data.goldChangePercent,
+                changeAmt: data.goldChangeAmount,
+                sparkline: data.goldSparkline, color: wGold
+            )
+            MediumMetalRow(
+                symbol: "Ag", price: data.silverSpot,
+                changePct: data.silverChangePercent,
+                changeAmt: data.silverChangeAmount,
+                sparkline: data.silverSparkline, color: wSilver
+            )
         }
-        .padding(.horizontal, 10)
+    }
+}
+
+struct MediumMetalRow: View {
+    let symbol: String
+    let price: Double
+    let changePct: Double
+    let changeAmt: Double
+    let sparkline: [Double]
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    WSymbolDot(color: color, size: 6)
+                    WSymbolLabel(text: symbol, color: color, size: 10)
+                }
+                HStack(spacing: 4) {
+                    WSpotPriceText(text: wFormatSpot(price), size: 13)
+                    WPercentBadge(text: wFormatPct(changePct), color: wChangeColor(changeAmt), size: 9)
+                }
+            }
+            Spacer(minLength: 4)
+            if sparkline.count >= 2 {
+                SparklineView(data: sparkline, color: wSparklineColor(sparkline), lineWidth: 1.0, showFill: true)
+                    .frame(width: 56, height: 22)
+            }
+        }
         .frame(maxWidth: .infinity)
-    }
-
-    private var spotLabel: some View {
-        Text("LIVE SPOT")
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundColor(wMuted)
-            .kerning(1.2)
-            .padding(.top, 8)
-    }
-
-    private var goldRow: some View {
-        MetalRowMedium(
-            symbol: "Au", price: data.goldSpot,
-            changePct: data.goldChangePercent,
-            changeAmt: data.goldChangeAmount,
-            sparkline: data.goldSparkline, color: wGold
-        )
-    }
-
-    private var thinDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.05))
-            .frame(height: 1)
-    }
-
-    private var silverRow: some View {
-        MetalRowMedium(
-            symbol: "Ag", price: data.silverSpot,
-            changePct: data.silverChangePercent,
-            changeAmt: data.silverChangeAmount,
-            sparkline: data.silverSparkline, color: wSilver
-        )
     }
 }
 

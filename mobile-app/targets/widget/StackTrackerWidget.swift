@@ -79,9 +79,15 @@ struct Provider: TimelineProvider {
                 data.palladiumSparkline = freshPrices.palladiumSparkline
                 data.lastUpdated = currentDate
 
+                // Recalculate portfolio value from atomic price snapshot
+                data.recalculatePortfolio()
+
+                // Ensure sparkline trend matches P/L direction
+                data.validateConsistency()
+
                 // Save updated data to App Group so app benefits too
                 saveWidgetData(data)
-                print("✅ [Widget] Saved fresh data to App Group")
+                print("✅ [Widget] Saved fresh data to App Group (portfolio: $\(data.portfolioValue), change: \(data.dailyChangeAmount))")
             } else {
                 print("⚠️ [Widget] Using cached App Group data (fetch failed or timed out)")
             }
@@ -254,7 +260,8 @@ struct Provider: TimelineProvider {
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let data = try decoder.decode(WidgetData.self, from: jsonData)
+            var data = try decoder.decode(WidgetData.self, from: jsonData)
+            data.validateConsistency()
             return data
         } catch {
             print("❌ [Widget] Failed to decode: \(error)")

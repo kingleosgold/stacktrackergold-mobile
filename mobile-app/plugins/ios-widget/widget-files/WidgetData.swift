@@ -182,6 +182,32 @@ struct WidgetData: Codable {
         )
     }
 
+    /// Recalculate portfolio value from current spot prices and holdings
+    mutating func recalculatePortfolio() {
+        let newValue = (goldOzt * goldSpot) + (silverOzt * silverSpot)
+            + (platinumOzt * platinumSpot) + (palladiumOzt * palladiumSpot)
+        if newValue > 0 {
+            portfolioValue = newValue
+            goldValue = goldOzt * goldSpot
+            silverValue = silverOzt * silverSpot
+            platinumValue = platinumOzt * platinumSpot
+            palladiumValue = palladiumOzt * palladiumSpot
+        }
+    }
+
+    /// Ensure sparkline trend direction matches daily P/L sign.
+    /// If they disagree, recalculate dailyChange from sparkline endpoints.
+    mutating func validateConsistency() {
+        let pts = portfolioSparkline()
+        guard pts.count >= 2, let first = pts.first, let last = pts.last, first > 0 else { return }
+        let sparklineTrend = last >= first
+        let plIsPositive = dailyChangeAmount >= 0
+        if sparklineTrend != plIsPositive {
+            dailyChangeAmount = last - first
+            dailyChangePercent = (dailyChangeAmount / first) * 100
+        }
+    }
+
     /// Compute portfolio sparkline from metal sparklines and ounce holdings
     func portfolioSparkline() -> [Double] {
         guard goldSparkline.count >= 2 else { return [] }
