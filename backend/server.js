@@ -4948,6 +4948,11 @@ app.post('/api/breaking-news', async (req, res) => {
 });
 
 // GET /api/notification-preferences — Get user's notification preferences
+const NOTIF_DEFAULTS = {
+  daily_brief: true, price_alerts: true, breaking_news: true,
+  comex_alerts: true, comex_gold: true, comex_silver: true, comex_platinum: true, comex_palladium: true,
+};
+
 app.get('/api/notification-preferences', async (req, res) => {
   try {
     const userId = req.query.userId;
@@ -4956,31 +4961,32 @@ app.get('/api/notification-preferences', async (req, res) => {
     }
 
     if (!isSupabaseAvailable()) {
-      return res.json({ daily_brief: true, price_alerts: true, breaking_news: true });
+      return res.json({ ...NOTIF_DEFAULTS });
     }
 
     const { data, error } = await getSupabase()
       .from('notification_preferences')
-      .select('daily_brief, price_alerts, breaking_news')
+      .select('*')
       .eq('user_id', userId)
       .single();
 
     if (error || !data) {
-      // No preferences saved yet — return defaults (all enabled)
-      return res.json({ daily_brief: true, price_alerts: true, breaking_news: true });
+      return res.json({ ...NOTIF_DEFAULTS });
     }
 
-    res.json(data);
+    // Merge with defaults so new fields default to true
+    res.json({ ...NOTIF_DEFAULTS, ...data });
   } catch (error) {
     console.error('❌ [Notification Prefs] Get error:', error.message);
-    res.json({ daily_brief: true, price_alerts: true, breaking_news: true });
+    res.json({ ...NOTIF_DEFAULTS });
   }
 });
 
 // POST /api/notification-preferences — Save user's notification preferences
 app.post('/api/notification-preferences', async (req, res) => {
   try {
-    const { userId, daily_brief, price_alerts, breaking_news } = req.body;
+    const { userId, daily_brief, price_alerts, breaking_news,
+            comex_alerts, comex_gold, comex_silver, comex_platinum, comex_palladium } = req.body;
     if (!userId || !isUUID(userId)) {
       return res.status(400).json({ error: 'Valid userId is required' });
     }
@@ -4995,6 +5001,11 @@ app.post('/api/notification-preferences', async (req, res) => {
       daily_brief: daily_brief !== false,
       price_alerts: price_alerts !== false,
       breaking_news: breaking_news !== false,
+      comex_alerts: comex_alerts !== false,
+      comex_gold: comex_gold !== false,
+      comex_silver: comex_silver !== false,
+      comex_platinum: comex_platinum !== false,
+      comex_palladium: comex_palladium !== false,
     };
 
     const { error } = await sb
@@ -5002,11 +5013,22 @@ app.post('/api/notification-preferences', async (req, res) => {
       .upsert(prefs, { onConflict: 'user_id' });
 
     if (error) {
+      // If COMEX columns don't exist yet, retry with just the original 3 fields
+      if (error.message && error.message.includes('column')) {
+        const fallbackPrefs = { user_id: userId, daily_brief: prefs.daily_brief, price_alerts: prefs.price_alerts, breaking_news: prefs.breaking_news };
+        const { error: fallbackErr } = await sb.from('notification_preferences').upsert(fallbackPrefs, { onConflict: 'user_id' });
+        if (fallbackErr) {
+          console.error('❌ [Notification Prefs] Fallback save error:', fallbackErr.message);
+          return res.status(500).json({ error: fallbackErr.message });
+        }
+        console.log(`🔔 [Notification Prefs] Saved (fallback) for ${userId}`);
+        return res.json({ success: true, ...prefs });
+      }
       console.error('❌ [Notification Prefs] Save error:', error.message);
       return res.status(500).json({ error: error.message });
     }
 
-    console.log(`🔔 [Notification Prefs] Saved for ${userId}: brief=${prefs.daily_brief}, alerts=${prefs.price_alerts}, breaking=${prefs.breaking_news}`);
+    console.log(`🔔 [Notification Prefs] Saved for ${userId}: brief=${prefs.daily_brief}, alerts=${prefs.price_alerts}, comex=${prefs.comex_alerts}`);
     res.json({ success: true, ...prefs });
   } catch (error) {
     console.error('❌ [Notification Prefs] Save error:', error.message);

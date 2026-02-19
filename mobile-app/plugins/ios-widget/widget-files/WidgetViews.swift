@@ -433,7 +433,7 @@ struct MetalRowMedium: View {
     @ViewBuilder
     private var inlineSparkline: some View {
         if sparkline.count >= 2 {
-            SparklineView(data: sparkline, color: wSparklineColor(sparkline), lineWidth: 1.0, showFill: true)
+            SparklineView(data: sparkline, color: wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
                 .frame(width: 48, height: 22)
         }
     }
@@ -493,7 +493,7 @@ struct SpotCardLarge: View {
     @ViewBuilder
     private var cardSparkline: some View {
         if sparkline.count >= 2 {
-            SparklineView(data: sparkline, color: wSparklineColor(sparkline), lineWidth: 1.0, showFill: true)
+            SparklineView(data: sparkline, color: wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
                 .frame(height: 20)
                 .padding(.top, 4)
         }
@@ -643,7 +643,7 @@ struct SmallBottom: View {
     private var sparklineView: some View {
         SparklineView(
             data: data.portfolioSparkline(),
-            color: wSparklineColor(data.portfolioSparkline()),
+            color: wChangeColor(data.dailyChangeAmount),
             lineWidth: 1.5,
             showFill: true
         )
@@ -746,7 +746,7 @@ struct MediumSparkline: View {
     var body: some View {
         let pts = data.portfolioSparkline()
         if pts.count >= 2 {
-            SparklineView(data: pts, color: wSparklineColor(pts), lineWidth: 1.5, showFill: true)
+            SparklineView(data: pts, color: wChangeColor(data.dailyChangeAmount), lineWidth: 1.5, showFill: true)
                 .frame(height: 32)
                 .padding(.top, 2)
         }
@@ -796,7 +796,7 @@ struct MediumMetalRow: View {
             }
             Spacer(minLength: 4)
             if sparkline.count >= 2 {
-                SparklineView(data: sparkline, color: wSparklineColor(sparkline), lineWidth: 1.0, showFill: true)
+                SparklineView(data: sparkline, color: wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
                     .frame(width: 56, height: 22)
             }
         }
@@ -895,7 +895,7 @@ struct LargeSparkline: View {
     private var sparklineView: some View {
         SparklineView(
             data: data.portfolioSparkline(),
-            color: wSparklineColor(data.portfolioSparkline()),
+            color: wChangeColor(data.dailyChangeAmount),
             lineWidth: 1.5,
             showFill: true
         )

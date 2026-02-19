@@ -1472,7 +1472,7 @@ function AppContent() {
   const [purchaseStatsIntelExpanded, setPurchaseStatsIntelExpanded] = useState(false);
 
   // Notification Preferences
-  const [notifPrefs, setNotifPrefs] = useState({ daily_brief: true, price_alerts: true, breaking_news: true });
+  const [notifPrefs, setNotifPrefs] = useState({ daily_brief: true, price_alerts: true, breaking_news: true, comex_alerts: true, comex_gold: true, comex_silver: true, comex_platinum: true, comex_palladium: true });
 
   // Side Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -2744,7 +2744,16 @@ function AppContent() {
       const response = await fetch(`${API_BASE_URL}/api/notification-preferences?userId=${supabaseUser.id}`);
       if (response.ok) {
         const data = await response.json();
-        setNotifPrefs({ daily_brief: data.daily_brief !== false, price_alerts: data.price_alerts !== false, breaking_news: data.breaking_news !== false });
+        setNotifPrefs({
+          daily_brief: data.daily_brief !== false,
+          price_alerts: data.price_alerts !== false,
+          breaking_news: data.breaking_news !== false,
+          comex_alerts: data.comex_alerts !== false,
+          comex_gold: data.comex_gold !== false,
+          comex_silver: data.comex_silver !== false,
+          comex_platinum: data.comex_platinum !== false,
+          comex_palladium: data.comex_palladium !== false,
+        });
       }
     } catch (err) {
       if (__DEV__) console.log('🔔 [NotifPrefs] Fetch error:', err.message);
@@ -8437,48 +8446,69 @@ function AppContent() {
 
           // ===== NOTIFICATIONS SUB-PAGE =====
           if (settingsSubPage === 'notifications') {
+            const notifSwitchTrack = { false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' };
+            const notifSwitchBg = isDarkMode ? '#39393d' : '#e9e9eb';
+            const NotifRow = ({ item, isFirst, isLast, indented, disabled }) => (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: groupBg,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                paddingLeft: indented ? 40 : 16,
+                minHeight: 44,
+                opacity: disabled ? 0.4 : 1,
+                ...(isFirst ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {}),
+                ...(isLast ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {}),
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{item.label}</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>{item.description}</Text>
+                </View>
+                <Switch
+                  value={notifPrefs[item.key]}
+                  onValueChange={(value) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    saveNotifPref(item.key, value);
+                  }}
+                  trackColor={notifSwitchTrack}
+                  thumbColor="#fff"
+                  ios_backgroundColor={notifSwitchBg}
+                  disabled={disabled}
+                />
+              </View>
+            );
             return (
               <View style={pageStyle}>
                 <SubPageHeader title="Notifications" />
                 <Text style={{ color: colors.text, fontSize: 28, fontWeight: '700', marginLeft: 16, marginBottom: 8 }}>Notifications</Text>
-                <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
-                  {[
-                    { key: 'daily_brief', label: 'Daily Brief', description: 'Daily market summary push' },
-                    { key: 'price_alerts', label: 'Price Alerts', description: 'Triggered when targets are hit' },
-                    { key: 'breaking_news', label: 'Breaking News & COMEX', description: 'Major market events and vault changes' },
-                  ].map((item, idx, arr) => (
-                    <React.Fragment key={item.key}>
-                      <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        backgroundColor: groupBg,
-                        paddingVertical: 12,
-                        paddingHorizontal: 16,
-                        minHeight: 44,
-                        ...(idx === 0 ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {}),
-                        ...(idx === arr.length - 1 ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {}),
-                      }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{item.label}</Text>
-                          <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>{item.description}</Text>
-                        </View>
-                        <Switch
-                          value={notifPrefs[item.key]}
-                          onValueChange={(value) => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            saveNotifPref(item.key, value);
-                          }}
-                          trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
-                          thumbColor="#fff"
-                          ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
-                        />
-                      </View>
-                      {idx < arr.length - 1 && <RowSeparator />}
-                    </React.Fragment>
-                  ))}
+
+                {/* Push Notifications Section */}
+                <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 16, marginBottom: 6 }}>Push Notifications</Text>
+                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                  <NotifRow item={{ key: 'daily_brief', label: 'Daily Brief', description: 'Daily market summary each morning' }} isFirst isLast={false} />
+                  <RowSeparator />
+                  <NotifRow item={{ key: 'breaking_news', label: 'Market Intelligence', description: 'Breaking news and major market events' }} isLast={false} />
+                  <RowSeparator />
+                  <NotifRow item={{ key: 'price_alerts', label: 'Price Alerts', description: 'Triggered when your price targets are hit' }} isLast />
                 </View>
-                <SectionFooter text="Control which push notifications you receive. Changes apply immediately." />
+
+                {/* COMEX Vault Alerts Section */}
+                <Text style={{ color: colors.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 24, marginBottom: 6 }}>COMEX Vault Alerts</Text>
+                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                  <NotifRow item={{ key: 'comex_alerts', label: 'All Vault Changes', description: 'Master toggle for COMEX vault notifications' }} isFirst isLast={false} />
+                  <RowSeparator />
+                  <NotifRow item={{ key: 'comex_gold', label: 'Gold (Au)', description: 'Gold vault inventory changes' }} indented disabled={!notifPrefs.comex_alerts} isLast={false} />
+                  <RowSeparator />
+                  <NotifRow item={{ key: 'comex_silver', label: 'Silver (Ag)', description: 'Silver vault inventory changes' }} indented disabled={!notifPrefs.comex_alerts} isLast={false} />
+                  <RowSeparator />
+                  <NotifRow item={{ key: 'comex_platinum', label: 'Platinum (Pt)', description: 'Platinum vault inventory changes' }} indented disabled={!notifPrefs.comex_alerts} isLast={false} />
+                  <RowSeparator />
+                  <NotifRow item={{ key: 'comex_palladium', label: 'Palladium (Pd)', description: 'Palladium vault inventory changes' }} indented disabled={!notifPrefs.comex_alerts} isLast />
+                </View>
+                <SectionFooter text="Get notified when COMEX vault registered or eligible inventory changes significantly." />
+
                 <View style={{ height: 50 }} />
               </View>
             );
