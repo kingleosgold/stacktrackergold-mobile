@@ -24,7 +24,7 @@ const { WidgetKitModule } = NativeModules;
  */
 const fetchSpotPricesBackground = async () => {
   try {
-    console.log('[BackgroundFetch] Fetching spot prices...');
+    if (__DEV__) console.log('[BackgroundFetch] Fetching spot prices...');
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout for background
@@ -37,7 +37,7 @@ const fetchSpotPricesBackground = async () => {
     const data = await response.json();
 
     if (data.success) {
-      console.log(`[BackgroundFetch] Prices received: Gold $${data.gold}, Silver $${data.silver}`);
+      if (__DEV__) console.log(`[BackgroundFetch] Prices received: Gold $${data.gold}, Silver $${data.silver}`);
 
       // Save to AsyncStorage for app to use on next open
       if (data.silver && data.silver > 10) {
@@ -63,10 +63,10 @@ const fetchSpotPricesBackground = async () => {
       };
     }
 
-    console.log('[BackgroundFetch] API returned success=false');
+    if (__DEV__) console.log('[BackgroundFetch] API returned success=false');
     return null;
   } catch (error) {
-    console.error('[BackgroundFetch] Failed to fetch prices:', error.message);
+    if (__DEV__) console.error('[BackgroundFetch] Failed to fetch prices:', error.message);
     return null;
   }
 };
@@ -76,7 +76,7 @@ const fetchSpotPricesBackground = async () => {
  */
 const updateWidgetBackground = async (priceData) => {
   if (Platform.OS !== 'ios' || !WidgetKitModule) {
-    console.log('[BackgroundFetch] Widget update skipped (not iOS or module unavailable)');
+    if (__DEV__) console.log('[BackgroundFetch] Widget update skipped (not iOS or module unavailable)');
     return;
   }
 
@@ -115,7 +115,7 @@ const updateWidgetBackground = async (priceData) => {
           dailyChangePercent = (dailyChangeAmount / midnight.totalMeltValue) * 100;
         }
       } catch (e) {
-        console.log('[BackgroundFetch] Error parsing midnight snapshot');
+        if (__DEV__) console.log('[BackgroundFetch] Error parsing midnight snapshot');
       }
     }
 
@@ -136,13 +136,13 @@ const updateWidgetBackground = async (priceData) => {
 
     // Send to native module
     const jsonData = JSON.stringify(widgetData);
-    console.log('[BackgroundFetch] Updating widget with data');
+    if (__DEV__) console.log('[BackgroundFetch] Updating widget with data');
     WidgetKitModule.setWidgetData(jsonData);
     WidgetKitModule.reloadAllTimelines();
 
-    console.log('[BackgroundFetch] Widget updated successfully');
+    if (__DEV__) console.log('[BackgroundFetch] Widget updated successfully');
   } catch (error) {
-    console.error('[BackgroundFetch] Failed to update widget:', error.message);
+    if (__DEV__) console.error('[BackgroundFetch] Failed to update widget:', error.message);
   }
 };
 
@@ -152,26 +152,26 @@ const updateWidgetBackground = async (priceData) => {
  */
 try {
   TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
-    console.log('[BackgroundFetch] Task started');
+    if (__DEV__) console.log('[BackgroundFetch] Task started');
 
     try {
       const priceData = await fetchSpotPricesBackground();
 
       if (priceData) {
         await updateWidgetBackground(priceData);
-        console.log('[BackgroundFetch] Task completed successfully');
+        if (__DEV__) console.log('[BackgroundFetch] Task completed successfully');
         return BackgroundFetch.BackgroundFetchResult.NewData;
       }
 
-      console.log('[BackgroundFetch] Task completed - no new data');
+      if (__DEV__) console.log('[BackgroundFetch] Task completed - no new data');
       return BackgroundFetch.BackgroundFetchResult.NoData;
     } catch (error) {
-      console.error('[BackgroundFetch] Task failed:', error.message);
+      if (__DEV__) console.error('[BackgroundFetch] Task failed:', error.message);
       return BackgroundFetch.BackgroundFetchResult.Failed;
     }
   });
 } catch (e) {
-  console.log('[BackgroundFetch] Task definition skipped:', e?.message);
+  if (__DEV__) console.log('[BackgroundFetch] Task definition skipped:', e?.message);
 }
 
 /**
@@ -180,7 +180,7 @@ try {
  */
 export const registerBackgroundFetch = async () => {
   if (Platform.OS !== 'ios') {
-    console.log('[BackgroundFetch] Skipping registration (not iOS)');
+    if (__DEV__) console.log('[BackgroundFetch] Skipping registration (not iOS)');
     return false;
   }
 
@@ -189,7 +189,7 @@ export const registerBackgroundFetch = async () => {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK);
 
     if (isRegistered) {
-      console.log('[BackgroundFetch] Task already registered');
+      if (__DEV__) console.log('[BackgroundFetch] Task already registered');
       return true;
     }
 
@@ -200,10 +200,10 @@ export const registerBackgroundFetch = async () => {
       startOnBoot: true,        // Start after device reboot
     });
 
-    console.log('[BackgroundFetch] Task registered successfully');
+    if (__DEV__) console.log('[BackgroundFetch] Task registered successfully');
     return true;
   } catch (error) {
-    console.error('[BackgroundFetch] Failed to register task:', error.message);
+    if (__DEV__) console.error('[BackgroundFetch] Failed to register task:', error.message);
     return false;
   }
 };
@@ -217,12 +217,12 @@ export const unregisterBackgroundFetch = async () => {
 
     if (isRegistered) {
       await BackgroundFetch.unregisterTaskAsync(BACKGROUND_FETCH_TASK);
-      console.log('[BackgroundFetch] Task unregistered');
+      if (__DEV__) console.log('[BackgroundFetch] Task unregistered');
     }
 
     return true;
   } catch (error) {
-    console.error('[BackgroundFetch] Failed to unregister task:', error.message);
+    if (__DEV__) console.error('[BackgroundFetch] Failed to unregister task:', error.message);
     return false;
   }
 };
@@ -260,7 +260,7 @@ export const getBackgroundFetchStatus = async () => {
       isRegistered,
     };
   } catch (error) {
-    console.error('[BackgroundFetch] Failed to get status:', error.message);
+    if (__DEV__) console.error('[BackgroundFetch] Failed to get status:', error.message);
     return { available: false, status: 'Error', error: error.message };
   }
 };

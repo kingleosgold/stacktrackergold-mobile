@@ -810,7 +810,7 @@ function isMarketClosedClientSide() {
     const hour = parseInt(parts.hour, 10);
 
     const closed = (day === 6) || (day === 0 && hour < 18) || (day === 5 && hour >= 17);
-    console.log(`🕐 Client market check: ET ${parts.weekday} ${hour}:${String(parseInt(parts.minute, 10)).padStart(2, '0')} → ${closed ? 'CLOSED' : 'OPEN'}`);
+    if (__DEV__) console.log(`🕐 Client market check: ET ${parts.weekday} ${hour}:${String(parseInt(parts.minute, 10)).padStart(2, '0')} → ${closed ? 'CLOSED' : 'OPEN'}`);
     return closed;
   } catch (e) {
     return false;
@@ -1564,7 +1564,7 @@ function AppContent() {
       setScreenshotMode(prev => !prev);
       setVersionTapCount(0);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      console.log('[Screenshot Mode]', !screenshotMode ? 'ACTIVATED' : 'DEACTIVATED');
+      if (__DEV__) console.log('[Screenshot Mode]', !screenshotMode ? 'ACTIVATED' : 'DEACTIVATED');
     } else {
       versionTapTimer.current = setTimeout(() => setVersionTapCount(0), 600);
     }
@@ -1665,7 +1665,7 @@ function AppContent() {
     try {
       await AsyncStorage.setItem('stack_theme_preference', newTheme);
     } catch (error) {
-      console.error('Failed to save theme preference:', error);
+      if (__DEV__) console.error('Failed to save theme preference:', error);
     }
   };
 
@@ -1675,7 +1675,7 @@ function AppContent() {
     try {
       await AsyncStorage.setItem('stack_large_text', enabled ? 'true' : 'false');
     } catch (error) {
-      console.error('Failed to save large text preference:', error);
+      if (__DEV__) console.error('Failed to save large text preference:', error);
     }
   };
 
@@ -1707,7 +1707,7 @@ function AppContent() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Data Cleared', 'All your data has been erased. The app has been reset to its initial state.');
     } catch (error) {
-      console.error('Failed to clear data:', error);
+      if (__DEV__) console.error('Failed to clear data:', error);
       Alert.alert('Error', 'Failed to clear data. Please try again.');
     }
   };
@@ -2073,7 +2073,7 @@ function AppContent() {
           shouldAuthenticate = true;
         }
       } catch (authError) {
-        console.error('Biometric auth error (non-fatal):', authError?.message || authError);
+        if (__DEV__) console.error('Biometric auth error (non-fatal):', authError?.message || authError);
         // If biometric fails, allow access anyway
         shouldAuthenticate = true;
       }
@@ -2084,13 +2084,13 @@ function AppContent() {
         // Wrap loadData in setTimeout to ensure state update completes first
         setTimeout(() => {
           loadData().catch(err => {
-            console.error('loadData failed (non-fatal):', err?.message || err);
+            if (__DEV__) console.error('loadData failed (non-fatal):', err?.message || err);
             setIsLoading(false); // Still hide loading even if data fails
           });
         }, 50);
       }
     } catch (e) {
-      console.error('authenticate outer catch:', e?.message || e);
+      if (__DEV__) console.error('authenticate outer catch:', e?.message || e);
       setIsAuthenticated(true);
       setIsLoading(false);
     }
@@ -2125,16 +2125,16 @@ function AppContent() {
 
       // Safely parse JSON data with fallbacks
       if (silver) {
-        try { setSilverItems(JSON.parse(silver)); } catch (e) { console.error('Failed to parse silver data'); }
+        try { setSilverItems(JSON.parse(silver)); } catch (e) { if (__DEV__) console.error('Failed to parse silver data'); }
       }
       if (gold) {
-        try { setGoldItems(JSON.parse(gold)); } catch (e) { console.error('Failed to parse gold data'); }
+        try { setGoldItems(JSON.parse(gold)); } catch (e) { if (__DEV__) console.error('Failed to parse gold data'); }
       }
       if (platinum) {
-        try { setPlatinumItems(JSON.parse(platinum)); } catch (e) { console.error('Failed to parse platinum data'); }
+        try { setPlatinumItems(JSON.parse(platinum)); } catch (e) { if (__DEV__) console.error('Failed to parse platinum data'); }
       }
       if (palladium) {
-        try { setPalladiumItems(JSON.parse(palladium)); } catch (e) { console.error('Failed to parse palladium data'); }
+        try { setPalladiumItems(JSON.parse(palladium)); } catch (e) { if (__DEV__) console.error('Failed to parse palladium data'); }
       }
       if (silverS) setSilverSpot(parseFloat(silverS) || 30);
       if (goldS) setGoldSpot(parseFloat(goldS) || 2600);
@@ -2145,7 +2145,7 @@ function AppContent() {
         try {
           setMidnightSnapshot(JSON.parse(storedMidnightSnapshot));
         } catch (e) {
-          console.error('Failed to parse midnight snapshot');
+          if (__DEV__) console.error('Failed to parse midnight snapshot');
         }
       }
       if (storedTheme && ['system', 'light', 'dark'].includes(storedTheme)) {
@@ -2213,11 +2213,11 @@ function AppContent() {
       // Delay fetchSpotPrices to not block the main thread
       setTimeout(() => {
         fetchSpotPrices().catch(err => {
-          if (err?.name !== 'AbortError') console.error('fetchSpotPrices failed:', err?.message);
+          if (__DEV__ && err?.name !== 'AbortError') console.error('fetchSpotPrices failed:', err?.message);
         });
       }, 100);
     } catch (error) {
-      console.error('Error loading data:', error?.message || error);
+      if (__DEV__) console.error('Error loading data:', error?.message || error);
       // Still mark as loaded on error to prevent infinite loop, but data won't be overwritten
       setDataLoaded(true);
     } finally {
@@ -2229,7 +2229,7 @@ function AppContent() {
     try {
       await AsyncStorage.setItem(key, JSON.stringify(data));
     } catch (error) {
-      console.error('Error saving data:', error);
+      if (__DEV__) console.error('Error saving data:', error);
     }
   };
 
@@ -2280,7 +2280,7 @@ function AppContent() {
 
       setShowMilestoneModal(false);
     } catch (error) {
-      console.error('Error saving milestones:', error);
+      if (__DEV__) console.error('Error saving milestones:', error);
       Alert.alert('Error', 'Failed to save milestones. Please try again.');
     }
   };
@@ -2300,7 +2300,7 @@ function AppContent() {
       setICloudAvailable(available);
       return available;
     } catch (error) {
-      console.log('iCloud availability check failed:', error?.message);
+      if (__DEV__) console.log('iCloud availability check failed:', error?.message);
       setICloudAvailable(false);
       return false;
     }
@@ -2314,7 +2314,7 @@ function AppContent() {
       if (enabled === 'true') setICloudSyncEnabled(true);
       if (lastSync) setLastSyncTime(lastSync);
     } catch (error) {
-      console.error('Failed to load iCloud preference:', error);
+      if (__DEV__) console.error('Failed to load iCloud preference:', error);
     }
   };
 
@@ -2345,9 +2345,9 @@ function AppContent() {
       const syncTime = new Date().toISOString();
       setLastSyncTime(syncTime);
       await AsyncStorage.setItem('stack_last_sync_time', syncTime);
-      console.log('Synced to iCloud successfully');
+      if (__DEV__) console.log('Synced to iCloud successfully');
     } catch (error) {
-      console.error('iCloud sync failed:', error?.message);
+      if (__DEV__) console.error('iCloud sync failed:', error?.message);
     } finally {
       setICloudSyncing(false);
     }
@@ -2361,7 +2361,7 @@ function AppContent() {
       setICloudSyncing(true);
       const exists = await CloudStorage.exists(ICLOUD_HOLDINGS_KEY, CloudStorageScope.Documents);
       if (!exists) {
-        console.log('No iCloud data found');
+        if (__DEV__) console.log('No iCloud data found');
         return null;
       }
 
@@ -2370,7 +2370,7 @@ function AppContent() {
 
       return cloudData;
     } catch (error) {
-      console.error('Failed to read from iCloud:', error?.message);
+      if (__DEV__) console.error('Failed to read from iCloud:', error?.message);
       return null;
     } finally {
       setICloudSyncing(false);
@@ -2527,7 +2527,7 @@ function AppContent() {
       );
 
       if (error) {
-        console.error('Supabase sync error:', error);
+        if (__DEV__) console.error('Supabase sync error:', error);
         setSyncError(error.message);
         return false;
       } else {
@@ -2541,14 +2541,14 @@ function AppContent() {
         setPalladiumItems(remotePalladium);
 
         if (__DEV__) {
-          console.log(`Supabase sync complete: ${syncedToCloud} items migrated, ${remoteSilver.length} silver, ${remoteGold.length} gold, ${remotePlatinum.length} platinum, ${remotePalladium.length} palladium from cloud`);
+          if (__DEV__) console.log(`Supabase sync complete: ${syncedToCloud} items migrated, ${remoteSilver.length} silver, ${remoteGold.length} gold, ${remotePlatinum.length} platinum, ${remotePalladium.length} palladium from cloud`);
         }
       }
 
       setHasSyncedOnce(true);
       return true;
     } catch (err) {
-      console.error('Supabase sync failed:', err);
+      if (__DEV__) console.error('Supabase sync failed:', err);
       setSyncError(err.message || 'Sync failed');
       return false;
     } finally {
@@ -2642,36 +2642,36 @@ function AppContent() {
 
   // Register for push notifications (for price alerts)
   const registerForPushNotifications = async () => {
-    console.log('📱 [Push] registerForPushNotifications() called');
-    console.log('📱 [Push] API_BASE_URL:', API_BASE_URL);
+    if (__DEV__) console.log('📱 [Push] registerForPushNotifications() called');
+    if (__DEV__) console.log('📱 [Push] API_BASE_URL:', API_BASE_URL);
     try {
       // Check existing permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      console.log('📱 [Push] Current permission status:', existingStatus);
+      if (__DEV__) console.log('📱 [Push] Current permission status:', existingStatus);
       let finalStatus = existingStatus;
 
       // Request permission if not granted
       if (existingStatus !== 'granted') {
-        console.log('📱 [Notifications] Requesting permission...');
+        if (__DEV__) console.log('📱 [Notifications] Requesting permission...');
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
-        console.log('📱 [Notifications] Permission result:', finalStatus);
+        if (__DEV__) console.log('📱 [Notifications] Permission result:', finalStatus);
       }
 
       if (finalStatus !== 'granted') {
-        console.log('📱 [Notifications] Permission not granted, finalStatus:', finalStatus);
+        if (__DEV__) console.log('📱 [Notifications] Permission not granted, finalStatus:', finalStatus);
         return null;
       }
 
       // Get Expo push token
       const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-      console.log('📱 [Notifications] Getting push token, projectId:', projectId);
+      if (__DEV__) console.log('📱 [Notifications] Getting push token, projectId:', projectId);
       const tokenData = await Notifications.getExpoPushTokenAsync({
         projectId,
       });
 
       const token = tokenData.data;
-      console.log('📱 [Notifications] Push Token:', token);
+      if (__DEV__) console.log('📱 [Notifications] Push Token:', token);
 
       // Configure notification channel for Android
       if (Platform.OS === 'android') {
@@ -2705,19 +2705,19 @@ function AppContent() {
 
         const result = await response.json();
         if (!response.ok) {
-          console.error('❌ [Notifications] Backend rejected push token:', result);
-          console.warn('Push notifications may not work for price alerts');
+          if (__DEV__) console.error('❌ [Notifications] Backend rejected push token:', result);
+          if (__DEV__) console.warn('Push notifications may not work for price alerts');
         } else {
-          console.log('✅ [Notifications] Push token registered with backend:', result);
+          if (__DEV__) console.log('✅ [Notifications] Push token registered with backend:', result);
         }
       } catch (backendError) {
-        console.error('❌ [Notifications] Failed to register token with backend:', backendError);
-        console.warn('Push notifications for price alerts may not work — token sync failed');
+        if (__DEV__) console.error('❌ [Notifications] Failed to register token with backend:', backendError);
+        if (__DEV__) console.warn('Push notifications for price alerts may not work — token sync failed');
       }
 
       return token;
     } catch (error) {
-      console.error('❌ [Notifications] Registration error:', error);
+      if (__DEV__) console.error('❌ [Notifications] Registration error:', error);
       return null;
     }
   };
@@ -2725,13 +2725,13 @@ function AppContent() {
   // Register for push notifications after authentication
   useEffect(() => {
     if (isAuthenticated) {
-      console.log('🔔 [Push] Authenticated — registering for push notifications...');
+      if (__DEV__) console.log('🔔 [Push] Authenticated — registering for push notifications...');
       registerForPushNotifications().then(token => {
         if (token) {
-          console.log('🔔 [Push] Token obtained:', token);
+          if (__DEV__) console.log('🔔 [Push] Token obtained:', token);
           setExpoPushToken(token);
         } else {
-          console.log('🔔 [Push] No token obtained (permission denied or error)');
+          if (__DEV__) console.log('🔔 [Push] No token obtained (permission denied or error)');
         }
       });
     }
@@ -2786,7 +2786,7 @@ function AppContent() {
   // Sync price alerts from backend on app load (works for anonymous + authenticated users)
   useEffect(() => {
     if (dataLoaded) {
-      console.log('🔄 [Push] App loaded — syncing price alerts from backend');
+      if (__DEV__) console.log('🔄 [Push] App loaded — syncing price alerts from backend');
       syncAlertsFromBackend();
     }
   }, [dataLoaded]);
@@ -2794,7 +2794,7 @@ function AppContent() {
   // Handle notification received in foreground (for logging)
   useEffect(() => {
     const receivedSub = Notifications.addNotificationReceivedListener(notification => {
-      console.log('🔔 [Push] Notification RECEIVED in foreground:', JSON.stringify(notification.request.content));
+      if (__DEV__) console.log('🔔 [Push] Notification RECEIVED in foreground:', JSON.stringify(notification.request.content));
     });
 
     return () => receivedSub.remove();
@@ -2804,7 +2804,7 @@ function AppContent() {
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
-      console.log('🔔 [Push] Notification TAPPED:', JSON.stringify(data));
+      if (__DEV__) console.log('🔔 [Push] Notification TAPPED:', JSON.stringify(data));
 
       if (data.type === 'price_alert') {
         // Show alert details
@@ -2877,16 +2877,16 @@ function AppContent() {
           // based on the App Store receipt. EAS dev builds use release mode so __DEV__ is false.
           const apiKey = 'appl_WDKPrWsOHfWzfJhxOGluQYsniLW';
 
-          console.log('🔧 Initializing RevenueCat...');
+          if (__DEV__) console.log('🔧 Initializing RevenueCat...');
 
           // Pass Supabase user ID to tie subscriptions to user account (not device)
           // If guest mode, pass null (uses anonymous device ID)
           const appUserId = supabaseUser?.id || null;
           
           if (appUserId) {
-            console.log('👤 RevenueCat: Tying subscription to user account:', appUserId.substring(0, 8) + '...');
+            if (__DEV__) console.log('👤 RevenueCat: Tying subscription to user account:', appUserId.substring(0, 8) + '...');
           } else if (guestMode) {
-            console.log('🕶️ RevenueCat: Guest mode - using anonymous device ID');
+            if (__DEV__) console.log('🕶️ RevenueCat: Guest mode - using anonymous device ID');
           }
 
           const initialized = await initializePurchases(apiKey, appUserId);
@@ -2896,20 +2896,20 @@ function AppContent() {
               try {
                 await loginRevenueCat(appUserId);
               } catch (error) {
-                console.error('RevenueCat login failed (non-fatal):', error?.message || error);
+                if (__DEV__) console.error('RevenueCat login failed (non-fatal):', error?.message || error);
               }
             }
             // Additional delay before checking entitlements
             await new Promise(resolve => setTimeout(resolve, 100));
             await checkEntitlements();
-            console.log('✅ RevenueCat setup complete');
+            if (__DEV__) console.log('✅ RevenueCat setup complete');
           } else {
-            console.log('⚠️ RevenueCat initialization returned false, skipping entitlements');
+            if (__DEV__) console.log('⚠️ RevenueCat initialization returned false, skipping entitlements');
           }
           setSubscriptionLoading(false); // Done checking subscription status
         } catch (error) {
           // Log but don't crash - RevenueCat is not critical for app function
-          console.error('RevenueCat setup failed (non-fatal):', error?.message || error);
+          if (__DEV__) console.error('RevenueCat setup failed (non-fatal):', error?.message || error);
           setSubscriptionLoading(false); // Done even on error
         }
       };
@@ -2931,7 +2931,7 @@ function AppContent() {
           }
         } catch (error) {
           // Non-critical - log but don't crash
-          console.log('Background fetch setup skipped:', error?.message);
+          if (__DEV__) console.log('Background fetch setup skipped:', error?.message);
         }
       };
       setupBackgroundFetch();
@@ -2962,7 +2962,7 @@ function AppContent() {
           }
         }
       } catch (err) {
-        console.log('Failed to parse reset password deep link:', err?.message);
+        if (__DEV__) console.log('Failed to parse reset password deep link:', err?.message);
       }
 
       setShowResetPasswordScreen(true);
@@ -2998,7 +2998,7 @@ function AppContent() {
       // This prevents saving wrong values before prices are fetched
       if (!isAuthenticated || !dataLoaded || !spotPricesLive) {
         if (__DEV__ && !spotPricesLive && dataLoaded) {
-          console.log('📸 Snapshot deferred: waiting for live spot prices...');
+          if (__DEV__) console.log('📸 Snapshot deferred: waiting for live spot prices...');
         }
         return;
       }
@@ -3042,7 +3042,7 @@ function AppContent() {
 
         const snapshotValue = (totalSilverOzt * baselineSilverSpot) + (totalGoldOzt * baselineGoldSpot) + (totalPlatinumOzt * baselinePlatinumSpot) + (totalPalladiumOzt * baselinePalladiumSpot);
         const usingPrevClose = spotChange.silver.prevClose != null;
-        console.log(`📸 Daily snapshot: ${totalSilverOzt.toFixed(2)}oz Ag @ $${baselineSilverSpot}, ${totalGoldOzt.toFixed(3)}oz Au @ $${baselineGoldSpot} = $${snapshotValue.toFixed(2)} (${usingPrevClose ? 'prev close' : 'current'})`);
+        if (__DEV__) console.log(`📸 Daily snapshot: ${totalSilverOzt.toFixed(2)}oz Ag @ $${baselineSilverSpot}, ${totalGoldOzt.toFixed(3)}oz Au @ $${baselineGoldSpot} = $${snapshotValue.toFixed(2)} (${usingPrevClose ? 'prev close' : 'current'})`);
       }
     };
 
@@ -3090,7 +3090,7 @@ function AppContent() {
         fetchSpotPrices(true).catch(err => {
           // Ignore AbortError, only log actual errors
           if (err?.name !== 'AbortError' && __DEV__) {
-            console.error('Foreground price fetch failed:', err?.message);
+            if (__DEV__) console.error('Foreground price fetch failed:', err?.message);
           }
         });
         startPriceRefresh();
@@ -3147,7 +3147,7 @@ function AppContent() {
       await AsyncStorage.setItem('stack_has_seen_tutorial', 'true');
       setShowTutorial(false);
     } catch (error) {
-      console.error('Error saving tutorial status:', error);
+      if (__DEV__) console.error('Error saving tutorial status:', error);
       setShowTutorial(false);
     }
   };
@@ -3158,7 +3158,7 @@ function AppContent() {
       await AsyncStorage.setItem('has_seen_v2_0_tutorial', 'true');
       setShowV20Tutorial(false);
     } catch (error) {
-      console.error('Error saving v2.0 tutorial status:', error);
+      if (__DEV__) console.error('Error saving v2.0 tutorial status:', error);
       setShowV20Tutorial(false);
     }
   };
@@ -3212,7 +3212,7 @@ function AppContent() {
         setAdvisorMessages(prev => [...prev, { role: 'assistant', text: 'Sorry, I couldn\'t process that. Please try again.', timestamp: Date.now() }]);
       }
     } catch (error) {
-      console.error('Advisor error:', error);
+      if (__DEV__) console.error('Advisor error:', error);
       setAdvisorMessages(prev => [...prev, { role: 'assistant', text: 'Connection error. Please check your internet and try again.', timestamp: Date.now() }]);
     } finally {
       setAdvisorLoading(false);
@@ -3346,7 +3346,7 @@ function AppContent() {
         if (__DEV__) console.log(`🔔 Loaded ${parsed.length} price alerts from local storage`);
       }
     } catch (error) {
-      console.error('❌ Error loading price alerts:', error);
+      if (__DEV__) console.error('❌ Error loading price alerts:', error);
     }
   };
 
@@ -3355,7 +3355,7 @@ function AppContent() {
     try {
       await AsyncStorage.setItem('stack_price_alerts', JSON.stringify(alerts));
     } catch (error) {
-      console.error('❌ Error saving price alerts:', error);
+      if (__DEV__) console.error('❌ Error saving price alerts:', error);
     }
   };
 
@@ -3411,10 +3411,10 @@ function AppContent() {
         const final = [...backendAlerts, ...syncedLocal];
         setPriceAlerts(final);
         await savePriceAlerts(final);
-        console.log(`🔔 [Push] Synced: ${backendAlerts.length} from backend, ${syncedLocal.length} local pushed, ${localOnly.length - syncedLocal.length} orphans discarded`);
+        if (__DEV__) console.log(`🔔 [Push] Synced: ${backendAlerts.length} from backend, ${syncedLocal.length} local pushed, ${localOnly.length - syncedLocal.length} orphans discarded`);
       }
     } catch (error) {
-      console.error('❌ [Push] Failed to sync alerts from backend:', error);
+      if (__DEV__) console.error('❌ [Push] Failed to sync alerts from backend:', error);
     }
   };
 
@@ -3447,9 +3447,9 @@ function AppContent() {
         }),
       });
       const result = await response.json();
-      console.log('🔔 [Push] Backend create response:', JSON.stringify(result));
+      if (__DEV__) console.log('🔔 [Push] Backend create response:', JSON.stringify(result));
     } catch (error) {
-      console.error('❌ [Push] Failed to create alert on backend:', error);
+      if (__DEV__) console.error('❌ [Push] Failed to create alert on backend:', error);
     }
 
     // Also save locally
@@ -3502,7 +3502,7 @@ function AppContent() {
           style: 'destructive',
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            console.log('🗑️ [Push] Deleting price alert:', alertId);
+            if (__DEV__) console.log('🗑️ [Push] Deleting price alert:', alertId);
             const updated = priceAlerts.filter(a => a.id !== alertId);
             setPriceAlerts(updated);
             await savePriceAlerts(updated);
@@ -3513,9 +3513,9 @@ function AppContent() {
                 method: 'DELETE',
               });
               const result = await response.json();
-              console.log('🗑️ [Push] Backend delete response:', JSON.stringify(result));
+              if (__DEV__) console.log('🗑️ [Push] Backend delete response:', JSON.stringify(result));
             } catch (error) {
-              console.error('❌ [Push] Failed to delete alert from backend:', error);
+              if (__DEV__) console.error('❌ [Push] Failed to delete alert from backend:', error);
             }
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -3569,7 +3569,7 @@ function AppContent() {
    */
   const syncWidget = async () => {
     // Debug logging for subscription state
-    console.log('📱 [syncWidget] Called with state:', {
+    if (__DEV__) console.log('📱 [syncWidget] Called with state:', {
       hasGold,
       hasLifetimeAccess,
       combinedSubscription: hasGold || hasLifetimeAccess,
@@ -3579,13 +3579,13 @@ function AppContent() {
 
     // Only sync for Gold/Lifetime subscribers
     if (!hasGold && !hasLifetimeAccess) {
-      console.log('📱 [syncWidget] Skipping - no subscription');
+      if (__DEV__) console.log('📱 [syncWidget] Skipping - no subscription');
       return;
     }
 
     // Only sync on iOS with WidgetKit available
     if (Platform.OS !== 'ios' || !isWidgetKitAvailable()) {
-      console.log('📱 [syncWidget] Skipping - not iOS or WidgetKit unavailable');
+      if (__DEV__) console.log('📱 [syncWidget] Skipping - not iOS or WidgetKit unavailable');
       return;
     }
 
@@ -3635,13 +3635,13 @@ function AppContent() {
         palladiumSparkline: sparklineData?.palladium || [],
       };
 
-      console.log('📱 [syncWidget] Sending payload:', widgetPayload);
+      if (__DEV__) console.log('📱 [syncWidget] Sending payload:', widgetPayload);
 
       await syncWidgetData(widgetPayload);
 
-      console.log('✅ [syncWidget] Widget data synced successfully');
+      if (__DEV__) console.log('✅ [syncWidget] Widget data synced successfully');
     } catch (error) {
-      console.error('❌ [syncWidget] Failed:', error.message);
+      if (__DEV__) console.error('❌ [syncWidget] Failed:', error.message);
     }
   };
 
@@ -3722,7 +3722,7 @@ function AppContent() {
         if (__DEV__) console.log('📊 Daily snapshot saved:', data.snapshot?.date);
       }
     } catch (error) {
-      console.error('❌ Error saving daily snapshot:', error.message);
+      if (__DEV__) console.error('❌ Error saving daily snapshot:', error.message);
     }
   };
 
@@ -3804,8 +3804,8 @@ function AppContent() {
     // Convert to sorted array (today is already included via addDate(0))
     const sortedDates = Array.from(dates).sort();
     const today = now.toISOString().split('T')[0];
-    console.log(`📊 Generated ${sortedDates.length} date points for historical calculation`);
-    console.log(`   First: ${sortedDates[0]}, Last: ${sortedDates[sortedDates.length - 1]}`);
+    if (__DEV__) console.log(`📊 Generated ${sortedDates.length} date points for historical calculation`);
+    if (__DEV__) console.log(`   First: ${sortedDates[0]}, Last: ${sortedDates[sortedDates.length - 1]}`);
 
     // Pre-cache today's prices from live spot data (avoids an API call)
     if (goldSpot > 0 && silverSpot > 0 && !historicalPriceCache.current[today]) {
@@ -3815,20 +3815,20 @@ function AppContent() {
         platinum: platinumSpot,
         palladium: palladiumSpot,
       };
-      console.log(`   📦 Pre-cached today's prices from live spot: Gold $${goldSpot}, Silver $${silverSpot}`);
+      if (__DEV__) console.log(`   📦 Pre-cached today's prices from live spot: Gold $${goldSpot}, Silver $${silverSpot}`);
     }
 
     // Check how many dates we need to fetch (not in cache)
     const uncachedDates = sortedDates.filter(d => !historicalPriceCache.current[d]);
     const cachedCount = sortedDates.length - uncachedDates.length;
 
-    console.log(`📊 Calculating ${sortedDates.length} data points for range ${range}`);
-    console.log(`   📦 ${cachedCount} cached, ${uncachedDates.length} need fetching`);
+    if (__DEV__) console.log(`📊 Calculating ${sortedDates.length} data points for range ${range}`);
+    if (__DEV__) console.log(`   📦 ${cachedCount} cached, ${uncachedDates.length} need fetching`);
 
     // Fetch all uncached dates in ONE batch request (much faster than individual calls)
     if (uncachedDates.length > 0) {
       try {
-        console.log(`   🚀 Batch fetching ${uncachedDates.length} dates...`);
+        if (__DEV__) console.log(`   🚀 Batch fetching ${uncachedDates.length} dates...`);
         const response = await fetch(`${API_BASE_URL}/api/historical-spot-batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3847,17 +3847,17 @@ function AppContent() {
               fetchedCount++;
             }
           }
-          console.log(`   ✅ Batch complete: ${fetchedCount} prices cached`);
+          if (__DEV__) console.log(`   ✅ Batch complete: ${fetchedCount} prices cached`);
         } else {
-          console.log('⚠️ Batch request failed:', batchData.error);
+          if (__DEV__) console.log('⚠️ Batch request failed:', batchData.error);
         }
       } catch (error) {
-        console.log('⚠️ Batch fetch error:', error.message);
+        if (__DEV__) console.log('⚠️ Batch fetch error:', error.message);
       }
     }
 
     const finalCachedCount = Object.keys(historicalPriceCache.current).length;
-    console.log(`📊 Fetch phase complete: ${finalCachedCount} total prices cached`);
+    if (__DEV__) console.log(`📊 Fetch phase complete: ${finalCachedCount} total prices cached`);
 
     // Now calculate portfolio values using cached prices
     const historicalData = [];
@@ -3909,7 +3909,7 @@ function AppContent() {
       });
     }
 
-    console.log(`📊 Historical calculation complete: ${historicalData.length} data points`);
+    if (__DEV__) console.log(`📊 Historical calculation complete: ${historicalData.length} data points`);
 
     return historicalData;
   };
@@ -4007,7 +4007,7 @@ function AppContent() {
         setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: null, loading: false, error: 'Historical data not available' } }));
       }
     } catch (error) {
-      console.log(`Spot price history fetch error (${metal}):`, error.message);
+      if (__DEV__) console.log(`Spot price history fetch error (${metal}):`, error.message);
       setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], data: null, loading: false, error: 'Failed to load' } }));
     }
   };
@@ -4137,12 +4137,12 @@ function AppContent() {
             apiSnapshots = data.snapshots || [];
             // Save current snapshot if user has holdings (don't await)
             if (hasHoldings) {
-              saveDailySnapshot().catch(err => console.log('Snapshot save error:', err.message));
+              saveDailySnapshot().catch(err => { if (__DEV__) console.log('Snapshot save error:', err.message); });
             }
           }
         } catch (apiError) {
           if (apiError.name === 'AbortError' || controller.signal.aborted) return;
-          console.log('⚠️ API snapshot fetch failed:', apiError.message);
+          if (__DEV__) console.log('⚠️ API snapshot fetch failed:', apiError.message);
         }
       } else {
         if (__DEV__) console.log('📊 No revenueCatUserId, skipping API fetch - using local calculation');
@@ -4152,13 +4152,13 @@ function AppContent() {
       let calculatedData = null;
       if (hasHoldings) {
         try {
-          console.log('📊 Calculating historical data from holdings...');
+          if (__DEV__) console.log('📊 Calculating historical data from holdings...');
           calculatedData = await calculateHistoricalPortfolioData('ALL');
           if (controller.signal.aborted) return;
-          console.log(`📊 Calculated ${calculatedData?.length || 0} historical points`);
+          if (__DEV__) console.log(`📊 Calculated ${calculatedData?.length || 0} historical points`);
         } catch (histError) {
           if (controller.signal.aborted) return;
-          console.log('⚠️ Historical calculation failed:', histError.message);
+          if (__DEV__) console.log('⚠️ Historical calculation failed:', histError.message);
         }
       }
 
@@ -4219,7 +4219,7 @@ function AppContent() {
       })).catch(() => {});
     } catch (error) {
       if (error.name === 'AbortError' || controller.signal.aborted) return;
-      console.error('❌ Error in analytics fetch:', error.message);
+      if (__DEV__) console.error('❌ Error in analytics fetch:', error.message);
       cache.fetched = true;
       if (!showedCachedData) setAnalyticsSnapshots([]);
     } finally {
@@ -4445,7 +4445,7 @@ function AppContent() {
       if (__DEV__) console.log('📱 Review prompt shown successfully');
 
     } catch (error) {
-      console.error('❌ Error with review prompt:', error.message);
+      if (__DEV__) console.error('❌ Error with review prompt:', error.message);
     }
   };
 
@@ -4471,7 +4471,7 @@ function AppContent() {
     try {
       await AsyncStorage.setItem('stack_spot_change_display_mode', newMode);
     } catch (error) {
-      console.error('Failed to save spot change display mode:', error);
+      if (__DEV__) console.error('Failed to save spot change display mode:', error);
     }
   };
 
@@ -4552,7 +4552,7 @@ function AppContent() {
         const effectivelyClosed = serverClosed || clientClosed;
         setMarketsClosed(effectivelyClosed);
         if (effectivelyClosed) {
-          console.log(`🔒 Markets closed — server: ${serverClosed}, client: ${clientClosed}`);
+          if (__DEV__) console.log(`🔒 Markets closed — server: ${serverClosed}, client: ${clientClosed}`);
         }
 
         if (__DEV__) console.log(`💰 Prices updated: Gold $${data.gold}, Silver $${data.silver} (Source: ${data.source})`);
@@ -4567,7 +4567,7 @@ function AppContent() {
         return;
       }
       // Log actual network errors
-      console.error('❌ Error fetching spot prices:', error.message);
+      if (__DEV__) console.error('❌ Error fetching spot prices:', error.message);
       if (__DEV__) console.error('   Error details:', error);
       setPriceSource('cached');
     }
@@ -4628,7 +4628,7 @@ function AppContent() {
         setDailyBrief(null);
       }
     } catch (error) {
-      console.error('📰 [Brief] Fetch error:', error.message);
+      if (__DEV__) console.error('📰 [Brief] Fetch error:', error.message);
     } finally {
       setDailyBriefLoading(false);
     }
@@ -4646,7 +4646,7 @@ function AppContent() {
         setPortfolioIntel(null);
       }
     } catch (error) {
-      console.error('🧠 [Portfolio Intel] Fetch error:', error.message);
+      if (__DEV__) console.error('🧠 [Portfolio Intel] Fetch error:', error.message);
     } finally {
       setPortfolioIntelLoading(false);
     }
@@ -4668,7 +4668,7 @@ function AppContent() {
       }
       setIntelligenceLastFetched(new Date());
     } catch (error) {
-      console.error('Intelligence fetch error:', error);
+      if (__DEV__) console.error('Intelligence fetch error:', error);
     } finally {
       setIntelligenceLoading(false);
     }
@@ -4685,7 +4685,7 @@ function AppContent() {
       }
       setVaultLastFetched(new Date());
     } catch (error) {
-      console.error('Vault data fetch error:', error);
+      if (__DEV__) console.error('Vault data fetch error:', error);
     } finally {
       setVaultLoading(false);
     }
@@ -4743,19 +4743,19 @@ function AppContent() {
       const data = await response.json();
 
       if (__DEV__) {
-        console.log('📅 Historical spot API response:', JSON.stringify(data, null, 2));
+        if (__DEV__) console.log('📅 Historical spot API response:', JSON.stringify(data, null, 2));
 
         // Log granularity-based warnings
         if (data.granularity === 'monthly' || data.granularity === 'monthly_fallback') {
-          console.log('⚠️ Using monthly average (pre-2006 or fallback)');
+          if (__DEV__) console.log('⚠️ Using monthly average (pre-2006 or fallback)');
         } else if (data.granularity === 'estimated_intraday') {
-          console.log('📊 Using time-weighted intraday estimate');
+          if (__DEV__) console.log('📊 Using time-weighted intraday estimate');
         } else if (data.granularity === 'minute') {
-          console.log('✅ Using exact minute-level price from our records');
+          if (__DEV__) console.log('✅ Using exact minute-level price from our records');
         }
 
         if (data.note) {
-          console.log(`📝 Note: ${data.note}`);
+          if (__DEV__) console.log(`📝 Note: ${data.note}`);
         }
       }
 
@@ -4875,9 +4875,9 @@ function AppContent() {
 
   // Process a single image and return items
   const processImage = async (asset, imageIndex, totalImages) => {
-    console.log(`📷 Processing image ${imageIndex + 1}/${totalImages}`);
-    console.log(`   URI: ${asset.uri}`);
-    console.log(`   Width: ${asset.width}px, Height: ${asset.height}px`);
+    if (__DEV__) console.log(`📷 Processing image ${imageIndex + 1}/${totalImages}`);
+    if (__DEV__) console.log(`   URI: ${asset.uri}`);
+    if (__DEV__) console.log(`   Width: ${asset.width}px, Height: ${asset.height}px`);
 
     // Read file as base64
     const fileInfo = await FileSystem.getInfoAsync(asset.uri, { size: true });
@@ -4885,8 +4885,8 @@ function AppContent() {
       encoding: FileSystem.EncodingType.Base64
     });
 
-    console.log(`   File size: ${fileInfo.size ? (fileInfo.size / 1024).toFixed(2) + ' KB' : 'unknown'}`);
-    console.log(`   Base64 length: ${fullBase64.length} characters`);
+    if (__DEV__) console.log(`   File size: ${fileInfo.size ? (fileInfo.size / 1024).toFixed(2) + ' KB' : 'unknown'}`);
+    if (__DEV__) console.log(`   Base64 length: ${fullBase64.length} characters`);
 
     const mimeType = asset.mimeType || asset.type || 'image/jpeg';
 
@@ -4971,7 +4971,7 @@ function AppContent() {
             if (__DEV__) console.log(`⚠️ Image ${i + 1}: No items found`);
           }
         } catch (imgError) {
-          console.error(`❌ Image ${i + 1} failed:`, imgError.message);
+          if (__DEV__) console.error(`❌ Image ${i + 1} failed:`, imgError.message);
         }
       }
 
@@ -4992,7 +4992,7 @@ function AppContent() {
       }
       const duplicatesRemoved = allItems.length - uniqueItems.length;
       if (duplicatesRemoved > 0 && __DEV__) {
-        console.log(`🔄 Removed ${duplicatesRemoved} duplicate item(s)`);
+        if (__DEV__) console.log(`🔄 Removed ${duplicatesRemoved} duplicate item(s)`);
       }
 
       const data = { success: uniqueItems.length > 0, items: uniqueItems, dealer, purchaseDate, purchaseTime };
@@ -5110,9 +5110,9 @@ function AppContent() {
         setScanMessage("Couldn't read receipt. This scan didn't count against your limit.");
       }
     } catch (error) {
-      console.error('❌ Scan receipt error:', error);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
+      if (__DEV__) console.error('❌ Scan receipt error:', error);
+      if (__DEV__) console.error('Error message:', error.message);
+      if (__DEV__) console.error('Error stack:', error.stack);
       setScanStatus('error');
       setScanMessage("Scan failed. This didn't count against your limit.");
     }
@@ -5185,7 +5185,7 @@ function AppContent() {
       }
 
     } catch (error) {
-      console.error('❌ Import error:', error);
+      if (__DEV__) console.error('❌ Import error:', error);
       Alert.alert('Import Failed', `Could not import spreadsheet. This didn't count against your scan limit.\n\n${error.message}`);
     }
   };
@@ -5347,7 +5347,7 @@ function AppContent() {
         }
       }
       if (duplicatesInFile > 0 && __DEV__) {
-        console.log(`🔄 Removed ${duplicatesInFile} duplicate rows from CSV`);
+        if (__DEV__) console.log(`🔄 Removed ${duplicatesInFile} duplicate rows from CSV`);
       }
 
       // Only increment scan count on successful parsing
@@ -5368,7 +5368,7 @@ function AppContent() {
       if (__DEV__) console.log(message);
 
     } catch (error) {
-      console.error('❌ Process spreadsheet error:', error);
+      if (__DEV__) console.error('❌ Process spreadsheet error:', error);
       Alert.alert('Import Failed', `Could not process spreadsheet. This didn't count against your scan limit.\n\n${error.message}`);
     }
   };
@@ -5438,7 +5438,7 @@ function AppContent() {
             }
             if (__DEV__) console.log(`Synced ${newItems.length} imported items to Supabase`);
           } catch (err) {
-            console.error('Failed to sync imported items to Supabase:', err);
+            if (__DEV__) console.error('Failed to sync imported items to Supabase:', err);
           }
         })();
       }
@@ -5459,7 +5459,7 @@ function AppContent() {
         }}]
       );
     } catch (error) {
-      console.error('❌ Confirm import error:', error);
+      if (__DEV__) console.error('❌ Confirm import error:', error);
       Alert.alert('Import Failed', error.message);
     }
   };
@@ -5505,7 +5505,7 @@ function AppContent() {
             }
             if (__DEV__) console.log(`Synced ${newItems.length} scanned items to Supabase`);
           } catch (err) {
-            console.error('Failed to sync scanned items to Supabase:', err);
+            if (__DEV__) console.error('Failed to sync scanned items to Supabase:', err);
           }
         })();
       }
@@ -5525,7 +5525,7 @@ function AppContent() {
         }}]
       );
     } catch (error) {
-      console.error('❌ Add scanned items error:', error);
+      if (__DEV__) console.error('❌ Add scanned items error:', error);
       Alert.alert('Add Failed', error.message);
     }
   };
@@ -5795,7 +5795,7 @@ function AppContent() {
             if (data && __DEV__) console.log('Added new holding to Supabase');
           }
         } catch (err) {
-          console.error('Failed to sync holding to Supabase:', err);
+          if (__DEV__) console.error('Failed to sync holding to Supabase:', err);
           // Don't block the user - local save already succeeded
         }
       })();
@@ -5860,7 +5860,7 @@ function AppContent() {
                   }
                 }
               } catch (err) {
-                console.error('Failed to delete holding from Supabase:', err);
+                if (__DEV__) console.error('Failed to delete holding from Supabase:', err);
                 // Don't block - local delete already succeeded
               }
             }
@@ -5985,7 +5985,7 @@ function AppContent() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.error('Export CSV error:', error);
+      if (__DEV__) console.error('Export CSV error:', error);
       Alert.alert('Export Failed', error.message || 'Could not export CSV file.');
     }
   };
@@ -6019,7 +6019,7 @@ function AppContent() {
       setIsGeneratingShare(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.error('Share My Stack error:', error);
+      if (__DEV__) console.error('Share My Stack error:', error);
       setIsGeneratingShare(false);
       Alert.alert('Share Failed', error.message || 'Could not generate share image.');
     }
@@ -6035,7 +6035,7 @@ function AppContent() {
     try {
       await AsyncStorage.setItem('stack_guest_mode', 'true');
     } catch (error) {
-      console.error('Failed to save guest mode:', error);
+      if (__DEV__) console.error('Failed to save guest mode:', error);
     }
   };
 
@@ -6045,7 +6045,7 @@ function AppContent() {
     try {
       await AsyncStorage.removeItem('stack_guest_mode');
     } catch (error) {
-      console.error('Failed to remove guest mode:', error);
+      if (__DEV__) console.error('Failed to remove guest mode:', error);
     }
   };
 
@@ -8994,7 +8994,7 @@ function AppContent() {
                                 text: 'Sign Out',
                                 style: 'destructive',
                                 onPress: async () => {
-                                  try { await logoutRevenueCat(); } catch (e) { console.error('RevenueCat logout failed:', e); }
+                                  try { await logoutRevenueCat(); } catch (e) { if (__DEV__) console.error('RevenueCat logout failed:', e); }
                                   await supabaseSignOut();
                                   setGuestMode(true);
                                 },

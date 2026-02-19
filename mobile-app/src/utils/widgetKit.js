@@ -10,7 +10,7 @@ import { NativeModules, Platform } from 'react-native';
 const { WidgetKitModule } = NativeModules;
 
 // Debug logging for native module availability
-console.log('🔧 [WidgetKit] Module check:', {
+if (__DEV__) console.log('🔧 [WidgetKit] Module check:', {
   platform: Platform.OS,
   moduleExists: WidgetKitModule !== null && WidgetKitModule !== undefined,
   moduleType: typeof WidgetKitModule,
@@ -22,7 +22,7 @@ console.log('🔧 [WidgetKit] Module check:', {
  */
 export const isWidgetKitAvailable = () => {
   const available = Platform.OS === 'ios' && WidgetKitModule !== null && WidgetKitModule !== undefined;
-  console.log('🔧 [WidgetKit] isWidgetKitAvailable:', available);
+  if (__DEV__) console.log('🔧 [WidgetKit] isWidgetKitAvailable:', available);
   return available;
 };
 
@@ -42,13 +42,13 @@ export const isWidgetKitAvailable = () => {
  * @param {boolean} data.hasSubscription Whether user has Gold/Lifetime access
  */
 export const updateWidgetData = async (data) => {
-  console.log('🔧 [WidgetKit] updateWidgetData called with:', {
+  if (__DEV__) console.log('🔧 [WidgetKit] updateWidgetData called with:', {
     hasSubscription: data.hasSubscription,
     portfolioValue: data.portfolioValue,
   });
 
   if (!isWidgetKitAvailable()) {
-    console.log('❌ [WidgetKit] Module not available - widget data NOT synced');
+    if (__DEV__) console.log('❌ [WidgetKit] Module not available - widget data NOT synced');
     return false;
   }
 
@@ -89,13 +89,13 @@ export const updateWidgetData = async (data) => {
     // Serialize to JSON and send to native module
     const jsonData = JSON.stringify(widgetData);
 
-    console.log('🔧 [WidgetKit] Sending to native module:', jsonData);
+    if (__DEV__) console.log('🔧 [WidgetKit] Sending to native module:', jsonData);
     WidgetKitModule.setWidgetData(jsonData);
 
-    console.log('✅ [WidgetKit] Widget data sent to native module');
+    if (__DEV__) console.log('✅ [WidgetKit] Widget data sent to native module');
     return true;
   } catch (error) {
-    console.error('❌ [WidgetKit] Failed to update widget data:', error);
+    if (__DEV__) console.error('❌ [WidgetKit] Failed to update widget data:', error);
     return false;
   }
 };
@@ -111,10 +111,10 @@ export const refreshWidgets = async () => {
 
   try {
     WidgetKitModule.reloadAllTimelines();
-    console.log('Widget timelines refreshed');
+    if (__DEV__) console.log('Widget timelines refreshed');
     return true;
   } catch (error) {
-    console.error('Failed to refresh widgets:', error);
+    if (__DEV__) console.error('Failed to refresh widgets:', error);
     return false;
   }
 };
@@ -145,7 +145,7 @@ export const getWidgetConfigurations = async () => {
     const configs = await WidgetKitModule.getCurrentConfigurations();
     return configs;
   } catch (error) {
-    console.error('Failed to get widget configurations:', error);
+    if (__DEV__) console.error('Failed to get widget configurations:', error);
     return [];
   }
 };

@@ -82,7 +82,7 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
       }
     } catch (error) {
       if (!error.userCancelled) {
-        console.error('Purchase error:', error);
+        if (__DEV__) console.error('Purchase error:', error);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert('Purchase Failed', error.message);
       }
@@ -109,7 +109,7 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
         Alert.alert('No Purchases Found', 'No active subscriptions were found to restore.');
       }
     } catch (error) {
-      console.error('Restore error:', error);
+      if (__DEV__) console.error('Restore error:', error);
       Alert.alert('Restore Failed', 'Could not restore purchases. Please try again.');
     } finally {
       setRestoring(false);
