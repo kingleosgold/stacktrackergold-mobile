@@ -9215,7 +9215,7 @@ function AppContent() {
         >
           <Animated.View style={{
             shadowColor: '#D4A843',
-            shadowOffset: { width: 0, height: 2 },
+            shadowOffset: { width: 0, height: 0 },
             shadowOpacity: fabGlow,
             shadowRadius: 8,
             elevation: 8,
