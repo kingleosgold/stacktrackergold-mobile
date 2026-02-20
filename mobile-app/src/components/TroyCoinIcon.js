@@ -4,10 +4,9 @@
  *
  * Layer order (bottom to top):
  *   1. Main circle with radial gradient (#F5D780 → #A07C28)
- *   2. Inner bevel circle — subtle depth line (#FFE8A0, 0.15 opacity)
- *   3. Reeded edge — radial tick marks (#9A7B2D) — on top, visible everywhere
- *   4. Outer rim stroke (#8B6914)
- *   5. Embossed T with shadow
+ *   2. Reeded edge — radial tick marks (#9A7B2D)
+ *   3. Outer rim stroke (#8B6914)
+ *   4. Embossed T with shadow
  *
  * Color spec is unified across mobile (react-native-svg) and web (inline SVG).
  */
@@ -24,7 +23,6 @@ const TroyCoinIcon = ({ size = 20 }) => {
   const bodyR = half - rimWidth;         // gradient fill
   const rimR = half - rimWidth / 2;      // outer rim stroke
   const reedR = half - rimWidth * 1.5;   // center radius of reeded edge
-  const bevelR = half - rimWidth * 2.5;  // inner bevel — step between ridges and coin face
   const tickLen = rimWidth * 0.9;        // radial length of each ridge tick
 
   // Build reeded edge as explicit radial tick marks — no seam issues
@@ -52,14 +50,12 @@ const TroyCoinIcon = ({ size = 20 }) => {
         </Defs>
         {/* 1. Coin body — radial gradient fill */}
         <Circle cx={half} cy={half} r={bodyR} fill={`url(#troyCoinGrad_${size})`} />
-        {/* 2. Inner bevel — subtle depth line between coin face and ridges */}
-        <Circle cx={half} cy={half} r={bevelR} fill="none" stroke="#FFE8A0" strokeWidth={0.5} opacity={0.15} />
-        {/* 3. Reeded edge — radial ticks on top, visible everywhere */}
+        {/* 2. Reeded edge — radial ticks, on top of body */}
         <Path d={reedPath} stroke="#9A7B2D" strokeWidth={0.8} strokeLinecap="butt" />
-        {/* 4. Outer rim stroke */}
+        {/* 3. Outer rim stroke */}
         <Circle cx={half} cy={half} r={rimR} fill="none" stroke="#8B6914" strokeWidth={rimWidth} />
       </Svg>
-      {/* 5. Embossed T with shadow */}
+      {/* 4. Embossed T with shadow */}
       <Text style={{
         position: 'absolute',
         fontSize,
