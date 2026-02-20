@@ -1063,6 +1063,10 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const chartW = width - yLabelW - rightPad;
   const chartH = height - xLabelH - topPad;
 
+  // Filter out invalid data points (null, undefined, zero, NaN)
+  data = data.filter(d => d.value != null && !isNaN(d.value) && d.value > 0);
+  if (data.length < 2) return <View style={{ height }} />;
+
   // Data bounds
   const values = data.map(d => d.value);
   const minVal = Math.min(...values);
@@ -1101,9 +1105,11 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const seenLabels = new Set();
   for (let n = 0; n < xLabelCount; n++) {
     const i = n === xLabelCount - 1 ? data.length - 1 : Math.round(n * (data.length - 1) / (xLabelCount - 1));
-    const d = new Date(data[i].date + 'T12:00:00');
+    const dateStr = data[i].date;
+    const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T12:00:00');
     let label;
-    if (range === 'ALL' || range === '5Y') label = `${d.getFullYear()}`;
+    if (isNaN(d.getTime())) label = '';
+    else if (range === 'ALL' || range === '5Y') label = `${d.getFullYear()}`;
     else if (range === '1Y') label = `${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
     else label = `${d.getMonth() + 1}/${d.getDate()}`;
     if (!seenLabels.has(label)) {
@@ -1174,7 +1180,8 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const scrubYSvg = scrubIndex !== null ? topPad + svgH * (1 - (data[scrubIndex].value - niceMin) / niceRange) : 0;
 
   const formatDate = (dateStr) => {
-    const d = new Date(dateStr + 'T12:00:00');
+    const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T12:00:00');
+    if (isNaN(d.getTime())) return dateStr;
     return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
   };
 
@@ -3825,34 +3832,66 @@ function AppContent() {
     if (__DEV__) console.log(`📊 Calculating ${sortedDates.length} data points for range ${range}`);
     if (__DEV__) console.log(`   📦 ${cachedCount} cached, ${uncachedDates.length} need fetching`);
 
-    // Fetch all uncached dates in ONE batch request (much faster than individual calls)
+    // Fetch historical prices from v1/prices/history per metal (batch endpoint doesn't exist on v1)
     if (uncachedDates.length > 0) {
       try {
-        if (__DEV__) console.log(`   🚀 Batch fetching ${uncachedDates.length} dates...`);
-        const response = await fetch(`${API_BASE_URL}/v1/historical-spot-batch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dates: uncachedDates }),
-        });
-        const batchData = await response.json();
+        if (__DEV__) console.log(`   🚀 Fetching price history for portfolio calculation...`);
+        const metals = ['gold', 'silver', 'platinum', 'palladium'];
+        const histResults = await Promise.all(
+          metals.map(async (metal) => {
+            try {
+              const res = await fetch(`${API_BASE_URL}/v1/prices/history?range=ALL&metal=${metal}`);
+              if (!res.ok) return [];
+              const data = await res.json();
+              return (data.prices || []).map(p => ({
+                date: p.date.split('T')[0],
+                price: p.price,
+              }));
+            } catch { return []; }
+          })
+        );
 
-        if (batchData.success && batchData.results) {
-          let fetchedCount = 0;
-          for (const [date, result] of Object.entries(batchData.results)) {
-            if (result.success && result.gold && result.silver) {
-              historicalPriceCache.current[date] = {
-                gold: result.gold,
-                silver: result.silver,
-              };
+        // Build date→prices map, keeping the last price for each date per metal
+        const dateMap = {};
+        metals.forEach((metal, idx) => {
+          for (const pt of histResults[idx]) {
+            if (!pt.price || pt.price <= 0) continue;
+            if (!dateMap[pt.date]) dateMap[pt.date] = {};
+            dateMap[pt.date][metal] = pt.price;
+          }
+        });
+
+        // Populate cache with entries that have at least gold and silver
+        let fetchedCount = 0;
+        for (const [date, prices] of Object.entries(dateMap)) {
+          if (prices.gold && prices.silver && !historicalPriceCache.current[date]) {
+            historicalPriceCache.current[date] = prices;
+            fetchedCount++;
+          }
+        }
+
+        // For dates not in the history data, interpolate from nearest available
+        if (fetchedCount > 0) {
+          const availDates = Object.keys(dateMap).filter(d => dateMap[d].gold && dateMap[d].silver).sort();
+          for (const targetDate of uncachedDates) {
+            if (historicalPriceCache.current[targetDate]) continue;
+            // Find nearest available date
+            let nearest = null;
+            let minDist = Infinity;
+            for (const d of availDates) {
+              const dist = Math.abs(new Date(targetDate) - new Date(d));
+              if (dist < minDist) { minDist = dist; nearest = d; }
+            }
+            if (nearest && minDist < 7 * 24 * 60 * 60 * 1000) { // within 7 days
+              historicalPriceCache.current[targetDate] = dateMap[nearest];
               fetchedCount++;
             }
           }
-          if (__DEV__) console.log(`   ✅ Batch complete: ${fetchedCount} prices cached`);
-        } else {
-          if (__DEV__) console.log('⚠️ Batch request failed:', batchData.error);
         }
+
+        if (__DEV__) console.log(`   ✅ History fetch complete: ${fetchedCount} date/prices cached`);
       } catch (error) {
-        if (__DEV__) console.log('⚠️ Batch fetch error:', error.message);
+        if (__DEV__) console.log('⚠️ Historical price fetch error:', error.message);
       }
     }
 
@@ -4017,26 +4056,50 @@ function AppContent() {
     setSpotHistoryMetal(prev => ({ ...prev, [metal]: { ...prev[metal], range } }));
   };
 
-  /** Fetch 24-hour sparkline data for Metal Movers + Portfolio Pulse */
+  /** Fetch sparkline data from v1/prices/history (sparkline-24h endpoint doesn't exist on v1) */
   const fetchSparklineData = async () => {
     if (sparklineFetchedRef.current) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/sparkline-24h`);
-      const result = await response.json();
-      if (result.sparklines) {
-        const s = result.sparklines;
-        if (s.gold && s.gold.length >= 2) {
-          setSparklineData({
-            gold: s.gold,
-            silver: s.silver || [],
-            platinum: s.platinum || [],
-            palladium: s.palladium || [],
-            timestamps: result.timestamps || [],
-          });
-          sparklineFetchedRef.current = true;
+      const metals = ['gold', 'silver', 'platinum', 'palladium'];
+      const results = await Promise.all(
+        metals.map(async (metal) => {
+          const res = await fetch(`${API_BASE_URL}/v1/prices/history?range=1M&metal=${metal}`);
+          if (!res.ok) return [];
+          const data = await res.json();
+          return (data.prices || []).filter(p => p.price != null && p.price > 0);
+        })
+      );
+
+      // Take last 48 points from each (roughly 12-24 hours at 15-min intervals)
+      const SPARKLINE_POINTS = 48;
+      const sparklines = {};
+      const timestamps = [];
+      let hasData = false;
+
+      metals.forEach((metal, i) => {
+        const pts = results[i];
+        const tail = pts.slice(-SPARKLINE_POINTS);
+        sparklines[metal] = tail.map(p => p.price);
+        if (metal === 'gold' && tail.length >= 2) {
+          hasData = true;
+          // Extract timestamps from gold for reference
+          tail.forEach(p => timestamps.push(p.date));
         }
+      });
+
+      if (hasData) {
+        setSparklineData({
+          gold: sparklines.gold,
+          silver: sparklines.silver,
+          platinum: sparklines.platinum,
+          palladium: sparklines.palladium,
+          timestamps,
+        });
+        sparklineFetchedRef.current = true;
       }
-    } catch (e) { /* silent */ }
+    } catch (e) {
+      if (__DEV__) console.log('Sparkline fetch error:', e.message);
+    }
   };
 
   /**
@@ -4632,8 +4695,38 @@ function AppContent() {
       setPortfolioIntelLoading(true);
       const response = await fetch(`${API_BASE_URL}/v1/portfolio-intelligence?userId=${supabaseUser.id}`);
       const data = await response.json();
-      if (data.intelligence) {
-        setPortfolioIntel(data.intelligence);
+      if (__DEV__) console.log('🧠 [Portfolio Intel] Response:', JSON.stringify(data).slice(0, 300));
+
+      // v1 may return intelligence as nested object, direct text, or with portfolio key
+      let intel = data.intelligence || data;
+      if (intel) {
+        // Extract plain text from whatever shape we get
+        let text = null;
+        if (typeof intel === 'string') {
+          text = intel;
+        } else if (typeof intel.text === 'string') {
+          // text might be a JSON string — try to parse it
+          try {
+            const parsed = JSON.parse(intel.text);
+            text = parsed.portfolio || parsed.text || parsed.analysis || intel.text;
+          } catch {
+            text = intel.text;
+          }
+        } else if (typeof intel.portfolio === 'string') {
+          text = intel.portfolio;
+        }
+
+        if (text) {
+          setPortfolioIntel({
+            text,
+            costBasis: intel.costBasis || intel.cost_basis || null,
+            purchaseStats: intel.purchaseStats || intel.purchase_stats || null,
+            date: intel.date || new Date().toISOString().split('T')[0],
+            is_current: intel.is_current ?? true,
+          });
+        } else {
+          setPortfolioIntel(null);
+        }
       } else {
         setPortfolioIntel(null);
       }
@@ -4700,8 +4793,8 @@ function AppContent() {
             registered_oz: raw.registered_oz || 0,
             eligible_oz: raw.eligible_oz || 0,
             combined_oz: raw.combined_oz || 0,
-            registered_change_oz: raw.daily_change?.registered || 0,
-            eligible_change_oz: raw.daily_change?.eligible || 0,
+            registered_change_oz: raw.registered_change_oz || 0,
+            eligible_change_oz: raw.eligible_change_oz || 0,
             oversubscribed_ratio: raw.oversubscribed_ratio || 0,
           }];
         } else {
