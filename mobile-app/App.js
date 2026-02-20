@@ -884,6 +884,67 @@ const SwipeableAlertRow = ({ alert, colors, onDelete, onToggle, spotPrices }) =>
 };
 
 /**
+ * Monotone cubic interpolation (Fritsch–Carlson) — produces smooth curves that
+ * never overshoot data points, matching Recharts' type="monotone" on web.
+ * Takes an array of {x, y} points and returns an SVG path string.
+ */
+const buildMonotonePath = (points) => {
+  const n = points.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  if (n === 2) return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)} L${points[1].x.toFixed(1)},${points[1].y.toFixed(1)}`;
+
+  // 1. Compute slopes between consecutive points
+  const dx = [], dy = [], m = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(points[i + 1].x - points[i].x);
+    dy.push(points[i + 1].y - points[i].y);
+    m.push(dx[i] === 0 ? 0 : dy[i] / dx[i]);
+  }
+
+  // 2. Compute tangent at each point (Fritsch–Carlson)
+  const tangents = new Array(n);
+  tangents[0] = m[0];
+  tangents[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i - 1] * m[i] <= 0) {
+      tangents[i] = 0;
+    } else {
+      tangents[i] = (m[i - 1] + m[i]) / 2;
+    }
+  }
+
+  // 3. Adjust tangents to ensure monotonicity
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      tangents[i] = 0;
+      tangents[i + 1] = 0;
+    } else {
+      const a = tangents[i] / m[i];
+      const b = tangents[i + 1] / m[i];
+      const s = a * a + b * b;
+      if (s > 9) {
+        const t = 3 / Math.sqrt(s);
+        tangents[i] = t * a * m[i];
+        tangents[i + 1] = t * b * m[i];
+      }
+    }
+  }
+
+  // 4. Build cubic bezier path
+  let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const seg = dx[i] / 3;
+    const cp1x = points[i].x + seg;
+    const cp1y = points[i].y + tangents[i] * seg;
+    const cp2x = points[i + 1].x - seg;
+    const cp2y = points[i + 1].y - tangents[i + 1] * seg;
+    d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${points[i + 1].x.toFixed(1)},${points[i + 1].y.toFixed(1)}`;
+  }
+  return d;
+};
+
+/**
  * ScrubSparkline — sparkline with long-press-to-scrub crosshair and tooltip.
  * Uses onTouchStart/Move/End so it doesn't block ScrollView scroll.
  * Long press (~200ms) activates scrubbing; moving before that lets scroll happen.
@@ -903,11 +964,13 @@ const ScrubSparkline = ({ dataPoints, timestamps, svgW, svgH, strokeColor, gradi
   const max = Math.max(...dataPoints);
   const range = max - min || 1;
 
-  const pathD = dataPoints.map((v, i) => {
-    const x = (i / (dataPoints.length - 1)) * svgW;
-    const y = 4 + (svgH - 8) * (1 - (v - min) / range);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  // Build points array, then use monotone interpolation for smooth curves
+  const pts = dataPoints.map((v, i) => ({
+    x: (i / (dataPoints.length - 1)) * svgW,
+    y: 4 + (svgH - 8) * (1 - (v - min) / range),
+  }));
+  const pathD = dataPoints.length <= 200 ? buildMonotonePath(pts)
+    : pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const fillD = `${pathD} L${svgW},${svgH} L0,${svgH} Z`;
 
   const getScrubDataIndex = (pageX) => {
@@ -1119,12 +1182,13 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const svgW = chartW;
   const svgH = chartH;
 
-  // Build path
-  const pathD = data.map((pt, i) => {
-    const x = (i / (data.length - 1)) * svgW;
-    const y = topPad + svgH * (1 - (pt.value - niceMin) / niceRange);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+  // Build path — use monotone cubic interpolation when under 200 points for smooth curves
+  const pts = data.map((pt, i) => ({
+    x: (i / (data.length - 1)) * svgW,
+    y: topPad + svgH * (1 - (pt.value - niceMin) / niceRange),
+  }));
+  const pathD = data.length <= 200 ? buildMonotonePath(pts)
+    : pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const fillD = `${pathD} L${svgW},${topPad + svgH} L0,${topPad + svgH} Z`;
 
   // Build secondary path (optional, e.g. eligible line on vault chart)
@@ -1132,11 +1196,12 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   if (secondaryData && secondaryData.length >= 2) {
     const secFiltered = secondaryData.filter(d => d.value != null && d.value > 0);
     if (secFiltered.length >= 2) {
-      secondaryPathD = secFiltered.map((pt, i) => {
-        const x = (i / (secFiltered.length - 1)) * svgW;
-        const y = topPad + svgH * (1 - (pt.value - niceMin) / niceRange);
-        return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
+      const secPts = secFiltered.map((pt, i) => ({
+        x: (i / (secFiltered.length - 1)) * svgW,
+        y: topPad + svgH * (1 - (pt.value - niceMin) / niceRange),
+      }));
+      secondaryPathD = secFiltered.length <= 200 ? buildMonotonePath(secPts)
+        : secPts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
     }
   }
 
