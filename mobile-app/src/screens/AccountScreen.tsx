@@ -53,22 +53,9 @@ export default function AccountScreen({
     return colors.muted;
   };
 
-  const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out? All local data will be cleared.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: () => {
-            // App.js performSignOut handles everything: RevenueCat, Supabase, data clearing, navigation
-            onSignOut();
-          },
-        },
-      ]
-    );
+  const handleSignOut = () => {
+    // Authenticated users sign out immediately — no confirmation needed
+    onSignOut();
   };
 
   const handleDeleteAccount = () => {

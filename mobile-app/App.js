@@ -9427,42 +9427,41 @@ function AppContent() {
                 </>
               )}
 
-              {/* Sign Out - only when signed in */}
-              {supabaseUser && (
-                <>
-                  <View style={{ marginTop: 32 }}>
-                    <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: groupBg,
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          minHeight: 44,
-                          borderRadius: 10,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          Alert.alert(
-                            'Sign Out',
-                            'Are you sure you want to sign out? All local data will be cleared.',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Sign Out',
-                                style: 'destructive',
-                                onPress: () => performSignOut(),
-                              },
-                            ]
-                          );
-                        }}
-                      >
-                        <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Sign Out</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
+              {/* Sign Out */}
+              <View style={{ marginTop: 32 }}>
+                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: groupBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      if (supabaseUser) {
+                        // Authenticated users — sign out immediately
+                        performSignOut();
+                      } else {
+                        // Guest users — warn about data loss
+                        Alert.alert(
+                          'You\'re not signed in',
+                          'Signing out will delete any data you\'ve added. Create an account to save your stack.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Create Account', onPress: () => disableGuestMode() },
+                            { text: 'Sign Out', style: 'destructive', onPress: () => performSignOut() },
+                          ]
+                        );
+                      }
+                    }}
+                  >
+                    <Text style={{ color: '#007AFF', fontSize: scaledFonts.normal }}>Sign Out</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
               {/* Extra padding at bottom */}
               <View style={{ height: 50 }} />
