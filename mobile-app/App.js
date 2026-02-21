@@ -5217,21 +5217,6 @@ function AppContent() {
   // RECEIPT SCANNING
   // ============================================
 
-  // Show scanning tips before opening picker
-  const showScanningTips = (source) => {
-    const tips = source === 'camera'
-      ? "For best results:\n\n• Lay paper receipt flat with good lighting\n• Avoid shadows and glare\n• Include all line items in frame"
-      : "For best results:\n\n• Use screenshots from dealer apps or emails\n• For paper receipts: lay flat with good lighting\n• Select multiple images for long receipts";
-
-    Alert.alert(
-      '📷 Scanning Tips',
-      tips,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue', onPress: () => performScan(source) }
-      ]
-    );
-  };
 
   // Process a single image and return items
   const processImage = async (asset, imageIndex, totalImages) => {
@@ -6960,6 +6945,17 @@ function AppContent() {
                   const effPlatinumOzt = demoData ? 7.5 : totalPlatinumOzt;
                   const effPalladiumOzt = demoData ? 3.0 : totalPalladiumOzt;
                   const portfolioPoints = goldPts.map((g, i) => (effGoldOzt * g) + (effSilverOzt * (silverPts[i] || 0)) + (effPlatinumOzt * (effSparklineData.platinum[i] || 0)) + (effPalladiumOzt * (effSparklineData.palladium[i] || 0)));
+
+                  // If all portfolio points are identical (no real price movement yet), show message instead of flat line
+                  const allSame = portfolioPoints.every(p => Math.abs(p - portfolioPoints[0]) < 0.01);
+                  if (allSame && effMarketsClosed) {
+                    return (
+                      <Text style={{ color: '#71717a', fontSize: scaledFonts.tiny, marginBottom: 4, fontStyle: 'italic' }}>
+                        Chart updates when markets open
+                      </Text>
+                    );
+                  }
+
                   const isUp = displayDailyChangePct >= 0;
                   const sparkColor = effMarketsClosed ? '#71717a' : (isUp ? '#4CAF50' : '#F44336');
                   return (
@@ -9887,13 +9883,16 @@ function AppContent() {
                   <View style={[styles.card, { backgroundColor: isDarkMode ? 'rgba(148,163,184,0.1)' : `${colors.gold}15` }]}>
                     <Text style={{ color: colors.text, fontWeight: '600', marginBottom: 12, fontSize: scaledFonts.normal }}>AI Receipt Scanner</Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold, flex: 1 }]} onPress={() => showScanningTips('camera')}>
+                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold, flex: 1 }]} onPress={() => performScan('camera')}>
                         <Text style={{ color: '#000', fontSize: scaledFonts.normal }} numberOfLines={1} adjustsFontSizeToFit={true}>Camera</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold, flex: 1 }]} onPress={() => showScanningTips('gallery')}>
+                      <TouchableOpacity style={[styles.button, { backgroundColor: colors.gold, flex: 1 }]} onPress={() => performScan('gallery')}>
                         <Text style={{ color: '#000', fontSize: scaledFonts.normal }} numberOfLines={1} adjustsFontSizeToFit={true}>Upload</Text>
                       </TouchableOpacity>
                     </View>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 6, textAlign: 'center' }}>
+                      Tip: Lay flat with good lighting for best results
+                    </Text>
                     {!hasGold && !hasLifetimeAccess && (
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 8, textAlign: 'center' }}>
                         {scanUsage.scansUsed >= scanUsage.scansLimit ? (

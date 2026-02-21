@@ -280,8 +280,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
-                textContentType={mode === 'signUp' ? 'newPassword' : 'password'}
-                autoComplete={mode === 'signUp' ? 'password-new' : 'password'}
+                textContentType="oneTimeCode"
+                autoComplete="off"
                 editable={!loading}
               />
             </View>
@@ -309,7 +309,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry
-                  textContentType="newPassword"
+                  textContentType="oneTimeCode"
                   editable={!loading}
                 />
               </View>
