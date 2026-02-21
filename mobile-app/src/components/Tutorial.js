@@ -2,6 +2,11 @@
  * Stack Tracker Pro - Tutorial Component
  * Supports both first-launch onboarding and version update tutorials.
  * Swipeable slides with dot pagination.
+ *
+ * Slide widths are driven by onLayout so the pager works correctly
+ * on both iPhone (where container ≈ 90% of screen) and iPad (where
+ * maxWidth: 400 constrains the container to be much narrower than
+ * the screen).
  */
 
 import React, { useState, useRef } from 'react';
@@ -22,6 +27,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const Tutorial = ({ visible, onComplete, slides: customSlides }) => {
   const [currentScreen, setCurrentScreen] = useState(0);
   const scrollRef = useRef(null);
+  // Start with a reasonable default; onLayout will correct it immediately
+  const [containerWidth, setContainerWidth] = useState(Math.min(SCREEN_WIDTH * 0.9, 400));
 
   // Default first-launch slides
   const defaultSlides = [
@@ -51,7 +58,7 @@ const Tutorial = ({ visible, onComplete, slides: customSlides }) => {
     if (currentScreen < slides.length - 1) {
       const next = currentScreen + 1;
       setCurrentScreen(next);
-      scrollRef.current?.scrollTo({ x: next * SCREEN_WIDTH * 0.9, animated: true });
+      scrollRef.current?.scrollTo({ x: next * containerWidth, animated: true });
     } else {
       setCurrentScreen(0);
       onComplete();
@@ -65,18 +72,23 @@ const Tutorial = ({ visible, onComplete, slides: customSlides }) => {
 
   const handleScroll = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
-    const page = Math.round(offsetX / (SCREEN_WIDTH * 0.9));
+    const page = Math.round(offsetX / containerWidth);
     if (page >= 0 && page < slides.length && page !== currentScreen) {
       setCurrentScreen(page);
     }
   };
 
-  const currentSlide = slides[currentScreen];
+  const handleContainerLayout = (event) => {
+    const { width } = event.nativeEvent.layout;
+    if (width > 0 && width !== containerWidth) {
+      setContainerWidth(width);
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <View style={styles.container} onLayout={handleContainerLayout}>
           {/* Skip Button */}
           {currentScreen < slides.length - 1 && (
             <TouchableOpacity
@@ -97,10 +109,10 @@ const Tutorial = ({ visible, onComplete, slides: customSlides }) => {
             onMomentumScrollEnd={handleScroll}
             scrollEventThrottle={16}
             style={styles.scrollView}
-            contentContainerStyle={{ width: SCREEN_WIDTH * 0.9 * slides.length }}
+            contentContainerStyle={{ width: containerWidth * slides.length }}
           >
             {slides.map((slide, index) => (
-              <View key={index} style={[styles.slideContent, { width: SCREEN_WIDTH * 0.9 }]}>
+              <View key={index} style={[styles.slideContent, { width: containerWidth }]}>
                 {slide.emojiComponent ? slide.emojiComponent : <Text style={styles.emoji}>{slide.emoji}</Text>}
                 <Text style={styles.title}>{slide.title}</Text>
                 <Text style={styles.description}>{slide.description}</Text>
@@ -250,8 +262,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 48,
     borderRadius: 12,
     marginHorizontal: 32,
-    width: SCREEN_WIDTH * 0.9 - 64,
-    maxWidth: 336,
+    alignSelf: 'stretch',
+    marginLeft: 32,
+    marginRight: 32,
     alignItems: 'center',
   },
   nextButtonText: {

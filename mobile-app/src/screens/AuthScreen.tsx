@@ -147,12 +147,16 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       if (error) {
         if (error.message !== 'Sign in cancelled') {
           setError(error.message);
+          // Show alert with full error details for iPad debugging
+          Alert.alert('Apple Sign In Error', error.message);
         }
       } else {
         onAuthSuccess?.();
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Apple');
+      const msg = err.message || 'Failed to sign in with Apple';
+      setError(msg);
+      Alert.alert('Apple Sign In Error', msg);
     }
   };
 
@@ -354,6 +358,13 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                   style={styles.appleNativeButton}
                   onPress={handleAppleAuth}
                 />
+              )}
+              {Platform.OS === 'ios' && !isAppleAvailable && (
+                <View style={{ padding: 12, backgroundColor: 'rgba(239, 68, 68, 0.15)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+                  <Text style={{ color: '#ef4444', fontSize: 13, textAlign: 'center' }}>
+                    Apple Sign In is not available on this device. Check Settings → Apple ID → Sign in.
+                  </Text>
+                </View>
               )}
             </View>
 

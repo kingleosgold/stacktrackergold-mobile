@@ -229,6 +229,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Check if Apple Authentication is available
       const isAvailable = await AppleAuthentication.isAvailableAsync();
+      if (__DEV__) console.log('🍎 [Apple Auth] isAvailable:', isAvailable);
       if (!isAvailable) {
         throw new Error('Apple authentication is not available on this device');
       }
@@ -245,6 +246,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         nonce
       );
 
+      if (__DEV__) console.log('🍎 [Apple Auth] Requesting credential...');
+
       // Request Apple credential with 60-second timeout protection
       const credentialPromise = AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -254,17 +257,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
         nonce: hashedNonce,
       });
 
-      const timeoutPromise = new Promise((_, reject) => 
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Sign in timed out after 60 seconds. Please try again.')), 60000)
       );
 
       const credential = await Promise.race([credentialPromise, timeoutPromise]) as any;
 
+      if (__DEV__) console.log('🍎 [Apple Auth] Got credential, hasToken:', !!credential?.identityToken);
       if (!credential.identityToken) {
         throw new Error('No identity token returned from Apple');
       }
 
       // Sign in with Supabase using the Apple token
+      if (__DEV__) console.log('🍎 [Apple Auth] Signing in with Supabase...');
       const { error } = await supabase.auth.signInWithIdToken({
         provider: 'apple',
         token: credential.identityToken,
@@ -272,17 +277,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
 
       if (error) {
+        if (__DEV__) console.error('🍎 [Apple Auth] Supabase error:', error.message);
         throw error;
       }
 
+      if (__DEV__) console.log('🍎 [Apple Auth] Success');
       return { error: null };
     } catch (error: any) {
       // Handle user cancellation
       if (error.code === 'ERR_REQUEST_CANCELED') {
         return { error: new Error('Sign in cancelled') };
       }
-      if (__DEV__) console.error('Apple sign in error:', error);
-      return { error: error as Error };
+      if (__DEV__) console.error('🍎 [Apple Auth] Error:', error.code, error.message, error);
+      // Include error code in message for debugging in production
+      const debugMsg = error.code
+        ? `Apple Sign In failed (${error.code}): ${error.message}`
+        : `Apple Sign In failed: ${error.message}`;
+      return { error: new Error(debugMsg) };
     } finally {
       setLoading(false);
     }
