@@ -303,7 +303,7 @@ struct PortfolioLabel: View {
     }
 
     private var labelText: some View {
-        Text("PORTFOLIO")
+        Text("STACK")
             .font(.system(size: fontSize, weight: .semibold))
             .foregroundColor(wMuted)
             .kerning(1.2)
@@ -413,7 +413,7 @@ struct LockedLargeView: View {
     }
 
     private var lockSubtitle: some View {
-        Text("Get portfolio widgets on your home screen")
+        Text("Get stack widgets on your home screen")
             .font(.system(size: subtitleSize))
             .foregroundColor(wMuted)
             .multilineTextAlignment(.center)

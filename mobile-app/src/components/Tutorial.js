@@ -35,7 +35,7 @@ const Tutorial = ({ visible, onComplete, slides: customSlides }) => {
     {
       emoji: '🪙',
       title: 'Track Your Stack',
-      description: 'Keep tabs on your precious metals portfolio. Track gold, silver, and everything in between with precision.',
+      description: 'Keep tabs on your precious metals stack. Track gold, silver, and everything in between with precision.',
       highlight: 'Your data stays on YOUR device. 100% private.',
     },
     {
@@ -47,7 +47,7 @@ const Tutorial = ({ visible, onComplete, slides: customSlides }) => {
     {
       emoji: '👑',
       title: 'Go Gold for More',
-      description: 'Free tier: portfolio tracking, live prices, basic analytics. Gold tier: AI intelligence, Vault Watch, full analytics, and more.',
+      description: 'Free tier: stack tracking, live prices, basic analytics. Gold tier: AI intelligence, Vault Watch, full analytics, and more.',
       highlight: 'Start stacking for free!',
     },
   ];

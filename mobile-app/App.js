@@ -37,6 +37,7 @@ import Tutorial from './src/components/Tutorial';
 import TroyCoinIcon from './src/components/TroyCoinIcon';
 import GlobeIcon from './src/components/GlobeIcon';
 import ViewShot from 'react-native-view-shot';
+import Markdown from 'react-native-markdown-display';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import AuthScreen from './src/screens/AuthScreen';
 import AccountScreen from './src/screens/AccountScreen';
@@ -1744,7 +1745,7 @@ function AppContent() {
       }),
     },
     portfolioIntel: {
-      text: 'Your portfolio is well-diversified across 4 metals with a strong gold core (68% allocation). Gold\'s sustained breakout above $5,000 positions your stack favorably. Consider your silver allocation — at 22%, it provides solid upside exposure to industrial demand catalysts. Your cost basis of $387,204 reflects disciplined accumulation, with an unrealized gain of $115,643 (+29.9%). The gold-to-silver ratio at 63.9 suggests silver remains relatively undervalued historically.',
+      text: 'Your stack is well-diversified across 4 metals with a strong gold core (68% allocation). Gold\'s sustained breakout above $5,000 positions your stack favorably. Consider your silver allocation — at 22%, it provides solid upside exposure to industrial demand catalysts. Your cost basis of $387,204 reflects disciplined accumulation, with an unrealized gain of $115,643 (+29.9%). The gold-to-silver ratio at 63.9 suggests silver remains relatively undervalued historically.',
       costBasis: 'Total cost basis: $387,204. Gold: $263,298 (68.0%), Silver: $85,185 (22.0%), Platinum: $28,933 (7.5%), Palladium: $9,788 (2.5%). Overall gain: +$115,643 (+29.9%).',
       purchaseStats: 'You\'ve made 47 purchases over 18 months. Average purchase: $8,238. Most active month: October 2025 (8 purchases). Preferred dealers: APMEX, JM Bullion, SD Bullion.',
       date: new Date().toDateString(),
@@ -3312,10 +3313,10 @@ function AppContent() {
   const v20TutorialSlides = [
     { emoji: '☀️', title: 'Meet Your New Today Tab', description: 'Get AI-powered market intelligence every morning. See what moved, what changed, and what it means for your stack.' },
     { emoji: '🏦', title: 'COMEX Vault Watch', description: 'Track real-time COMEX warehouse inventory for gold, silver, platinum, and palladium. See when supply gets tight.' },
-    { emoji: '', emojiComponent: <View style={{ marginBottom: 20 }}><TroyCoinIcon size={72} /></View>, title: 'Meet Troy', description: "Your personal stack analyst. Ask Troy anything about your portfolio — 'Should I buy more silver?' 'What's my break-even?' Tap the gold button on any screen." },
-    { emoji: '🔴🟡⚪🟢', title: 'Platinum & Palladium', description: 'Now track all four precious metals. Your portfolio just got more powerful.' },
+    { emoji: '', emojiComponent: <View style={{ marginBottom: 20 }}><TroyCoinIcon size={72} /></View>, title: 'Meet Troy', description: "Your personal stack analyst. Ask Troy anything about your stack — 'Should I buy more silver?' 'What's my break-even?' Tap the gold button on any screen." },
+    { emoji: '🔴🟡⚪🟢', title: 'Platinum & Palladium', description: 'Now track all four precious metals. Your stack just got more powerful.' },
     { emoji: '🧭', title: 'New Look, Same Power', description: "We've streamlined your navigation. Stack combines your dashboard and holdings in one place. Settings now lives in the tab bar. Everything you need, fewer taps." },
-    { emoji: '', emojiComponent: <View style={{ marginBottom: 20 }}><GlobeIcon size={72} color="#D4A843" /></View>, title: 'Your Stack, Everywhere', description: 'Access your full portfolio on the web at stacktrackergold.com. Same data, same Troy, bigger screen.' },
+    { emoji: '', emojiComponent: <View style={{ marginBottom: 20 }}><GlobeIcon size={72} color="#D4A843" /></View>, title: 'Your Stack, Everywhere', description: 'Access your full stack on the web at stacktrackergold.com. Same data, same Troy, bigger screen.' },
     { emoji: '✅', title: "You're All Set!", description: 'Enjoy Stack Tracker Gold v2.0. Built for stackers, by stackers.', highlight: 'Stack on! 🪙' },
   ];
 
@@ -6492,8 +6493,8 @@ function AppContent() {
   const drawerSections = [
     { key: 'today', label: 'Today', items: [
       { key: 'troy', label: 'Troy Chat' },
-      { key: 'morningBrief', label: "Troy's Take" },
-      { key: 'portfolioPulse', label: 'Portfolio Pulse' },
+      { key: 'morningBrief', label: "Your Daily Brief" },
+      { key: 'portfolioPulse', label: 'Stack Pulse' },
       { key: 'metalMovers', label: 'Live Spot' },
       { key: 'whatChanged', label: 'Metal Movers' },
       { key: 'vaultWatch', label: 'Vault Watch' },
@@ -6504,7 +6505,7 @@ function AppContent() {
       { key: 'holdings', label: 'Holdings' },
     ]},
     { key: 'analytics', label: 'Analytics', items: [
-      { key: 'portfolioValueChart', label: 'Portfolio Value Chart' },
+      { key: 'portfolioValueChart', label: 'Stack Value Chart' },
       { key: 'spotPriceHistory', label: 'Spot Price History' },
       { key: 'holdingsBreakdown', label: 'Holdings Breakdown' },
       { key: 'purchaseStatistics', label: 'Purchase Statistics' },
@@ -6732,7 +6733,7 @@ function AppContent() {
             ? `Your stack ${gainedLost} $${formatCurrency(Math.abs(effDailyChange), 0)} today, driven by ${biggestMover?.label}'s ${Math.abs(biggestMover?.pct || 0).toFixed(1)}% ${rallyDecline}.`
             : effTotalMeltValue > 0
             ? 'Markets are steady today. Your stack value is unchanged.'
-            : 'Add holdings to see your daily portfolio changes.';
+            : 'Add holdings to see your daily stack changes.';
 
           // Display values (zeroed when markets closed, or demo values in screenshot mode)
           const displayDailyChange = demoData ? demoData.dailyChange : (marketsClosed ? 0 : dailyChange);
@@ -6770,7 +6771,7 @@ function AppContent() {
           return (
             <View style={{ backgroundColor: isDarkMode ? '#0d0d0d' : colors.bg, marginHorizontal: -20, paddingHorizontal: 16, paddingTop: 4, minHeight: Dimensions.get('window').height - 200 }}>
 
-              {/* ===== TROY'S TAKE ===== */}
+              {/* ===== YOUR DAILY BRIEF ===== */}
               <View onLayout={(e) => { sectionOffsets.current['morningBrief'] = e.nativeEvent.layout.y; }}>
               {effHasGoldAccess ? (
                 <View style={{
@@ -6786,14 +6787,14 @@ function AppContent() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <TroyCoinIcon size={20} />
                     <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>
-                      Troy's Take · {dailyBrief && dailyBrief.date && !dailyBrief.is_current
+                      Your Daily Brief · {dailyBrief && dailyBrief.date && !dailyBrief.is_current
                         ? new Date(dailyBrief.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                         : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </Text>
                   </View>
                   {demoData ? (
                     <>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 }} numberOfLines={briefExpanded ? undefined : 2}>Gold surged past $5,000 today, lifting your portfolio to a new all-time high of $502,847. Silver led the rally with a 2.4% gain, continuing its strong momentum this week. All four metals are trading in the green, with platinum and palladium both posting solid gains above 1%. Your stack gained $8,241 today — a great day for precious metals holders.</Text>
+                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 }} numberOfLines={briefExpanded ? undefined : 2}>Gold surged past $5,000 today, lifting your stack to a new all-time high of $502,847. Silver led the rally with a 2.4% gain, continuing its strong momentum this week. All four metals are trading in the green, with platinum and palladium both posting solid gains above 1%. Your stack gained $8,241 today — a great day for precious metals holders.</Text>
                       <TouchableOpacity onPress={() => setBriefExpanded(!briefExpanded)} style={{ marginTop: 4, paddingVertical: 12 }}>
                         <Text style={{ color: '#D4A843', fontSize: scaledFonts.medium, fontWeight: '700' }}>{briefExpanded ? 'See less' : 'See more'}</Text>
                       </TouchableOpacity>
@@ -6804,7 +6805,7 @@ function AppContent() {
                     <>
                       {!dailyBrief.is_current && (
                         <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontStyle: 'italic', marginBottom: 6 }}>
-                          Today's take will be available after 6:30 AM EST. Showing Troy's most recent.
+                          Today's brief will be available after 6:30 AM EST. Showing the most recent.
                         </Text>
                       )}
                       <Text style={{ color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 }} numberOfLines={briefExpanded ? undefined : 2}>{dailyBrief.brief_text}</Text>
@@ -6815,7 +6816,7 @@ function AppContent() {
                     </>
                   ) : (
                     <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontStyle: 'italic' }}>
-                      Troy's first take will be available after 6:30 AM EST.
+                      Your first daily brief will be available after 6:30 AM EST.
                     </Text>
                   )}
                 </View>
@@ -6832,7 +6833,7 @@ function AppContent() {
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <TroyCoinIcon size={20} />
-                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Your Daily Brief</Text>
                   </View>
                   <View style={{ maxHeight: 60, overflow: 'hidden' }}>
                     <Text style={{ color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 }}>{dailyBrief.brief_text}</Text>
@@ -6845,7 +6846,7 @@ function AppContent() {
                     <View style={{ flex: 1, backgroundColor: todayCardBg, opacity: 0.95 }} />
                   </View>
                   <TouchableOpacity onPress={() => setShowPaywallModal(true)} style={{ marginTop: 4 }}>
-                    <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Troy's full daily briefing with Gold →</Text>
+                    <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Your Daily Brief with Gold →</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -6864,10 +6865,10 @@ function AppContent() {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <TroyCoinIcon size={20} />
-                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Your Daily Brief</Text>
                   </View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>
-                    Get Troy's daily market analysis with Gold
+                    Get your daily brief with Gold
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
                     <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>UPGRADE</Text>
@@ -6876,7 +6877,7 @@ function AppContent() {
               )}
               </View>
 
-              {/* ===== SECTION 1: PORTFOLIO PULSE ===== */}
+              {/* ===== SECTION 1: STACK PULSE ===== */}
               <View onLayout={(e) => { sectionOffsets.current['portfolioPulse'] = e.nativeEvent.layout.y; }} style={{
                 backgroundColor: todayCardBg,
                 borderRadius: 16,
@@ -6911,7 +6912,7 @@ function AppContent() {
                       strokeColor={sparkColor}
                       gradientId="portfolioGrad"
                       formatValue={(v) => `$${formatCurrency(v, 0)}`}
-                      label="Portfolio"
+                      label="Stack"
                       style={{ marginBottom: 4 }}
                     />
                   );
@@ -7521,7 +7522,7 @@ function AppContent() {
           <>
             {/* Portfolio Summary Card */}
             <View onLayout={(e) => { sectionOffsets.current['portfolioSummary'] = e.nativeEvent.layout.y; }} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.large }]}>Portfolio Value</Text>
+              <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.large }]}>Stack Value</Text>
               <Text
                 style={{ color: colors.text, fontSize: Math.round(32 * fontScale), fontWeight: '700', marginBottom: 4 }}
                 numberOfLines={1}
@@ -8089,7 +8090,7 @@ function AppContent() {
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                   <TroyCoinIcon size={20} />
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Analysis</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
                 </View>
                 {effPortfolioIntelLoading ? (
                   <ActivityIndicator size="small" color="#D4A843" style={{ paddingVertical: 8 }} />
@@ -8103,7 +8104,7 @@ function AppContent() {
                   </>
                 ) : (
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontStyle: 'italic' }}>
-                    Troy's analysis will be available after 6:30 AM EST.
+                    Troy's take will be available after 6:30 AM EST.
                   </Text>
                 )}
               </View>
@@ -8121,7 +8122,7 @@ function AppContent() {
               }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                   <TroyCoinIcon size={20} />
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Analysis</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
                 </View>
                 <View style={{ maxHeight: 60, overflow: 'hidden' }}>
                   <Text style={{ color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 }}>{effPortfolioIntel.text}</Text>
@@ -8134,7 +8135,7 @@ function AppContent() {
                   <View style={{ flex: 1, backgroundColor: colors.cardBg, opacity: 0.95 }} />
                 </View>
                 <TouchableOpacity onPress={() => setShowPaywallModal(true)} style={{ marginTop: 4 }}>
-                  <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Troy's full portfolio analysis with Gold →</Text>
+                  <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Troy's full stack take with Gold →</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -8154,10 +8155,10 @@ function AppContent() {
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <TroyCoinIcon size={20} />
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Analysis</Text>
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
                 </View>
                 <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>
-                  Get Troy's portfolio analysis with Gold
+                  Get Troy's stack take with Gold
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
                   <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>UPGRADE</Text>
@@ -8171,7 +8172,7 @@ function AppContent() {
                 {/* Portfolio Value Chart */}
                 <View onLayout={(e) => { sectionOffsets.current['portfolioValueChart'] = e.nativeEvent.layout.y; }} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Portfolio Value</Text>
+                    <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Stack Value</Text>
                     {effAnalyticsSnapshots.length > 1 && (() => {
                       const first = effAnalyticsSnapshots[0].total_value || 0;
                       const last = effAnalyticsSnapshots[effAnalyticsSnapshots.length - 1].total_value || 0;
@@ -8232,7 +8233,7 @@ function AppContent() {
                     <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                       <Text style={{ color: colors.muted, textAlign: 'center', fontSize: scaledFonts.normal }}>
                         {silverItems.length === 0 && goldItems.length === 0
-                          ? 'Add some holdings to see your portfolio analytics!'
+                          ? 'Add some holdings to see your stack analytics!'
                           : 'Pull down to refresh'}
                       </Text>
                     </View>
@@ -8350,7 +8351,7 @@ function AppContent() {
                         style={{ height: 180, borderWidth: 1.5, borderColor: 'rgba(212, 168, 67, 0.3)', borderStyle: 'dashed', borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: isDarkMode ? 'rgba(212, 168, 67, 0.03)' : 'rgba(212, 168, 67, 0.05)' }}
                       >
                         <Text style={{ fontSize: 28, marginBottom: 8 }}>{'\uD83D\uDD12'}</Text>
-                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600', marginBottom: 4 }}>Portfolio Breakdown</Text>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600', marginBottom: 4 }}>Stack Breakdown</Text>
                         <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Available with Gold</Text>
                       </TouchableOpacity>
                     )
@@ -8364,6 +8365,10 @@ function AppContent() {
                 {/* Cost Basis Intelligence */}
                 {effHasGoldAccess && effPortfolioIntel && effPortfolioIntel.costBasis ? (
                   <View style={{ backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: '#D4A843', padding: 14, marginHorizontal: 16, marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <TroyCoinIcon size={20} />
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
+                    </View>
                     <Text style={{ color: colors.text, fontSize: scaledFonts.small, lineHeight: scaledFonts.small * 1.5 }} numberOfLines={costBasisIntelExpanded ? undefined : 2}>{effPortfolioIntel.costBasis}</Text>
                     <TouchableOpacity onPress={() => setCostBasisIntelExpanded(!costBasisIntelExpanded)} style={{ marginTop: 4, paddingVertical: 8 }}>
                       <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '700' }}>{costBasisIntelExpanded ? 'See less' : 'See more'}</Text>
@@ -8567,6 +8572,10 @@ function AppContent() {
                 {/* Purchase Stats Intelligence */}
                 {effHasGoldAccess && effPortfolioIntel && effPortfolioIntel.purchaseStats ? (
                   <View style={{ backgroundColor: colors.cardBg, borderRadius: 12, borderWidth: 1, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: '#D4A843', padding: 14, marginHorizontal: 16, marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <TroyCoinIcon size={20} />
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
+                    </View>
                     <Text style={{ color: colors.text, fontSize: scaledFonts.small, lineHeight: scaledFonts.small * 1.5 }} numberOfLines={purchaseStatsIntelExpanded ? undefined : 2}>{effPortfolioIntel.purchaseStats}</Text>
                     <TouchableOpacity onPress={() => setPurchaseStatsIntelExpanded(!purchaseStatsIntelExpanded)} style={{ marginTop: 4, paddingVertical: 8 }}>
                       <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '700' }}>{purchaseStatsIntelExpanded ? 'See less' : 'See more'}</Text>
@@ -8807,7 +8816,7 @@ function AppContent() {
                 {/* Push Notifications Section */}
                 <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 16, marginBottom: 6 }}>Push Notifications</Text>
                 <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                  {renderNotifRow('daily_brief', "Troy's Take", 'Daily market summary each morning', { isFirst: true })}
+                  {renderNotifRow('daily_brief', "Your Daily Brief", 'Daily market summary from Troy each morning', { isFirst: true })}
                   <RowSeparator />
                   {renderNotifRow('breaking_news', 'Market Intelligence', 'Breaking news and major market events', {})}
                   <RowSeparator />
@@ -9479,10 +9488,10 @@ function AppContent() {
                       <TroyCoinIcon size={56} />
                     </View>
                     <Text style={{ color: colors.text, fontSize: scaledFonts.large, fontWeight: '600' }}>Ask Troy anything</Text>
-                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 4, textAlign: 'center' }}>Your personal stack analyst. I know your portfolio{'\n'}and can help you make smarter decisions.</Text>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 4, textAlign: 'center' }}>Your personal stack analyst. I know your stack{'\n'}and can help you make smarter decisions.</Text>
                   </View>
                   {[
-                    'How is my portfolio performing?',
+                    'How is my stack performing?',
                     'Should I buy more silver or gold?',
                     'Analyze my gold-to-silver ratio',
                     'What if silver hits $100?',
@@ -9522,11 +9531,23 @@ function AppContent() {
                         maxWidth: '85%',
                       }}
                     >
-                      <Text style={{
-                        color: msg.role === 'user' ? '#000' : colors.text,
-                        fontSize: scaledFonts.normal,
-                        lineHeight: scaledFonts.normal * 1.5,
-                      }}>{msg.text}</Text>
+                      {msg.role === 'user' ? (
+                        <Text style={{
+                          color: '#000',
+                          fontSize: scaledFonts.normal,
+                          lineHeight: scaledFonts.normal * 1.5,
+                        }}>{msg.text}</Text>
+                      ) : (
+                        <Markdown style={{
+                          body: { color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 },
+                          paragraph: { marginTop: 0, marginBottom: 4 },
+                          strong: { fontWeight: '700' },
+                          em: { fontStyle: 'italic' },
+                          bullet_list: { marginTop: 2, marginBottom: 2 },
+                          ordered_list: { marginTop: 2, marginBottom: 2 },
+                          list_item: { marginTop: 1, marginBottom: 1 },
+                        }}>{msg.text}</Markdown>
+                      )}
                       {msg.isUpgradeCTA && (
                         <TouchableOpacity
                           onPress={() => { setShowTroyChat(false); setShowPaywallModal(true); }}
@@ -9706,7 +9727,7 @@ function AppContent() {
               {[
                 { icon: '🧠', label: 'Market Intelligence' },
                 { icon: '🏦', label: 'COMEX Vault Watch' },
-                { icon: 'troy', label: "Troy's Take — Daily Brief" },
+                { icon: 'troy', label: "Your Daily Brief" },
                 { icon: 'troy', label: 'Troy — AI Stack Analyst' },
                 { icon: '📈', label: 'Spot Price History charts' },
                 { icon: '📊', label: 'Advanced Analytics' },
@@ -10202,17 +10223,17 @@ function AppContent() {
       >
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.success }]}>How We Protect Your Data</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Your portfolio data is stored securely on our servers for sync and backup</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Your stack data is stored securely on our servers for sync and backup</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• All data is encrypted in transit and at rest</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Guest mode keeps data only on your device</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Receipt images are processed in memory and deleted immediately after scanning</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Analytics snapshots are stored to power your portfolio charts</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Analytics snapshots are stored to power your stack charts</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Push notification tokens are stored only to deliver alerts you've opted into</Text>
         </View>
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: '#007AFF' }]}>AI-Powered Features</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Troy's Take and Troy's Analysis use Google Gemini AI</Text>
-          <Text style={[styles.privacyItem, { color: colors.text }]}>• Portfolio data is sent to the AI provider for analysis only</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Your Daily Brief and Troy's Take use Google Gemini AI</Text>
+          <Text style={[styles.privacyItem, { color: colors.text }]}>• Stack data is sent to the AI provider for analysis only</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• AI-generated content is for informational purposes, not financial advice</Text>
           <Text style={[styles.privacyItem, { color: colors.text }]}>• Your data is not shared beyond the AI provider</Text>
         </View>
@@ -10245,11 +10266,11 @@ function AppContent() {
       >
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Today Tab</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Portfolio Pulse — Daily P/L and portfolio snapshot</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Stack Pulse — Daily P/L and stack snapshot</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Metal Movers — Spot price changes across all metals</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Vault Watch — COMEX warehouse inventory for Ag, Au, Pt</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Market Intelligence — AI-curated news and analysis</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Troy's Take — AI market summary delivered to your feed</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Your Daily Brief — AI market summary delivered to your feed</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
@@ -10270,8 +10291,8 @@ function AppContent() {
               <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>GOLD</Text>
             </View>
           </View>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Troy's Analysis — AI analysis of your holdings</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Portfolio Value Chart — Track value over 1D to All Time</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Troy's Take — AI analysis of your holdings</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Stack Value Chart — Track value over 1D to All Time</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Spot Price History — Historical charts for each metal</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Cost Basis Analysis — Total cost, P/L, and avg premium per metal</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Break-Even Analysis — Spot price needed to break even</Text>
@@ -10280,15 +10301,15 @@ function AppContent() {
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Tools Tab</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Price Alerts — Push notifications when metals hit your target</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Share My Stack — Generate a shareable portfolio image</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Speculation Tool — Model portfolio value at hypothetical prices</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Share My Stack — Generate a shareable stack image</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Speculation Tool — Model stack value at hypothetical prices</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Junk Silver Calculator — Melt value for constitutional silver</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Stack Milestones — Set and track oz goals</Text>
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Settings</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Notifications — Toggle Troy's Take, price alerts, breaking news</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Notifications — Toggle Your Daily Brief, price alerts, breaking news</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Appearance — Light, dark, or auto theme</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Export & Backup — Backup, restore, or export CSV</Text>
         </View>
@@ -10296,7 +10317,7 @@ function AppContent() {
         {Platform.OS === 'ios' && (
           <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
             <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Widgets</Text>
-            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Home screen widgets with live portfolio value and spot prices</Text>
+            <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Home screen widgets with live stack value and spot prices</Text>
             <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Long-press home screen {'\u2192'} "+" {'\u2192'} search "Stack Tracker Gold"</Text>
             <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Small, medium, and large sizes available</Text>
           </View>
@@ -10304,7 +10325,7 @@ function AppContent() {
 
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Push Notifications</Text>
-          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Troy's Take — Daily market summary push</Text>
+          <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Your Daily Brief — Daily market summary push</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Price Alerts — Triggered when your targets are hit</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Breaking News & COMEX — Major events and vault changes</Text>
           <Text style={[styles.privacyItem, { color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }]}>Manage in Settings {'\u2192'} Notifications</Text>

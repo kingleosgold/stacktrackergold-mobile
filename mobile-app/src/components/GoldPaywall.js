@@ -197,7 +197,7 @@ const GoldPaywall = ({ visible, onClose, onPurchaseSuccess }) => {
             <Feature icon="🧠" text="AI Intelligence Feed" />
             <Feature icon="🏦" text="COMEX Vault Watch" />
             <Feature icon="troy" text="Troy — AI Stack Analyst" />
-            <Feature icon="troy" text="Troy's Take — Daily Brief" />
+            <Feature icon="troy" text="Your Daily Brief" />
             <Feature icon="🔍" text="AI Deal Finder (coming soon)" />
             <Feature icon="📈" text="Spot Price History" />
             <Feature icon="📊" text="Advanced Analytics" />
