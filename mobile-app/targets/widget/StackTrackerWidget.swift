@@ -96,6 +96,9 @@ struct Provider: TimelineProvider {
             // This ensures the widget stays fresh even when app is closed
             var entries: [WidgetEntry] = []
 
+            // Set market closed status from client-side check
+            data.marketsClosed = isMarketClosed()
+
             for minuteOffset in stride(from: 0, to: 360, by: 15) {
                 let entryDate = Calendar.current.date(byAdding: .minute, value: minuteOffset, to: currentDate)!
                 var entryData = data
@@ -268,6 +271,22 @@ struct Provider: TimelineProvider {
             return WidgetData.placeholder
         }
     }
+}
+
+/// Check if precious metals markets are currently closed
+/// Markets close Friday 5pm ET and reopen Sunday 6pm ET
+func isMarketClosed() -> Bool {
+    let et = TimeZone(identifier: "America/New_York")!
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = et
+    let now = Date()
+    let weekday = cal.component(.weekday, from: now) // 1=Sun, 7=Sat
+    let hour = cal.component(.hour, from: now)
+
+    if weekday == 7 { return true } // Saturday
+    if weekday == 1 && hour < 18 { return true } // Sunday before 6pm ET
+    if weekday == 6 && hour >= 17 { return true } // Friday 5pm+ ET
+    return false
 }
 
 /// Spot prices + sparklines from backend

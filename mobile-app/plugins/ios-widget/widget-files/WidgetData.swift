@@ -29,6 +29,7 @@ struct WidgetData: Codable {
     var lastUpdated: Date
     var hasSubscription: Bool
     var hideValues: Bool
+    var marketsClosed: Bool
 
     // Sparkline data (7 data points per metal)
     var goldSparkline: [Double]
@@ -45,7 +46,7 @@ struct WidgetData: Codable {
         case palladiumChangeAmount, palladiumChangePercent
         case goldValue, silverValue, platinumValue, palladiumValue
         case goldOzt, silverOzt, platinumOzt, palladiumOzt
-        case lastUpdated, hasSubscription, hideValues
+        case lastUpdated, hasSubscription, hideValues, marketsClosed
         case goldSparkline, silverSparkline, platinumSparkline, palladiumSparkline
     }
 
@@ -77,6 +78,7 @@ struct WidgetData: Codable {
         lastUpdated = try container.decode(Date.self, forKey: .lastUpdated)
         hasSubscription = try container.decode(Bool.self, forKey: .hasSubscription)
         hideValues = (try? container.decode(Bool.self, forKey: .hideValues)) ?? false
+        marketsClosed = (try? container.decode(Bool.self, forKey: .marketsClosed)) ?? false
         goldSparkline = (try? container.decode([Double].self, forKey: .goldSparkline)) ?? []
         silverSparkline = (try? container.decode([Double].self, forKey: .silverSparkline)) ?? []
         platinumSparkline = (try? container.decode([Double].self, forKey: .platinumSparkline)) ?? []
@@ -95,7 +97,7 @@ struct WidgetData: Codable {
          goldOzt: Double = 0, silverOzt: Double = 0,
          platinumOzt: Double = 0, palladiumOzt: Double = 0,
          lastUpdated: Date, hasSubscription: Bool,
-         hideValues: Bool = false,
+         hideValues: Bool = false, marketsClosed: Bool = false,
          goldSparkline: [Double] = [], silverSparkline: [Double] = [],
          platinumSparkline: [Double] = [], palladiumSparkline: [Double] = []) {
         self.portfolioValue = portfolioValue
@@ -124,6 +126,7 @@ struct WidgetData: Codable {
         self.lastUpdated = lastUpdated
         self.hasSubscription = hasSubscription
         self.hideValues = hideValues
+        self.marketsClosed = marketsClosed
         self.goldSparkline = goldSparkline
         self.silverSparkline = silverSparkline
         self.platinumSparkline = platinumSparkline

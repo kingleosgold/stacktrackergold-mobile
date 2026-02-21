@@ -319,15 +319,23 @@ struct DailyChangeRow: View {
     let arrowSize: CGFloat
     let amountSize: CGFloat
     let pctSize: CGFloat
+    var marketsClosed: Bool = false
 
     var body: some View {
-        HStack(spacing: 3) {
-            arrowText
-            changeText
-            percentText
+        if marketsClosed {
+            Text("Markets Closed")
+                .font(.system(size: amountSize, weight: .medium))
+                .foregroundColor(wMuted)
+                .lineLimit(1)
+        } else {
+            HStack(spacing: 3) {
+                arrowText
+                changeText
+                percentText
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
         }
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
     }
 
     private var arrowText: some View {
@@ -479,10 +487,11 @@ struct SpotCardLarge: View {
     let changeAmt: Double
     let sparkline: [Double]
     let color: Color
+    var marketsClosed: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SpotCardInfo(symbol: symbol, price: price, changePct: changePct, changeAmt: changeAmt, color: color)
+            SpotCardInfo(symbol: symbol, price: price, changePct: changePct, changeAmt: changeAmt, color: color, marketsClosed: marketsClosed)
             cardSparkline
         }
         .padding(10)
@@ -493,7 +502,7 @@ struct SpotCardLarge: View {
     @ViewBuilder
     private var cardSparkline: some View {
         if sparkline.count >= 2 {
-            SparklineView(data: sparkline, color: wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
+            SparklineView(data: sparkline, color: marketsClosed ? color : wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
                 .frame(height: 20)
                 .padding(.top, 4)
         }
@@ -506,6 +515,7 @@ struct SpotCardInfo: View {
     let changePct: Double
     let changeAmt: Double
     let color: Color
+    var marketsClosed: Bool = false
 
     var body: some View {
         HStack {
@@ -533,8 +543,15 @@ struct SpotCardInfo: View {
         WSpotPriceText(text: wFormatSpot(price), size: 15)
     }
 
+    @ViewBuilder
     private var pctText: some View {
-        WPercentBadge(text: wFormatPct(changePct), color: wChangeColor(changeAmt), size: 9)
+        if marketsClosed {
+            Text("Closed")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(wMuted)
+        } else {
+            WPercentBadge(text: wFormatPct(changePct), color: wChangeColor(changeAmt), size: 9)
+        }
     }
 }
 
@@ -620,7 +637,8 @@ struct SmallInner: View {
             amount: data.dailyChangeAmount,
             percent: data.dailyChangePercent,
             hideValues: data.hideValues,
-            arrowSize: 9, amountSize: 11, pctSize: 9
+            arrowSize: 9, amountSize: 11, pctSize: 9,
+            marketsClosed: data.marketsClosed
         )
     }
 }
@@ -643,7 +661,7 @@ struct SmallBottom: View {
     private var sparklineView: some View {
         SparklineView(
             data: data.portfolioSparkline(),
-            color: wChangeColor(data.dailyChangeAmount),
+            color: data.marketsClosed ? wMuted : wChangeColor(data.dailyChangeAmount),
             lineWidth: 1.5,
             showFill: true
         )
@@ -695,6 +713,11 @@ struct MediumSubscribed: View {
             MediumHeader(data: data)
             MediumSparkline(data: data)
             GoldDivider().padding(.vertical, 4)
+            Text("LIVE SPOT")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundColor(wMuted)
+                .kerning(1.2)
+                .padding(.bottom, 4)
             MediumMetalRows(data: data)
             Spacer(minLength: 2)
         }
@@ -735,7 +758,8 @@ struct MediumHeader: View {
             amount: data.dailyChangeAmount,
             percent: data.dailyChangePercent,
             hideValues: data.hideValues,
-            arrowSize: 10, amountSize: 13, pctSize: 11
+            arrowSize: 10, amountSize: 13, pctSize: 11,
+            marketsClosed: data.marketsClosed
         )
     }
 }
@@ -746,7 +770,7 @@ struct MediumSparkline: View {
     var body: some View {
         let pts = data.portfolioSparkline()
         if pts.count >= 2 {
-            SparklineView(data: pts, color: wChangeColor(data.dailyChangeAmount), lineWidth: 1.5, showFill: true)
+            SparklineView(data: pts, color: data.marketsClosed ? wMuted : wChangeColor(data.dailyChangeAmount), lineWidth: 1.5, showFill: true)
                 .frame(height: 32)
                 .padding(.top, 2)
         }
@@ -762,13 +786,15 @@ struct MediumMetalRows: View {
                 symbol: "Au", price: data.goldSpot,
                 changePct: data.goldChangePercent,
                 changeAmt: data.goldChangeAmount,
-                sparkline: data.goldSparkline, color: wGold
+                sparkline: data.goldSparkline, color: wGold,
+                marketsClosed: data.marketsClosed
             )
             MediumMetalRow(
                 symbol: "Ag", price: data.silverSpot,
                 changePct: data.silverChangePercent,
                 changeAmt: data.silverChangeAmount,
-                sparkline: data.silverSparkline, color: wSilver
+                sparkline: data.silverSparkline, color: wSilver,
+                marketsClosed: data.marketsClosed
             )
         }
     }
@@ -781,6 +807,7 @@ struct MediumMetalRow: View {
     let changeAmt: Double
     let sparkline: [Double]
     let color: Color
+    var marketsClosed: Bool = false
 
     var body: some View {
         HStack(spacing: 6) {
@@ -791,12 +818,18 @@ struct MediumMetalRow: View {
                 }
                 HStack(spacing: 4) {
                     WSpotPriceText(text: wFormatSpot(price), size: 13)
-                    WPercentBadge(text: wFormatPct(changePct), color: wChangeColor(changeAmt), size: 9)
+                    if marketsClosed {
+                        Text("Closed")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(wMuted)
+                    } else {
+                        WPercentBadge(text: wFormatPct(changePct), color: wChangeColor(changeAmt), size: 9)
+                    }
                 }
             }
             Spacer(minLength: 4)
             if sparkline.count >= 2 {
-                SparklineView(data: sparkline, color: wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
+                SparklineView(data: sparkline, color: marketsClosed ? color : wChangeColor(changeAmt), lineWidth: 1.0, showFill: true)
                     .frame(width: 56, height: 22)
             }
         }
@@ -873,7 +906,8 @@ struct LargeHeader: View {
             amount: data.dailyChangeAmount,
             percent: data.dailyChangePercent,
             hideValues: data.hideValues,
-            arrowSize: 13, amountSize: 15, pctSize: 13
+            arrowSize: 13, amountSize: 15, pctSize: 13,
+            marketsClosed: data.marketsClosed
         )
         .padding(.top, 2)
     }
@@ -895,7 +929,7 @@ struct LargeSparkline: View {
     private var sparklineView: some View {
         SparklineView(
             data: data.portfolioSparkline(),
-            color: wChangeColor(data.dailyChangeAmount),
+            color: data.marketsClosed ? wMuted : wChangeColor(data.dailyChangeAmount),
             lineWidth: 1.5,
             showFill: true
         )
@@ -941,19 +975,19 @@ struct LargeSpotGrid: View {
     }
 
     private var goldCard: some View {
-        SpotCardLarge(symbol: "Au", price: data.goldSpot, changePct: data.goldChangePercent, changeAmt: data.goldChangeAmount, sparkline: data.goldSparkline, color: wGold)
+        SpotCardLarge(symbol: "Au", price: data.goldSpot, changePct: data.goldChangePercent, changeAmt: data.goldChangeAmount, sparkline: data.goldSparkline, color: wGold, marketsClosed: data.marketsClosed)
     }
 
     private var silverCard: some View {
-        SpotCardLarge(symbol: "Ag", price: data.silverSpot, changePct: data.silverChangePercent, changeAmt: data.silverChangeAmount, sparkline: data.silverSparkline, color: wSilver)
+        SpotCardLarge(symbol: "Ag", price: data.silverSpot, changePct: data.silverChangePercent, changeAmt: data.silverChangeAmount, sparkline: data.silverSparkline, color: wSilver, marketsClosed: data.marketsClosed)
     }
 
     private var platinumCard: some View {
-        SpotCardLarge(symbol: "Pt", price: data.platinumSpot, changePct: data.platinumChangePercent, changeAmt: data.platinumChangeAmount, sparkline: data.platinumSparkline, color: wPlatinum)
+        SpotCardLarge(symbol: "Pt", price: data.platinumSpot, changePct: data.platinumChangePercent, changeAmt: data.platinumChangeAmount, sparkline: data.platinumSparkline, color: wPlatinum, marketsClosed: data.marketsClosed)
     }
 
     private var palladiumCard: some View {
-        SpotCardLarge(symbol: "Pd", price: data.palladiumSpot, changePct: data.palladiumChangePercent, changeAmt: data.palladiumChangeAmount, sparkline: data.palladiumSparkline, color: wPalladium)
+        SpotCardLarge(symbol: "Pd", price: data.palladiumSpot, changePct: data.palladiumChangePercent, changeAmt: data.palladiumChangeAmount, sparkline: data.palladiumSparkline, color: wPalladium, marketsClosed: data.marketsClosed)
     }
 }
 

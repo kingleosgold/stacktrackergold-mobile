@@ -84,6 +84,7 @@ export const updateWidgetData = async (data) => {
       silverSparkline: data.silverSparkline || [],
       platinumSparkline: data.platinumSparkline || [],
       palladiumSparkline: data.palladiumSparkline || [],
+      marketsClosed: data.marketsClosed || false,
     };
 
     // Serialize to JSON and send to native module

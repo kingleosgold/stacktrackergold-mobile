@@ -1503,6 +1503,7 @@ function AppContent() {
   const [advisorQuestionsToday, setAdvisorQuestionsToday] = useState(0);
   const advisorScrollRef = useRef(null);
   const [showTroyChat, setShowTroyChat] = useState(false);
+  const [showTroyFab, setShowTroyFab] = useState(true);
   const fabScale = useRef(new Animated.Value(1)).current;
   const fabGlow = useRef(new Animated.Value(0.4)).current;
   const fabTapped = useRef(false);
@@ -2234,7 +2235,7 @@ function AppContent() {
 
   const loadData = async () => {
     try {
-      const [silver, gold, platinum, palladium, silverS, goldS, platinumS, palladiumS, timestamp, hasSeenTutorial, storedMidnightSnapshot, storedTheme, storedChangeDisplayMode, storedLargeText, storedSilverMilestone, storedGoldMilestone, storedLastSilverReached, storedLastGoldReached, storedGuestMode, storedHideWidgetValues, hasSeenV20Tutorial, storedAdvisorCount] = await Promise.all([
+      const [silver, gold, platinum, palladium, silverS, goldS, platinumS, palladiumS, timestamp, hasSeenTutorial, storedMidnightSnapshot, storedTheme, storedChangeDisplayMode, storedLargeText, storedSilverMilestone, storedGoldMilestone, storedLastSilverReached, storedLastGoldReached, storedGuestMode, storedHideWidgetValues, hasSeenV20Tutorial, storedAdvisorCount, storedShowTroyFab] = await Promise.all([
         AsyncStorage.getItem('stack_silver'),
         AsyncStorage.getItem('stack_gold'),
         AsyncStorage.getItem('stack_platinum'),
@@ -2257,6 +2258,7 @@ function AppContent() {
         AsyncStorage.getItem('stack_hide_widget_values'),
         AsyncStorage.getItem('has_seen_v2_0_tutorial'),
         AsyncStorage.getItem('stack_advisor_count'),
+        AsyncStorage.getItem('stack_show_troy_fab'),
       ]);
 
       // Safely parse JSON data with fallbacks
@@ -2342,6 +2344,9 @@ function AppContent() {
           }
         } catch (e) { /* ignore */ }
       }
+
+      // Load Troy FAB preference
+      if (storedShowTroyFab === 'false') setShowTroyFab(false);
 
       // Mark data as loaded BEFORE fetching prices - this prevents the save useEffect from overwriting
       setDataLoaded(true);
@@ -3788,6 +3793,7 @@ function AppContent() {
         silverSparkline: sparklineData?.silver || [],
         platinumSparkline: sparklineData?.platinum || [],
         palladiumSparkline: sparklineData?.palladium || [],
+        marketsClosed: marketsClosed,
       };
 
       if (__DEV__) console.log('📱 [syncWidget] Sending payload:', widgetPayload);
@@ -6485,6 +6491,7 @@ function AppContent() {
 
   const drawerSections = [
     { key: 'today', label: 'Today', items: [
+      { key: 'troy', label: 'Troy' },
       { key: 'morningBrief', label: "Troy's Take" },
       { key: 'portfolioPulse', label: 'Portfolio Pulse' },
       { key: 'metalMovers', label: 'Metal Movers' },
@@ -6540,6 +6547,12 @@ function AppContent() {
   };
 
   const navigateToSection = (tabKey, sectionKey) => {
+    // Special case: Troy opens chat modal
+    if (sectionKey === 'troy') {
+      closeDrawer();
+      setShowTroyChat(true);
+      return;
+    }
     closeDrawer();
     // Special case: Web App opens URL directly
     if (sectionKey === 'webApp') {
@@ -6888,7 +6901,7 @@ function AppContent() {
                   const effPalladiumOzt = demoData ? 3.0 : totalPalladiumOzt;
                   const portfolioPoints = goldPts.map((g, i) => (effGoldOzt * g) + (effSilverOzt * (silverPts[i] || 0)) + (effPlatinumOzt * (effSparklineData.platinum[i] || 0)) + (effPalladiumOzt * (effSparklineData.palladium[i] || 0)));
                   const isUp = displayDailyChangePct >= 0;
-                  const sparkColor = isUp ? '#4CAF50' : '#F44336';
+                  const sparkColor = effMarketsClosed ? '#71717a' : (isUp ? '#4CAF50' : '#F44336');
                   return (
                     <ScrubSparkline
                       dataPoints={portfolioPoints}
@@ -6904,14 +6917,20 @@ function AppContent() {
                   );
                 })()}
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                  <Text style={{ color: displayDailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 15, fontWeight: '600' }}>
-                    {displayDailyChange >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(displayDailyChange), 0)}
-                  </Text>
-                  <Text style={{ color: displayDailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 13 }}>
-                    ({displayDailyChangePct >= 0 ? '+' : ''}{displayDailyChangePct.toFixed(2)}%)
-                  </Text>
-                </View>
+                {effMarketsClosed ? (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={{ color: '#71717a', fontSize: 13, fontWeight: '500' }}>Markets Closed</Text>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                    <Text style={{ color: displayDailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 15, fontWeight: '600' }}>
+                      {displayDailyChange >= 0 ? '▲' : '▼'} ${formatCurrency(Math.abs(displayDailyChange), 0)}
+                    </Text>
+                    <Text style={{ color: displayDailyChange >= 0 ? '#4CAF50' : '#F44336', fontSize: 13 }}>
+                      ({displayDailyChangePct >= 0 ? '+' : ''}{displayDailyChangePct.toFixed(2)}%)
+                    </Text>
+                  </View>
+                )}
 
                 <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, fontStyle: 'italic' }}>{aiSummary}</Text>
               </View>
@@ -6924,7 +6943,7 @@ function AppContent() {
                     const metalKey = m.label.toLowerCase();
                     const points = effSparklineData?.[metalKey] || [];
                     const isUp = m.pct >= 0;
-                    const sparkColor = isUp ? '#4CAF50' : '#F44336';
+                    const sparkColor = effMarketsClosed ? m.color : (isUp ? '#4CAF50' : '#F44336');
                     const isBiggestMover = m.symbol === biggestMoverSymbol && !effMarketsClosed && Math.abs(m.pct) > 0.1;
                     const glowColor = isBiggestMover ? (m.pct >= 0 ? '#4CAF50' : '#F44336') : 'transparent';
                     return (
@@ -6971,7 +6990,7 @@ function AppContent() {
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {effMarketsClosed ? (
-                            <Text style={{ color: '#71717a', fontSize: 12, fontWeight: '600' }}>+0.0%</Text>
+                            <Text style={{ color: '#71717a', fontSize: 12, fontWeight: '500' }}>Closed</Text>
                           ) : (
                             <>
                               <Text style={{ color: m.change >= 0 ? '#4CAF50' : '#F44336', fontSize: 12, fontWeight: '600' }}>
@@ -8902,8 +8921,6 @@ function AppContent() {
                     paddingVertical: 12,
                     paddingHorizontal: 16,
                     minHeight: 44,
-                    borderBottomLeftRadius: 10,
-                    borderBottomRightRadius: 10,
                   }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Hide Values on Widget</Text>
@@ -8915,6 +8932,35 @@ function AppContent() {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         setHideWidgetValues(value);
                         AsyncStorage.setItem('stack_hide_widget_values', value ? 'true' : 'false');
+                      }}
+                      trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
+                      thumbColor="#fff"
+                      ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
+                    />
+                  </View>
+                  <RowSeparator />
+                  {/* Show Troy Button */}
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: groupBg,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    minHeight: 44,
+                    borderBottomLeftRadius: 10,
+                    borderBottomRightRadius: 10,
+                  }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Show Troy Button</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Display the floating Troy assistant button</Text>
+                    </View>
+                    <Switch
+                      value={showTroyFab}
+                      onValueChange={(value) => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setShowTroyFab(value);
+                        AsyncStorage.setItem('stack_show_troy_fab', value ? 'true' : 'false');
                       }}
                       trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
                       thumbColor="#fff"
@@ -9353,10 +9399,10 @@ function AppContent() {
       </ScrollView>
 
       {/* Troy FAB — realistic gold coin, every tab */}
-      <Animated.View style={{
+      {showTroyFab && <Animated.View style={{
         position: 'absolute',
         right: 20,
-        bottom: 80 + Math.max(insets.bottom, 10),
+        bottom: 100 + Math.max(insets.bottom, 10),
         zIndex: 100,
         transform: [{ scale: fabScale }],
       }}>
@@ -9386,7 +9432,7 @@ function AppContent() {
             <TroyCoinIcon size={56} />
           </Animated.View>
         </TouchableOpacity>
-      </Animated.View>
+      </Animated.View>}
 
       {/* Troy Chat Modal */}
       <Modal visible={showTroyChat} animationType="slide" presentationStyle="pageSheet">
@@ -11191,9 +11237,10 @@ function AppContent() {
                     <TouchableOpacity
                       key={item.key}
                       onPress={() => navigateToSection(section.key, item.key)}
-                      style={{ paddingLeft: 32, paddingRight: 16, paddingVertical: 11 }}
+                      style={{ paddingLeft: 32, paddingRight: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8 }}
                     >
-                      <Text style={{ color: '#9ca3af', fontSize: 14 }}>{item.label}</Text>
+                      {item.key === 'troy' && <TroyCoinIcon size={18} />}
+                      <Text style={{ color: item.key === 'troy' ? '#D4A843' : '#9ca3af', fontSize: 14 }}>{item.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
