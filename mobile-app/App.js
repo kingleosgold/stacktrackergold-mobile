@@ -9499,7 +9499,6 @@ function AppContent() {
           }}
           hasGold={hasGold}
           hasLifetime={hasLifetimeAccess}
-          supportId={revenueCatUserId}
           colors={colors}
         />
       </Modal>
@@ -10168,7 +10167,6 @@ function AppContent() {
         <View style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Support</Text>
           <Text style={[styles.privacyItem, { color: colors.text, fontSize: scaledFonts.small }]}>{'\u2022'} Email stacktrackergold@gmail.com for help</Text>
-          <Text style={[styles.privacyItem, { color: colors.muted, fontSize: scaledFonts.small, marginTop: 4 }]}>Your Support ID is in Settings {'\u2192'} Account</Text>
         </View>
       </ModalWrapper>
 
