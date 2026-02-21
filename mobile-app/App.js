@@ -965,7 +965,10 @@ const ScrubSparkline = ({ dataPoints, timestamps, svgW, svgH, strokeColor, gradi
 
   const min = Math.min(...dataPoints);
   const max = Math.max(...dataPoints);
-  const range = max - min || 1;
+  // Enforce minimum Y-axis range of 0.5% of mid-value to prevent auto-scaling
+  // from amplifying micro-noise (e.g., $0.04 variation on $2935 gold during closed markets)
+  const mid = (max + min) / 2;
+  const range = Math.max(max - min, mid * 0.005) || 1;
 
   // Build points array, then use monotone interpolation for smooth curves
   const pts = dataPoints.map((v, i) => ({
@@ -6729,9 +6732,31 @@ function AppContent() {
           const effPlatinumSpot = demoData ? demoData.platinumSpot : platinumSpot;
           const effPalladiumSpot = demoData ? demoData.palladiumSpot : palladiumSpot;
           const effSpotChange = demoData ? demoData.spotChange : spotChange;
-          const effSparklineData = demoData ? demoData.sparklineData : sparklineData;
           const effTotalMeltValue = demoData ? demoData.totalMeltValue : totalMeltValue;
           const effMarketsClosed = demoData ? false : marketsClosed;
+
+          // During closed markets, smooth sparkline data with moving average to eliminate
+          // price_log micro-noise that auto-scaling would amplify into visual jaggedness
+          const effSparklineData = (() => {
+            const raw = demoData ? demoData.sparklineData : sparklineData;
+            if (!raw || !effMarketsClosed) return raw;
+            const smooth = (pts) => {
+              if (!pts || pts.length < 5) return pts;
+              return pts.map((_, i) => {
+                const start = Math.max(0, i - 2);
+                const end = Math.min(pts.length, i + 3);
+                const w = pts.slice(start, end);
+                return w.reduce((s, v) => s + v, 0) / w.length;
+              });
+            };
+            return {
+              ...raw,
+              gold: smooth(raw.gold),
+              silver: smooth(raw.silver),
+              platinum: smooth(raw.platinum),
+              palladium: smooth(raw.palladium),
+            };
+          })();
           const effHasGoldAccess = demoData ? true : hasGoldAccess;
 
           // Metal movers data (fixed grid: Ag top-left, Au top-right, Pt bottom-left, Pd bottom-right)
