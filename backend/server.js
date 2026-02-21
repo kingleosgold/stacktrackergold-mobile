@@ -5495,9 +5495,10 @@ fetchLiveSpotPrices().then(() => {
     // so no separate initial check needed. The checker handles token lookup
     // from the push_tokens table correctly.
 
-    // Intelligence cron: daily at 6:30 AM EST (11:30 UTC)
+    // Intelligence cron: daily at 6:00 AM EST (11:00 UTC)
+    // Runs 35 min before Daily Brief so vault alerts don't overlap with brief notification
     if (GEMINI_API_KEY) {
-      cron.schedule('30 11 * * *', async () => {
+      cron.schedule('0 11 * * *', async () => {
         console.log(`\n🧠 [Intelligence Cron] Triggered at ${new Date().toISOString()}`);
         try {
           const result = await runIntelligenceGeneration();
@@ -5506,9 +5507,9 @@ fetchLiveSpotPrices().then(() => {
           console.error(`🧠 [Intelligence Cron] Failed:`, err.message);
         }
       }, { timezone: 'UTC' });
-      console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:30 AM EST (11:30 UTC)');
+      console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:00 AM EST (11:00 UTC)');
 
-      // Daily Brief cron: 6:35 AM EST (11:35 UTC) — 5 min after intelligence so news is available
+      // Daily Brief cron: 6:35 AM EST (11:35 UTC) — 35 min after intelligence so news is available
       cron.schedule('35 11 * * *', async () => {
         console.log(`\n📝 [Daily Brief Cron] Triggered at ${new Date().toISOString()}`);
         try {

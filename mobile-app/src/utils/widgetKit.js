@@ -128,6 +128,8 @@ export const refreshWidgets = async () => {
 export const syncWidgetData = async (data) => {
   const updated = await updateWidgetData(data);
   if (updated) {
+    // Brief delay to allow cross-process UserDefaults sync before widget reads
+    await new Promise(r => setTimeout(r, 100));
     await refreshWidgets();
   }
   return updated;
