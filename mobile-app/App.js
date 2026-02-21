@@ -9,7 +9,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   Alert, Modal, Platform, SafeAreaView, StatusBar, ActivityIndicator,
   Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Dimensions, AppState, FlatList, Clipboard, Linking,
-  useColorScheme, RefreshControl, Switch, Image, Animated, LayoutAnimation, PanResponder,
+  useColorScheme, RefreshControl, Switch, Image, Animated, LayoutAnimation,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import ErrorBoundary from './ErrorBoundary';
@@ -1619,19 +1619,6 @@ function AppContent() {
   const sectionOffsets = useRef({});
   const drawerOpenRef = useRef(false);
   const openDrawerRef = useRef(null);
-  const drawerPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return !drawerOpenRef.current && evt.nativeEvent.pageX < 60 && gestureState.dx > 10 && Math.abs(gestureState.dy) < 30;
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dx > 50 && openDrawerRef.current) {
-          openDrawerRef.current();
-        }
-      },
-    })
-  ).current;
 
   // Today Tab - Intelligence Feed
   const [intelligenceBriefs, setIntelligenceBriefs] = useState([]);
@@ -1817,36 +1804,87 @@ function AppContent() {
     }
   };
 
-  // Clear all app data and reset to fresh state
+  // Reset all in-memory state to defaults (used by both clearAllData and performSignOut)
+  const resetAllState = () => {
+    setSilverItems([]);
+    setGoldItems([]);
+    setPlatinumItems([]);
+    setPalladiumItems([]);
+    setSilverSpot(77);
+    setGoldSpot(4530);
+    setPlatinumSpot(2100);
+    setPalladiumSpot(1740);
+    setPriceSource('cached');
+    setPriceTimestamp(null);
+    setSpotPricesLive(false);
+    setSpotChange({ gold: { amount: null, percent: null, prevClose: null }, silver: { amount: null, percent: null, prevClose: null }, platinum: { amount: null, percent: null, prevClose: null }, palladium: { amount: null, percent: null, prevClose: null } });
+    setSpotChangeDisplayMode('percent');
+    setMidnightSnapshot(null);
+    setThemePreference('dark');
+    setLargeText(false);
+    setHideWidgetValues(false);
+    setAdvisorMessages([]);
+    setAdvisorInput('');
+    setAdvisorQuestionsToday(0);
+    setShowTroyChat(false);
+    setShowTroyFab(true);
+    setDailyBrief(null);
+    setBriefExpanded(false);
+    setPortfolioIntel(null);
+    setPortfolioIntelExpanded(false);
+    setCostBasisIntelExpanded(false);
+    setPurchaseStatsIntelExpanded(false);
+    setIntelligenceBriefs([]);
+    setPriceAlerts([]);
+    setAnalyticsSnapshots([]);
+    setAnalyticsRange('1M');
+    setSpotHistoryMetal({
+      gold: { range: '1Y', data: null, loading: false, error: null },
+      silver: { range: '1Y', data: null, loading: false, error: null },
+      platinum: { range: '1Y', data: null, loading: false, error: null },
+      palladium: { range: '1Y', data: null, loading: false, error: null },
+    });
+    setSparklineData(null);
+    sparklineFetchedRef.current = false;
+    setNotifPrefs({ daily_brief: true, price_alerts: true, breaking_news: true, comex_alerts: true, comex_gold: true, comex_silver: true, comex_platinum: true, comex_palladium: true });
+    setTab('today');
+    setSettingsSubPage(null);
+    setShowAccountScreen(false);
+    setShowBenefitsScreen(false);
+    setDrawerOpen(false);
+    setDataLoaded(false);
+    setHasSyncedOnce(false);
+  };
+
+  // Clear all app data and reset to fresh state (user-initiated from Settings)
   const clearAllData = async () => {
     try {
-      // Clear all AsyncStorage keys
       await AsyncStorage.clear();
-
-      // Reset all state to defaults
-      setSilverItems([]);
-      setGoldItems([]);
-      setPlatinumItems([]);
-      setPalladiumItems([]);
-      setSilverSpot(77);
-      setGoldSpot(4530);
-      setPlatinumSpot(2100);
-      setPalladiumSpot(1740);
-      setPriceSource('cached');
-      setPriceTimestamp(null);
-      setSpotPricesLive(false);
-      setSpotChange({ gold: { amount: null, percent: null, prevClose: null }, silver: { amount: null, percent: null, prevClose: null }, platinum: { amount: null, percent: null, prevClose: null }, palladium: { amount: null, percent: null, prevClose: null } });
-      setSpotChangeDisplayMode('percent');
-      setMidnightSnapshot(null);
-      setThemePreference('dark');
-      setLargeText(false);
-
-      // Show success message
+      resetAllState();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Data Cleared', 'All your data has been erased. The app has been reset to its initial state.');
     } catch (error) {
       if (__DEV__) console.error('Failed to clear data:', error);
       Alert.alert('Error', 'Failed to clear data. Please try again.');
+    }
+  };
+
+  // Sign out: clear all data, logout services, navigate to auth screen
+  const performSignOut = async () => {
+    try {
+      // 1. Logout from RevenueCat
+      try { await logoutRevenueCat(); } catch (e) { if (__DEV__) console.error('RevenueCat logout failed:', e); }
+      // 2. Sign out from Supabase
+      await supabaseSignOut();
+      // 3. Clear all persisted data
+      await AsyncStorage.clear();
+      // 4. Reset all in-memory state
+      resetAllState();
+      // 5. Navigate to auth screen (not guest mode)
+      setGuestMode(false);
+    } catch (error) {
+      if (__DEV__) console.error('Sign out failed:', error);
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
     }
   };
 
@@ -2313,12 +2351,12 @@ function AppContent() {
         setLastReachedGoldMilestone(parseFloat(storedLastGoldReached));
       }
 
-      // Load guest mode preference
-      if (storedGuestMode === 'true') {
-        setGuestMode(true);
-      } else {
-        setGuestMode(false);
+      // Guest mode is session-only now — always start at auth screen on cold launch
+      // Clear any legacy persisted guest mode flag
+      if (storedGuestMode) {
+        AsyncStorage.removeItem('stack_guest_mode');
       }
+      setGuestMode(false);
 
       // Load hide widget values preference
       if (storedHideWidgetValues === 'true') {
@@ -2613,21 +2651,22 @@ function AppContent() {
 
   useEffect(() => {
     // Only save after initial data has been loaded to prevent overwriting with empty arrays
-    if (isAuthenticated && dataLoaded) saveData('stack_silver', silverItems);
-  }, [silverItems, isAuthenticated, dataLoaded]);
+    // Skip saving for guest mode — data is session-only
+    if (isAuthenticated && dataLoaded && !guestMode) saveData('stack_silver', silverItems);
+  }, [silverItems, isAuthenticated, dataLoaded, guestMode]);
 
   useEffect(() => {
     // Only save after initial data has been loaded to prevent overwriting with empty arrays
-    if (isAuthenticated && dataLoaded) saveData('stack_gold', goldItems);
-  }, [goldItems, isAuthenticated, dataLoaded]);
+    if (isAuthenticated && dataLoaded && !guestMode) saveData('stack_gold', goldItems);
+  }, [goldItems, isAuthenticated, dataLoaded, guestMode]);
 
   useEffect(() => {
-    if (isAuthenticated && dataLoaded) saveData('stack_platinum', platinumItems);
-  }, [platinumItems, isAuthenticated, dataLoaded]);
+    if (isAuthenticated && dataLoaded && !guestMode) saveData('stack_platinum', platinumItems);
+  }, [platinumItems, isAuthenticated, dataLoaded, guestMode]);
 
   useEffect(() => {
-    if (isAuthenticated && dataLoaded) saveData('stack_palladium', palladiumItems);
-  }, [palladiumItems, isAuthenticated, dataLoaded]);
+    if (isAuthenticated && dataLoaded && !guestMode) saveData('stack_palladium', palladiumItems);
+  }, [palladiumItems, isAuthenticated, dataLoaded, guestMode]);
 
   // Manual sync function - can be called on pull-to-refresh or button press
   const syncHoldingsWithSupabase = async (force = false) => {
@@ -6388,14 +6427,9 @@ function AppContent() {
   // LOADING & AUTH SCREENS
   // ============================================
 
-  // Helper to enable guest mode
-  const enableGuestMode = async () => {
+  // Helper to enable guest mode (session-only — not persisted, so reopening app shows auth screen)
+  const enableGuestMode = () => {
     setGuestMode(true);
-    try {
-      await AsyncStorage.setItem('stack_guest_mode', 'true');
-    } catch (error) {
-      if (__DEV__) console.error('Failed to save guest mode:', error);
-    }
   };
 
   // Helper to disable guest mode (when user signs in)
@@ -6409,6 +6443,8 @@ function AppContent() {
   };
 
   // Handle successful auth from AuthScreen
+  // If guest had in-memory holdings, they'll be persisted now that guestMode is false
+  // (the save effects trigger when guestMode changes)
   const handleAuthSuccess = () => {
     setShowAuthScreen(false);
     disableGuestMode();
@@ -6587,7 +6623,7 @@ function AppContent() {
   // ============================================
 
   return (
-    <SafeAreaView {...drawerPanResponder.panHandlers} style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
       {/* Header */}
@@ -6651,6 +6687,29 @@ function AppContent() {
           </View>
         </View>
       </View>
+
+      {/* Guest Mode Banner */}
+      {guestMode && !supabaseUser && (
+        <TouchableOpacity
+          onPress={() => disableGuestMode()}
+          style={{
+            backgroundColor: isDarkMode ? 'rgba(251,191,36,0.12)' : 'rgba(251,191,36,0.15)',
+            paddingVertical: 8,
+            paddingHorizontal: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            borderBottomWidth: 0.5,
+            borderBottomColor: isDarkMode ? 'rgba(251,191,36,0.2)' : 'rgba(251,191,36,0.3)',
+          }}
+        >
+          <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>
+            Create an account to save your stack
+          </Text>
+          <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny }}>→</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Main Content */}
       <ScrollView
@@ -9386,17 +9445,13 @@ function AppContent() {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                           Alert.alert(
                             'Sign Out',
-                            'Are you sure you want to sign out?',
+                            'Are you sure you want to sign out? All local data will be cleared.',
                             [
                               { text: 'Cancel', style: 'cancel' },
                               {
                                 text: 'Sign Out',
                                 style: 'destructive',
-                                onPress: async () => {
-                                  try { await logoutRevenueCat(); } catch (e) { if (__DEV__) console.error('RevenueCat logout failed:', e); }
-                                  await supabaseSignOut();
-                                  setGuestMode(true);
-                                },
+                                onPress: () => performSignOut(),
                               },
                             ]
                           );
@@ -9660,10 +9715,7 @@ function AppContent() {
       <Modal visible={showAccountScreen} animationType="slide" presentationStyle="pageSheet">
         <AccountScreen
           onClose={() => setShowAccountScreen(false)}
-          onSignOut={() => {
-            setShowAccountScreen(false);
-            setGuestMode(true);
-          }}
+          onSignOut={() => performSignOut()}
           hasGold={hasGold}
           hasLifetime={hasLifetimeAccess}
           colors={colors}
@@ -9809,6 +9861,16 @@ function AppContent() {
                   <Text style={[styles.closeButtonText, { color: colors.text, fontSize: scaledFonts.large }]}>✕</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Guest mode warning */}
+              {guestMode && !supabaseUser && (
+                <View style={{ backgroundColor: isDarkMode ? 'rgba(251,191,36,0.1)' : 'rgba(251,191,36,0.12)', paddingVertical: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: scaledFonts.small }}>⚠️</Text>
+                  <Text style={{ color: colors.gold, fontSize: scaledFonts.small, flex: 1 }}>
+                    You're not signed in. This data won't be saved when you close the app.
+                  </Text>
+                </View>
+              )}
 
               {/* Scrollable Content */}
               <ScrollView

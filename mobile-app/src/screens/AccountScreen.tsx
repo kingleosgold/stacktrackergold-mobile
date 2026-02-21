@@ -56,24 +56,14 @@ export default function AccountScreen({
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
-      'Are you sure you want to sign out?',
+      'Are you sure you want to sign out? All local data will be cleared.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Sign Out',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              // Log out from RevenueCat first (resets to anonymous device ID)
-              await logoutRevenueCat();
-              console.log('✅ Logged out from RevenueCat');
-            } catch (error) {
-              console.error('RevenueCat logout failed (non-fatal):', error);
-              // Continue with Supabase sign out even if RevenueCat fails
-            }
-            
-            // Sign out from Supabase
-            await signOut();
+          onPress: () => {
+            // App.js performSignOut handles everything: RevenueCat, Supabase, data clearing, navigation
             onSignOut();
           },
         },
