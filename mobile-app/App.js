@@ -5447,7 +5447,8 @@ function AppContent() {
           const ozt = parseFloat(item.ozt) || 0;
           const spotNum = parseFloat(spotPrice) || 0;
           const qty = parseInt(item.quantity) || 1;
-          const extPrice = item.extPrice ? parseFloat(item.extPrice) : unitPrice * qty;
+          const parsedExtPrice = parseFloat(item.extPrice);
+          let extPrice = parsedExtPrice > 0 ? parsedExtPrice : unitPrice * qty;
 
           // Spot price sanity check - precious metals almost never sell below spot
           let priceWarning = null;
@@ -5478,6 +5479,9 @@ function AppContent() {
               }
             }
           }
+
+          // Recalculate extPrice from final unitPrice (may have been corrected by sanity check)
+          extPrice = Math.round(unitPrice * qty * 100) / 100;
 
           let premium = '0';
           if (unitPrice > 0 && spotNum > 0 && ozt > 0) {
