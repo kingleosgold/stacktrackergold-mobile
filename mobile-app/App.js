@@ -76,6 +76,17 @@ const ICLOUD_HOLDINGS_KEY = 'stack_tracker_holdings.json';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl || 'https://api.stacktrackergold.com';
+const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '0.0.0';
+
+const isVersionBelow = (current, minimum) => {
+  const cur = current.split('.').map(Number);
+  const min = minimum.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((cur[i] || 0) < (min[i] || 0)) return true;
+    if ((cur[i] || 0) > (min[i] || 0)) return false;
+  }
+  return false;
+};
 
 // ============================================
 // DEALER CSV TEMPLATES
@@ -1491,6 +1502,7 @@ function AppContent() {
   const [showPaywallModal, setShowPaywallModal] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showV20Tutorial, setShowV20Tutorial] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(null);
 
   // Screenshot Mode (dev only — for App Store screenshots)
   const [screenshotMode, setScreenshotMode] = useState(false);
@@ -2256,6 +2268,31 @@ function AppContent() {
 
   const authenticate = async () => {
     try {
+      // Minimum version check — fail open
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const versionRes = await fetch('https://api.stacktrackergold.com/v1/min-version', {
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (versionRes.ok) {
+          const versionData = await versionRes.json();
+          const platform = Platform.OS;
+          const platformData = versionData[platform];
+          if (versionData.enforced && platformData && isVersionBelow(appVersion, platformData.minVersion)) {
+            setForceUpdate({
+              message: versionData.message,
+              storeUrl: platformData.store_url
+            });
+            return; // Stop all further initialization — app is blocked
+          }
+        }
+      } catch (e) {
+        // Fail open — if endpoint is unreachable, let the user in
+        console.log('Version check skipped:', e.message);
+      }
+
       // Wrap all authentication in defensive try-catch
       let shouldAuthenticate = false;
 
@@ -11375,6 +11412,74 @@ function AppContent() {
             </View>
           </Animated.View>
         </>
+      )}
+
+      {forceUpdate && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {}}
+        >
+          <View style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.95)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 32,
+          }}>
+            <View style={{
+              backgroundColor: '#1a1a1a',
+              borderRadius: 16,
+              padding: 32,
+              width: '100%',
+              maxWidth: 340,
+              alignItems: 'center',
+            }}>
+              <Text style={{
+                color: '#C9A84C',
+                fontSize: 22,
+                fontWeight: '700',
+                marginBottom: 16,
+                textAlign: 'center',
+              }}>
+                Update Required
+              </Text>
+              <Text style={{
+                color: '#ccc',
+                fontSize: 15,
+                lineHeight: 22,
+                textAlign: 'center',
+                marginBottom: 28,
+              }}>
+                {forceUpdate.message}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (forceUpdate.storeUrl) {
+                    Linking.openURL(forceUpdate.storeUrl);
+                  }
+                }}
+                style={{
+                  backgroundColor: '#C9A84C',
+                  borderRadius: 8,
+                  paddingVertical: 14,
+                  paddingHorizontal: 40,
+                  width: '100%',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{
+                  color: '#000',
+                  fontSize: 16,
+                  fontWeight: '700',
+                }}>
+                  Update Now
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );
