@@ -5522,101 +5522,102 @@ fetchLiveSpotPrices().then(() => {
     // so no separate initial check needed. The checker handles token lookup
     // from the push_tokens table correctly.
 
-    // Intelligence cron: daily at 6:00 AM EST (11:00 UTC)
-    // Runs 35 min before Daily Brief so vault alerts don't overlap with brief notification
-    if (GEMINI_API_KEY) {
-      cron.schedule('0 11 * * *', async () => {
-        console.log(`\n🧠 [Intelligence Cron] Triggered at ${new Date().toISOString()}`);
-        try {
-          const result = await runIntelligenceGeneration();
-          console.log(`🧠 [Intelligence Cron] Done: ${result.briefsInserted} briefs, ${result.vaultInserted}/4 vault`);
-        } catch (err) {
-          console.error(`🧠 [Intelligence Cron] Failed:`, err.message);
-        }
-      }, { timezone: 'UTC' });
-      console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:00 AM EST (11:00 UTC)');
-
-      // Daily Brief cron: 6:35 AM EST (11:35 UTC) — 35 min after intelligence so news is available
-      cron.schedule('35 11 * * *', async () => {
-        console.log(`\n📝 [Daily Brief Cron] Triggered at ${new Date().toISOString()}`);
-        try {
-          const supabaseClient = getSupabase();
-          const { data: goldUsers, error } = await supabaseClient
-            .from('profiles')
-            .select('id')
-            .in('subscription_tier', ['gold', 'lifetime']);
-
-          if (error || !goldUsers) {
-            console.error('📝 [Daily Brief Cron] Failed to fetch Gold users:', error?.message);
-            return;
-          }
-
-          console.log(`📝 [Daily Brief Cron] Generating briefs for ${goldUsers.length} Gold/Lifetime users`);
-          let success = 0;
-          let failed = 0;
-
-          let pushSent = 0;
-          for (const user of goldUsers) {
-            try {
-              const result = await generateDailyBrief(user.id);
-              // Generate portfolio intelligence alongside the daily brief
-              try { await generatePortfolioIntelligence(user.id); } catch (piErr) { console.log(`🧠 [Portfolio Intelligence Cron] Skipped for ${user.id}: ${piErr.message}`); }
-              success++;
-              console.log(`📝 [Daily Brief Cron] ✅ ${success}/${goldUsers.length} — user ${user.id}`);
-
-              // Send push notification if user has a valid push token and daily_brief enabled
-              if (result && result.brief && result.brief.brief_text) {
-                try {
-                  // Check notification preferences
-                  const { data: notifPref } = await supabaseClient
-                    .from('notification_preferences')
-                    .select('daily_brief')
-                    .eq('user_id', user.id)
-                    .single();
-                  const briefEnabled = !notifPref || notifPref.daily_brief !== false;
-
-                  if (briefEnabled) {
-                    const { data: tokenData } = await supabaseClient
-                      .from('push_tokens')
-                      .select('expo_push_token')
-                      .eq('user_id', user.id)
-                      .order('last_active', { ascending: false })
-                      .limit(1)
-                      .single();
-
-                    if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
-                      const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
-                      const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
-                      await sendPushNotification(tokenData.expo_push_token, {
-                        title: '\u2600\uFE0F Your daily brief from Troy is ready',
-                        body,
-                        data: { type: 'daily_brief' },
-                        sound: 'default',
-                      });
-                      pushSent++;
-                    }
-                  }
-                } catch (pushErr) {
-                  console.log(`📝 [Daily Brief Cron] Push skipped for ${user.id}: ${pushErr.message}`);
-                }
-              }
-            } catch (err) {
-              failed++;
-              console.error(`📝 [Daily Brief Cron] ❌ user ${user.id}: ${err.message}`);
-            }
-            // 2s delay between users to avoid rate limits
-            if (goldUsers.indexOf(user) < goldUsers.length - 1) {
-              await new Promise(r => setTimeout(r, 2000));
-            }
-          }
-
-          console.log(`📝 [Daily Brief Cron] Done: ${success} success, ${failed} failed, ${pushSent} push sent out of ${goldUsers.length}`);
-        } catch (err) {
-          console.error('📝 [Daily Brief Cron] Failed:', err.message);
-        }
-      }, { timezone: 'UTC' });
-      console.log('📝 [Daily Brief Cron] Scheduled: daily at 6:35 AM EST (11:35 UTC)');
-    }
+    // DISABLED — crons now run on stg-api
+    // // Intelligence cron: daily at 6:00 AM EST (11:00 UTC)
+    // // Runs 35 min before Daily Brief so vault alerts don't overlap with brief notification
+    // if (GEMINI_API_KEY) {
+    // cron.schedule('0 11 * * *', async () => {
+    // console.log(`\n🧠 [Intelligence Cron] Triggered at ${new Date().toISOString()}`);
+    // try {
+    // const result = await runIntelligenceGeneration();
+    // console.log(`🧠 [Intelligence Cron] Done: ${result.briefsInserted} briefs, ${result.vaultInserted}/4 vault`);
+    // } catch (err) {
+    // console.error(`🧠 [Intelligence Cron] Failed:`, err.message);
+    // }
+    // }, { timezone: 'UTC' });
+    // console.log('🧠 [Intelligence Cron] Scheduled: daily at 6:00 AM EST (11:00 UTC)');
+    //
+    // // Daily Brief cron: 6:35 AM EST (11:35 UTC) — 35 min after intelligence so news is available
+    // cron.schedule('35 11 * * *', async () => {
+    // console.log(`\n📝 [Daily Brief Cron] Triggered at ${new Date().toISOString()}`);
+    // try {
+    // const supabaseClient = getSupabase();
+    // const { data: goldUsers, error } = await supabaseClient
+    // .from('profiles')
+    // .select('id')
+    // .in('subscription_tier', ['gold', 'lifetime']);
+    //
+    // if (error || !goldUsers) {
+    // console.error('📝 [Daily Brief Cron] Failed to fetch Gold users:', error?.message);
+    // return;
+    // }
+    //
+    // console.log(`📝 [Daily Brief Cron] Generating briefs for ${goldUsers.length} Gold/Lifetime users`);
+    // let success = 0;
+    // let failed = 0;
+    //
+    // let pushSent = 0;
+    // for (const user of goldUsers) {
+    // try {
+    // const result = await generateDailyBrief(user.id);
+    // // Generate portfolio intelligence alongside the daily brief
+    // try { await generatePortfolioIntelligence(user.id); } catch (piErr) { console.log(`🧠 [Portfolio Intelligence Cron] Skipped for ${user.id}: ${piErr.message}`); }
+    // success++;
+    // console.log(`📝 [Daily Brief Cron] ✅ ${success}/${goldUsers.length} — user ${user.id}`);
+    //
+    // // Send push notification if user has a valid push token and daily_brief enabled
+    // if (result && result.brief && result.brief.brief_text) {
+    // try {
+    // // Check notification preferences
+    // const { data: notifPref } = await supabaseClient
+    // .from('notification_preferences')
+    // .select('daily_brief')
+    // .eq('user_id', user.id)
+    // .single();
+    // const briefEnabled = !notifPref || notifPref.daily_brief !== false;
+    //
+    // if (briefEnabled) {
+    // const { data: tokenData } = await supabaseClient
+    // .from('push_tokens')
+    // .select('expo_push_token')
+    // .eq('user_id', user.id)
+    // .order('last_active', { ascending: false })
+    // .limit(1)
+    // .single();
+    //
+    // if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
+    // const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
+    // const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
+    // await sendPushNotification(tokenData.expo_push_token, {
+    // title: '\u2600\uFE0F Your daily brief from Troy is ready',
+    // body,
+    // data: { type: 'daily_brief' },
+    // sound: 'default',
+    // });
+    // pushSent++;
+    // }
+    // }
+    // } catch (pushErr) {
+    // console.log(`📝 [Daily Brief Cron] Push skipped for ${user.id}: ${pushErr.message}`);
+    // }
+    // }
+    // } catch (err) {
+    // failed++;
+    // console.error(`📝 [Daily Brief Cron] ❌ user ${user.id}: ${err.message}`);
+    // }
+    // // 2s delay between users to avoid rate limits
+    // if (goldUsers.indexOf(user) < goldUsers.length - 1) {
+    // await new Promise(r => setTimeout(r, 2000));
+    // }
+    // }
+    //
+    // console.log(`📝 [Daily Brief Cron] Done: ${success} success, ${failed} failed, ${pushSent} push sent out of ${goldUsers.length}`);
+    // } catch (err) {
+    // console.error('📝 [Daily Brief Cron] Failed:', err.message);
+    // }
+    // }, { timezone: 'UTC' });
+    // console.log('📝 [Daily Brief Cron] Scheduled: daily at 6:35 AM EST (11:35 UTC)');
+    // }
 
     console.log('💳 RevenueCat Webhook:', REVENUECAT_WEBHOOK_SECRET ? 'ENABLED' : 'DISABLED (no secret)');
     console.log('🔄 RevenueCat Sync:', REVENUECAT_API_KEY ? 'ENABLED' : 'DISABLED (no API key)');
