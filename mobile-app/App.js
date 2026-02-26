@@ -1510,11 +1510,14 @@ function AppContent() {
   const versionTapTimer = useRef(null);
 
   // Troy state
-  const [advisorMessages, setAdvisorMessages] = useState([]);
-  const [advisorInput, setAdvisorInput] = useState('');
-  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [troyConversations, setTroyConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const [troyMessages, setTroyMessages] = useState([]);
+  const [troySidebarVisible, setTroySidebarVisible] = useState(false);
+  const [troyLoading, setTroyLoading] = useState(false);
+  const [troyInputText, setTroyInputText] = useState('');
   const [advisorQuestionsToday, setAdvisorQuestionsToday] = useState(0);
-  const advisorScrollRef = useRef(null);
+  const troyFlatListRef = useRef(null);
   const [showTroyChat, setShowTroyChat] = useState(false);
   const [showTroyFab, setShowTroyFab] = useState(true);
   const fabScale = useRef(new Animated.Value(1)).current;
@@ -1837,10 +1840,13 @@ function AppContent() {
     setSpotPricesLive(false);
     setSpotChange({ gold: { amount: null, percent: null, prevClose: null }, silver: { amount: null, percent: null, prevClose: null }, platinum: { amount: null, percent: null, prevClose: null }, palladium: { amount: null, percent: null, prevClose: null } });
     setMidnightSnapshot(null);
-    setAdvisorMessages([]);
-    setAdvisorInput('');
+    setTroyMessages([]);
+    setTroyInputText('');
+    setTroyConversations([]);
+    setActiveConversationId(null);
     setAdvisorQuestionsToday(0);
     setShowTroyChat(false);
+    setTroySidebarVisible(false);
     setDailyBrief(null);
     setBriefExpanded(false);
     setPortfolioIntel(null);
@@ -3423,24 +3429,102 @@ function AppContent() {
     { emoji: '✅', title: "You're All Set!", description: 'Enjoy Stack Tracker Gold v2.0. Built for stackers, by stackers.', highlight: 'Stack on! 🪙' },
   ];
 
-  // Troy — send message
-  const sendAdvisorMessage = async (messageText) => {
-    const text = (messageText || advisorInput).trim();
-    if (!text || advisorLoading) return;
+  // Troy — persistent conversation API helpers
+  const troyAPI = {
+    async createConversation() {
+      const res = await fetch(`${API_BASE_URL}/v1/troy/conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: supabaseUser?.id || null })
+      });
+      return res.json();
+    },
+    async listConversations() {
+      const res = await fetch(`${API_BASE_URL}/v1/troy/conversations?userId=${supabaseUser?.id || null}`);
+      return res.json();
+    },
+    async getConversation(conversationId) {
+      const res = await fetch(`${API_BASE_URL}/v1/troy/conversations/${conversationId}?userId=${supabaseUser?.id || null}`);
+      return res.json();
+    },
+    async deleteConversation(conversationId) {
+      const res = await fetch(`${API_BASE_URL}/v1/troy/conversations/${conversationId}?userId=${supabaseUser?.id || null}`, {
+        method: 'DELETE'
+      });
+      return res.json();
+    },
+    async sendMessage(conversationId, message) {
+      const res = await fetch(`${API_BASE_URL}/v1/troy/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: supabaseUser?.id || null, message })
+      });
+      return res.json();
+    }
+  };
 
+  const openTroyChat = async () => {
+    setShowTroyChat(true);
+    setTroyLoading(true);
+    try {
+      const conversations = await troyAPI.listConversations();
+      setTroyConversations(Array.isArray(conversations) ? conversations : []);
+      if (conversations && conversations.length > 0) {
+        await loadConversation(conversations[0].id);
+      } else {
+        setActiveConversationId(null);
+        setTroyMessages([]);
+      }
+    } catch (e) {
+      console.error('Failed to load Troy conversations:', e);
+      setTroyConversations([]);
+      setActiveConversationId(null);
+      setTroyMessages([]);
+    }
+    setTroyLoading(false);
+  };
+
+  const loadConversation = async (conversationId) => {
+    setTroyLoading(true);
+    try {
+      const data = await troyAPI.getConversation(conversationId);
+      setActiveConversationId(conversationId);
+      setTroyMessages(data.messages || []);
+    } catch (e) {
+      console.error('Failed to load conversation:', e);
+    }
+    setTroyLoading(false);
+  };
+
+  const startNewConversation = () => {
+    setActiveConversationId(null);
+    setTroyMessages([]);
+    setTroySidebarVisible(false);
+  };
+
+  const deleteConversation = async (conversationId) => {
+    try {
+      await troyAPI.deleteConversation(conversationId);
+      setTroyConversations(prev => prev.filter(c => c.id !== conversationId));
+      if (activeConversationId === conversationId) {
+        setActiveConversationId(null);
+        setTroyMessages([]);
+      }
+    } catch (e) {
+      console.error('Failed to delete conversation:', e);
+    }
+  };
+
+  const sendTroyMessage = async (messageText) => {
+    const text = (messageText || troyInputText).trim();
+    if (!text || troyLoading) return;
+
+    // Daily limit check
     const dailyLimit = hasGoldAccess ? TROY_GOLD_LIMIT : TROY_FREE_LIMIT;
-    const userMsg = { role: 'user', text, timestamp: Date.now() };
-
     if (advisorQuestionsToday >= dailyLimit) {
       if (!hasGoldAccess) {
-        const upgradeMsg = {
-          role: 'assistant',
-          text: "That's my free limit for today. Upgrade to Gold and I'll analyze your entire stack anytime — cost basis, COMEX data, market intel, the works. Your call.",
-          timestamp: Date.now(),
-          isUpgradeCTA: true,
-        };
-        setAdvisorMessages(prev => [...prev, userMsg, upgradeMsg]);
-        setAdvisorInput('');
+        setShowTroyChat(false);
+        setShowPaywallModal(true);
         return;
       } else {
         Alert.alert('Daily Limit', "You've reached your daily limit. Check back tomorrow!");
@@ -3448,9 +3532,29 @@ function AppContent() {
       }
     }
 
-    setAdvisorMessages(prev => [...prev, userMsg]);
-    setAdvisorInput('');
-    setAdvisorLoading(true);
+    if (!messageText) setTroyInputText('');
+
+    let convId = activeConversationId;
+
+    // If no active conversation, create one first
+    if (!convId) {
+      try {
+        const newConv = await troyAPI.createConversation();
+        convId = newConv.id;
+        setActiveConversationId(convId);
+        setTroyConversations(prev => [newConv, ...prev]);
+      } catch (e) {
+        console.error('Failed to create conversation:', e);
+        return;
+      }
+    }
+
+    // Optimistically add user message to the UI
+    const tempUserMsg = { id: 'temp-' + Date.now(), role: 'user', content: text, created_at: new Date().toISOString() };
+    setTroyMessages(prev => [...prev, tempUserMsg]);
+
+    // Show typing indicator
+    setTroyLoading(true);
 
     // Update daily count
     const newCount = advisorQuestionsToday + 1;
@@ -3458,30 +3562,35 @@ function AppContent() {
     AsyncStorage.setItem('stack_advisor_count', JSON.stringify({ date: new Date().toDateString(), count: newCount }));
 
     try {
-      const history = advisorMessages.map(m => ({ role: m.role, content: m.text }));
-      const response = await fetch(`${API_BASE_URL}/v1/advisor/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: supabaseUser?.id || null,
-          message: text,
-          conversationHistory: history,
-          context: `User is on the ${tab} screen`,
-        }),
+      const response = await troyAPI.sendMessage(convId, text);
+
+      // Replace temp message with real one and add Troy's response
+      setTroyMessages(prev => {
+        const withoutTemp = prev.filter(m => m.id !== tempUserMsg.id);
+        return [...withoutTemp,
+          { id: 'user-' + Date.now(), role: 'user', content: text, created_at: tempUserMsg.created_at },
+          response.message
+        ];
       });
-      const data = await response.json();
-      if (data.response) {
-        setAdvisorMessages(prev => [...prev, { role: 'assistant', text: data.response, timestamp: Date.now() }]);
-      } else {
-        setAdvisorMessages(prev => [...prev, { role: 'assistant', text: 'Sorry, I couldn\'t process that. Please try again.', timestamp: Date.now() }]);
+
+      // Update conversation title if it changed (first message auto-titles)
+      if (response.title) {
+        setTroyConversations(prev => prev.map(c =>
+          c.id === convId ? { ...c, title: response.title, updated_at: new Date().toISOString() } : c
+        ));
       }
-    } catch (error) {
-      if (__DEV__) console.error('Advisor error:', error);
-      setAdvisorMessages(prev => [...prev, { role: 'assistant', text: 'Connection error. Please check your internet and try again.', timestamp: Date.now() }]);
-    } finally {
-      setAdvisorLoading(false);
-      setTimeout(() => advisorScrollRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e) {
+      console.error('Failed to send message:', e);
+      setTroyMessages(prev => prev.filter(m => m.id !== tempUserMsg.id));
+      Alert.alert('Error', 'Failed to send message. Please try again.');
     }
+
+    setTroyLoading(false);
+  };
+
+  const closeTroyChat = () => {
+    setShowTroyChat(false);
+    setTroySidebarVisible(false);
   };
 
   // Server-side scan tracking functions
@@ -6638,10 +6747,10 @@ function AppContent() {
   };
 
   const navigateToSection = (tabKey, sectionKey) => {
-    // Special case: Troy opens chat modal
+    // Special case: Troy opens chat
     if (sectionKey === 'troy') {
       closeDrawer();
-      setShowTroyChat(true);
+      openTroyChat();
       return;
     }
     closeDrawer();
@@ -9554,7 +9663,7 @@ function AppContent() {
             fabTapped.current = true;
             fabGlow.stopAnimation();
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setShowTroyChat(true);
+            openTroyChat();
           }}
           activeOpacity={1}
         >
@@ -9571,181 +9680,257 @@ function AppContent() {
         </TouchableOpacity>
       </Animated.View>}
 
-      {/* Troy Chat Modal */}
-      <Modal visible={showTroyChat} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={{ flex: 1, backgroundColor: isDarkMode ? '#000000' : '#f2f2f7' }}>
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: isDarkMode ? '#38383a' : '#c6c6c8' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <TroyCoinIcon size={32} />
-              <View>
-                <Text style={{ color: colors.text, fontSize: scaledFonts.large, fontWeight: '600' }}>Troy</Text>
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Your Stack Analyst</Text>
-              </View>
-            </View>
-            <TouchableOpacity onPress={() => setShowTroyChat(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={{ color: colors.gold, fontSize: scaledFonts.large, fontWeight: '600' }}>Done</Text>
-            </TouchableOpacity>
-          </View>
+      {/* Troy Chat — Full Screen */}
+      {showTroyChat && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9999 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
 
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}>
-            {/* Chat messages */}
-            <ScrollView
-              ref={advisorScrollRef}
-              style={{ flex: 1, padding: 16 }}
-              onContentSizeChange={() => advisorScrollRef.current?.scrollToEnd({ animated: true })}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-            >
-              {advisorMessages.length === 0 ? (
-                <View style={{ gap: 12, paddingVertical: 20 }}>
-                  <View style={{ alignItems: 'center', marginBottom: 12 }}>
-                    <View style={{ marginBottom: 12 }}>
-                      <TroyCoinIcon size={56} />
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => setTroySidebarVisible(true)} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 22, fontWeight: '300' }}>{'\u2630'}</Text>
+              </TouchableOpacity>
+              <TroyCoinIcon size={32} />
+              <View style={{ marginLeft: 10, flex: 1 }}>
+                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700' }}>Troy</Text>
+                <Text style={{ color: '#999', fontSize: 12 }}>Your Stack Analyst</Text>
+              </View>
+              <TouchableOpacity onPress={startNewConversation} style={{ marginRight: 16 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 20 }}>{'\u270E'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={closeTroyChat} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 16, fontWeight: '600' }}>Done</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Message List */}
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+              <FlatList
+                ref={troyFlatListRef}
+                data={troyMessages}
+                keyExtractor={(item, index) => item.id || `msg-${index}`}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, flexGrow: 1 }}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                onContentSizeChange={() => {
+                  troyFlatListRef.current?.scrollToEnd({ animated: true });
+                }}
+                ListEmptyComponent={
+                  !troyLoading ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 }}>
+                      <TroyCoinIcon size={64} />
+                      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 16 }}>Ask Troy anything</Text>
+                      <Text style={{ color: '#999', fontSize: 14, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                        Your personal stack analyst. I know your stack{'\n'}and can help you make smarter decisions.
+                      </Text>
+                      <View style={{ marginTop: 24, gap: 10, alignSelf: 'stretch', paddingHorizontal: 16 }}>
+                        {[
+                          'How is my stack performing?',
+                          'Should I buy more silver or gold?',
+                          'Analyze my gold-to-silver ratio',
+                          'What if silver hits $100?',
+                          "What's my best and worst purchase?",
+                        ].map((q, i) => (
+                          <TouchableOpacity
+                            key={i}
+                            style={{
+                              backgroundColor: 'rgba(212,168,67,0.08)',
+                              borderRadius: 16,
+                              paddingVertical: 10,
+                              paddingHorizontal: 14,
+                              borderWidth: 1,
+                              borderColor: 'rgba(212,168,67,0.2)',
+                              alignSelf: 'flex-start',
+                            }}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              sendTroyMessage(q);
+                            }}
+                          >
+                            <Text style={{ color: '#D4A843', fontSize: 13 }}>{q}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                    <Text style={{ color: colors.text, fontSize: scaledFonts.large, fontWeight: '600' }}>Ask Troy anything</Text>
-                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 4, textAlign: 'center' }}>Your personal stack analyst. I know your stack{'\n'}and can help you make smarter decisions.</Text>
-                  </View>
-                  {[
-                    'How is my stack performing?',
-                    'Should I buy more silver or gold?',
-                    'Analyze my gold-to-silver ratio',
-                    'What if silver hits $100?',
-                    "What's my best and worst purchase?",
-                  ].map((q, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={{
-                        backgroundColor: isDarkMode ? 'rgba(212,168,67,0.08)' : 'rgba(212,168,67,0.1)',
-                        borderRadius: 16,
-                        paddingVertical: 10,
-                        paddingHorizontal: 14,
-                        borderWidth: 1,
-                        borderColor: 'rgba(212,168,67,0.2)',
-                        alignSelf: 'flex-start',
-                      }}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        sendAdvisorMessage(q);
-                      }}
-                    >
-                      <Text style={{ color: '#D4A843', fontSize: scaledFonts.small }}>{q}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : (
-                <View style={{ gap: 10 }}>
-                  {advisorMessages.map((msg, i) => (
-                    <View
-                      key={i}
-                      style={{
-                        alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                        backgroundColor: msg.role === 'user' ? '#D4A843' : (isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'),
-                        borderRadius: 14,
-                        paddingVertical: 10,
-                        paddingHorizontal: 14,
-                        maxWidth: '85%',
-                      }}
-                    >
-                      {msg.role === 'user' ? (
-                        <Text style={{
-                          color: '#000',
-                          fontSize: scaledFonts.normal,
-                          lineHeight: scaledFonts.normal * 1.5,
-                        }}>{msg.text}</Text>
+                  ) : null
+                }
+                renderItem={({ item }) => (
+                  <View style={{
+                    alignSelf: item.role === 'user' ? 'flex-end' : 'flex-start',
+                    maxWidth: '85%',
+                    marginBottom: 12,
+                  }}>
+                    {item.role === 'assistant' && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <TroyCoinIcon size={20} />
+                        <Text style={{ color: '#C9A84C', fontSize: 12, fontWeight: '600', marginLeft: 6 }}>Troy</Text>
+                      </View>
+                    )}
+                    <View style={{
+                      backgroundColor: item.role === 'user' ? '#C9A84C' : '#1a1a1a',
+                      borderRadius: 16,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderTopRightRadius: item.role === 'user' ? 4 : 16,
+                      borderTopLeftRadius: item.role === 'assistant' ? 4 : 16,
+                    }}>
+                      {item.role === 'user' ? (
+                        <Text style={{ color: '#000', fontSize: 15, lineHeight: 22 }}>{item.content}</Text>
                       ) : (
                         <Markdown style={{
-                          body: { color: colors.text, fontSize: scaledFonts.normal, lineHeight: scaledFonts.normal * 1.5 },
+                          body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
                           paragraph: { marginTop: 0, marginBottom: 4 },
                           strong: { fontWeight: '700' },
                           em: { fontStyle: 'italic' },
                           bullet_list: { marginTop: 2, marginBottom: 2 },
                           ordered_list: { marginTop: 2, marginBottom: 2 },
                           list_item: { marginTop: 1, marginBottom: 1 },
-                        }}>{msg.text}</Markdown>
-                      )}
-                      {msg.isUpgradeCTA && (
-                        <TouchableOpacity
-                          onPress={() => { setShowTroyChat(false); setShowPaywallModal(true); }}
-                          style={{ backgroundColor: '#D4A843', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, marginTop: 10, alignSelf: 'flex-start' }}
-                        >
-                          <Text style={{ color: '#000', fontSize: scaledFonts.normal, fontWeight: '700' }}>Upgrade to Gold</Text>
-                        </TouchableOpacity>
+                        }}>{item.content}</Markdown>
                       )}
                     </View>
-                  ))}
-                  {advisorLoading && (
-                    <View style={{
-                      alignSelf: 'flex-start',
-                      backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-                      borderRadius: 14,
-                      paddingVertical: 10,
-                      paddingHorizontal: 14,
-                    }}>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontStyle: 'italic' }}>Thinking...</Text>
-                    </View>
-                  )}
+                  </View>
+                )}
+              />
+
+              {/* Typing Indicator */}
+              {troyLoading && troyMessages.length > 0 && (
+                <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TroyCoinIcon size={20} />
+                    <Text style={{ color: '#999', fontSize: 13, marginLeft: 6, fontStyle: 'italic' }}>Troy is thinking...</Text>
+                  </View>
                 </View>
               )}
-            </ScrollView>
 
-            {/* Input bar */}
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              borderTopWidth: 0.5,
-              borderTopColor: isDarkMode ? '#38383a' : '#c6c6c8',
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              gap: 8,
-              backgroundColor: isDarkMode ? '#000000' : '#f2f2f7',
-            }}>
-              <TextInput
-                style={{
-                  flex: 1,
-                  backgroundColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                  borderRadius: 20,
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  color: colors.text,
-                  fontSize: scaledFonts.medium,
-                }}
-                placeholder="Ask Troy..."
-                placeholderTextColor={colors.muted}
-                value={advisorInput}
-                onChangeText={setAdvisorInput}
-                onSubmitEditing={() => sendAdvisorMessage()}
-                returnKeyType="send"
-                editable={!advisorLoading}
-                autoFocus={false}
-              />
-              <TouchableOpacity
-                onPress={() => sendAdvisorMessage()}
-                disabled={!advisorInput.trim() || advisorLoading}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: advisorInput.trim() ? '#D4A843' : (isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: advisorInput.trim() ? '#000' : colors.muted, fontSize: scaledFonts.medium, fontWeight: '700' }}>{'\u2191'}</Text>
-              </TouchableOpacity>
-            </View>
-            {hasGoldAccess && advisorQuestionsToday >= 25 && advisorQuestionsToday < TROY_GOLD_LIMIT ? (
-              <View style={{ paddingHorizontal: 12, paddingBottom: Math.max(insets.bottom, 8), backgroundColor: isDarkMode ? '#000000' : '#f2f2f7' }}>
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, textAlign: 'center' }}>
-                  {`${TROY_GOLD_LIMIT - advisorQuestionsToday} left for today — resets at midnight`}
-                </Text>
+              {/* Input Bar */}
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'flex-end',
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderTopWidth: 1,
+                borderTopColor: '#1a1a1a',
+                backgroundColor: '#000',
+              }}>
+                <TextInput
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#1a1a1a',
+                    borderRadius: 20,
+                    paddingHorizontal: 16,
+                    paddingTop: 10,
+                    paddingBottom: 10,
+                    color: '#fff',
+                    fontSize: 15,
+                    maxHeight: 100,
+                  }}
+                  placeholder="Ask Troy..."
+                  placeholderTextColor="#666"
+                  value={troyInputText}
+                  onChangeText={setTroyInputText}
+                  multiline={true}
+                  textAlignVertical="top"
+                  returnKeyType="default"
+                  blurOnSubmit={false}
+                />
+                <TouchableOpacity
+                  onPress={() => sendTroyMessage()}
+                  disabled={!troyInputText.trim() || troyLoading}
+                  style={{
+                    marginLeft: 8,
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: troyInputText.trim() && !troyLoading ? '#C9A84C' : '#333',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: troyInputText.trim() && !troyLoading ? '#000' : '#666', fontSize: 16, fontWeight: '700' }}>{'\u2191'}</Text>
+                </TouchableOpacity>
               </View>
-            ) : (
-              <View style={{ paddingBottom: Math.max(insets.bottom, 8), backgroundColor: isDarkMode ? '#000000' : '#f2f2f7' }} />
-            )}
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+              <View style={{ paddingBottom: Math.max(insets.bottom, 8), backgroundColor: '#000' }} />
+            </KeyboardAvoidingView>
+
+          </SafeAreaView>
+
+          {/* Sidebar Overlay */}
+          {troySidebarVisible && (
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => setTroySidebarVisible(false)}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10000 }}
+            >
+              <TouchableOpacity activeOpacity={1} onPress={() => {}} style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: 280,
+                backgroundColor: '#111',
+                zIndex: 10001,
+                paddingTop: 60,
+              }}>
+                <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
+                  <TouchableOpacity
+                    onPress={startNewConversation}
+                    style={{
+                      backgroundColor: '#C9A84C',
+                      borderRadius: 8,
+                      paddingVertical: 12,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: '#000', fontWeight: '700', fontSize: 15 }}>New Conversation</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <FlatList
+                  data={troyConversations}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => {
+                        loadConversation(item.id);
+                        setTroySidebarVisible(false);
+                      }}
+                      onLongPress={() => {
+                        Alert.alert(
+                          'Delete Conversation',
+                          'Are you sure you want to delete this conversation?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Delete', style: 'destructive', onPress: () => deleteConversation(item.id) }
+                          ]
+                        );
+                      }}
+                      style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 14,
+                        backgroundColor: item.id === activeConversationId ? '#1a1a1a' : 'transparent',
+                        borderLeftWidth: item.id === activeConversationId ? 3 : 0,
+                        borderLeftColor: '#C9A84C',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontSize: 14, fontWeight: item.id === activeConversationId ? '600' : '400' }} numberOfLines={1}>
+                        {item.title || 'New conversation'}
+                      </Text>
+                      <Text style={{ color: '#666', fontSize: 11, marginTop: 4 }}>
+                        {new Date(item.updated_at || item.created_at).toLocaleDateString()}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={
+                    <Text style={{ color: '#666', textAlign: 'center', marginTop: 40, fontSize: 14 }}>No conversations yet</Text>
+                  }
+                />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+
+        </View>
+      )}
 
       {/* Bottom Tabs */}
       <View style={[styles.bottomTabs, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)', borderTopColor: colors.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
