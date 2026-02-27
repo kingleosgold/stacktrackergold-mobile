@@ -1565,6 +1565,7 @@ function AppContent() {
   const displaySwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
   const exportSwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
   const advancedSwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
+  const stackSignalSwipe = useRef(useSwipeBack(() => setShowStackSignal(false))).current;
 
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState([]);
@@ -1692,6 +1693,14 @@ function AppContent() {
   const [vaultLoading, setVaultLoading] = useState(false);
   const [vaultLastFetched, setVaultLastFetched] = useState(null);
   const [vaultMetal, setVaultMetal] = useState('silver'); // Default to silver
+
+  // Stack Signal
+  const [showStackSignal, setShowStackSignal] = useState(false);
+  const [stackSignalArticles, setStackSignalArticles] = useState([]);
+  const [stackSignalDaily, setStackSignalDaily] = useState(null);
+  const [stackSignalLoading, setStackSignalLoading] = useState(false);
+  const [stackSignalRefreshing, setStackSignalRefreshing] = useState(false);
+  const [expandedArticleId, setExpandedArticleId] = useState(null);
 
   // Custom Milestone State
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
@@ -3506,6 +3515,74 @@ function AppContent() {
     }
   };
 
+  // Stack Signal API
+  const stackSignalAPI = {
+    async fetchArticles(offset = 0, limit = 20) {
+      const res = await fetch(`${API_BASE_URL}/v1/stack-signal?limit=${limit}&offset=${offset}`);
+      return res.json();
+    },
+    async fetchDaily() {
+      const res = await fetch(`${API_BASE_URL}/v1/stack-signal/latest`);
+      return res.json();
+    },
+    async fetchArticle(slug) {
+      const res = await fetch(`${API_BASE_URL}/v1/stack-signal/${slug}`);
+      return res.json();
+    },
+  };
+
+  const openStackSignal = async () => {
+    setShowStackSignal(true);
+    setStackSignalLoading(true);
+    try {
+      const [articlesRes, dailyRes] = await Promise.all([
+        stackSignalAPI.fetchArticles(0, 20),
+        stackSignalAPI.fetchDaily(),
+      ]);
+      if (__DEV__) console.log('📡 Stack Signal articles response:', JSON.stringify(articlesRes).slice(0, 300));
+      if (__DEV__) console.log('📡 Stack Signal daily response:', JSON.stringify(dailyRes).slice(0, 300));
+      const articles = articlesRes?.articles || (Array.isArray(articlesRes) ? articlesRes : []);
+      const daily = dailyRes?.signal || (dailyRes?.id ? dailyRes : null);
+      setStackSignalArticles(articles);
+      setStackSignalDaily(daily);
+    } catch (err) {
+      if (__DEV__) console.log('Stack Signal load error:', err.message);
+    } finally {
+      setStackSignalLoading(false);
+    }
+  };
+
+  const refreshStackSignal = async () => {
+    setStackSignalRefreshing(true);
+    try {
+      const [articlesRes, dailyRes] = await Promise.all([
+        stackSignalAPI.fetchArticles(0, 20),
+        stackSignalAPI.fetchDaily(),
+      ]);
+      const articles = articlesRes?.articles || (Array.isArray(articlesRes) ? articlesRes : []);
+      const daily = dailyRes?.signal || (dailyRes?.id ? dailyRes : null);
+      setStackSignalArticles(articles);
+      setStackSignalDaily(daily);
+    } catch (err) {
+      if (__DEV__) console.log('Stack Signal refresh error:', err.message);
+    } finally {
+      setStackSignalRefreshing(false);
+    }
+  };
+
+  const loadMoreStackSignal = async () => {
+    if (stackSignalLoading || stackSignalRefreshing) return;
+    try {
+      const moreRes = await stackSignalAPI.fetchArticles(stackSignalArticles.length, 20);
+      const moreArticles = moreRes?.articles || (Array.isArray(moreRes) ? moreRes : []);
+      if (moreArticles.length > 0) {
+        setStackSignalArticles(prev => [...prev, ...moreArticles]);
+      }
+    } catch (err) {
+      if (__DEV__) console.log('Stack Signal load more error:', err.message);
+    }
+  };
+
   const openTroyChat = async () => {
     setShowTroyChat(true);
     setTroyLoading(true);
@@ -5282,6 +5359,16 @@ function AppContent() {
     }
   }, [tab, supabaseUser]);
 
+  // Fetch Stack Signal daily synthesis for Today tab teaser
+  useEffect(() => {
+    if (tab === 'today' && !stackSignalDaily) {
+      stackSignalAPI.fetchDaily().then(res => {
+        const daily = res?.signal || (res?.id ? res : null);
+        if (daily) setStackSignalDaily(daily);
+      }).catch(() => {});
+    }
+  }, [tab]);
+
   const onRefreshToday = async () => {
     setIsRefreshing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -6741,6 +6828,7 @@ function AppContent() {
       { key: 'whatChanged', label: 'Metal Movers' },
       { key: 'vaultWatch', label: 'Vault Watch' },
       { key: 'intelligenceFeed', label: 'Intelligence Feed' },
+      { key: 'stackSignal', label: 'The Stack Signal' },
     ]},
     { key: 'portfolio', label: 'Stack', items: [
       { key: 'portfolioSummary', label: 'Summary' },
@@ -6794,6 +6882,12 @@ function AppContent() {
     if (sectionKey === 'troy') {
       closeDrawer();
       openTroyChat();
+      return;
+    }
+    // Special case: Stack Signal opens full-screen page
+    if (sectionKey === 'stackSignal') {
+      closeDrawer();
+      openStackSignal();
       return;
     }
     closeDrawer();
@@ -7142,6 +7236,38 @@ function AppContent() {
                 </TouchableOpacity>
               )}
               </View>
+
+              {/* ===== THE STACK SIGNAL TEASER ===== */}
+              <TouchableOpacity
+                onPress={() => openStackSignal()}
+                activeOpacity={0.7}
+                style={{
+                  backgroundColor: todayCardBg,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: '#C9A84C',
+                  padding: 16,
+                  marginBottom: 16,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <TroyCoinIcon size={20} />
+                  <Text style={{ color: '#C9A84C', fontSize: scaledFonts.tiny, fontWeight: '700', letterSpacing: 1.5 }}>THE STACK SIGNAL</Text>
+                </View>
+                {stackSignalDaily && stackSignalDaily.title ? (
+                  <>
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '700', marginBottom: 4 }}>{stackSignalDaily.title}</Text>
+                    {stackSignalDaily.troy_one_liner ? (
+                      <Text style={{ color: '#C9A84C', fontSize: scaledFonts.small, fontStyle: 'italic' }} numberOfLines={2}>{stackSignalDaily.troy_one_liner}</Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>Tap to open Troy's curated market intelligence</Text>
+                )}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <Text style={{ color: '#C9A84C', fontSize: scaledFonts.small, fontWeight: '600' }}>Read more ›</Text>
+                </View>
+              </TouchableOpacity>
 
               {/* ===== SECTION 1: STACK PULSE ===== */}
               <View onLayout={(e) => { sectionOffsets.current['portfolioPulse'] = e.nativeEvent.layout.y; }} style={{
@@ -10050,6 +10176,237 @@ function AppContent() {
                 </>
               )}
             </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
+
+      {/* ===== THE STACK SIGNAL FULL-SCREEN PAGE ===== */}
+      {showStackSignal && (
+        <View {...stackSignalSwipe.panHandlers} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9998 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => setShowStackSignal(false)} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 28, fontWeight: '300' }}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', flex: 1 }}>The Stack Signal</Text>
+            </View>
+
+            {stackSignalLoading && !stackSignalRefreshing ? (
+              /* Loading skeleton */
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+                {/* Daily card skeleton */}
+                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: 'rgba(201,168,76,0.3)', padding: 16, marginBottom: 16 }}>
+                  <View style={{ width: 140, height: 12, backgroundColor: '#222', borderRadius: 4, marginBottom: 12 }} />
+                  <View style={{ width: '100%', aspectRatio: 16/9, backgroundColor: '#222', borderRadius: 8, marginBottom: 12 }} />
+                  <View style={{ width: '80%', height: 14, backgroundColor: '#222', borderRadius: 4, marginBottom: 8 }} />
+                  <View style={{ width: '60%', height: 12, backgroundColor: '#1a1a1a', borderRadius: 4 }} />
+                </View>
+                {/* Article skeletons */}
+                {[1, 2, 3].map(i => (
+                  <View key={i} style={{ backgroundColor: '#111', borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
+                    <View style={{ width: '100%', aspectRatio: 16/9, backgroundColor: '#222' }} />
+                    <View style={{ padding: 14 }}>
+                      <View style={{ width: 60, height: 10, backgroundColor: '#222', borderRadius: 4, marginBottom: 10 }} />
+                      <View style={{ width: '90%', height: 14, backgroundColor: '#222', borderRadius: 4, marginBottom: 8 }} />
+                      <View style={{ width: '70%', height: 11, backgroundColor: '#1a1a1a', borderRadius: 4 }} />
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : stackSignalArticles.length === 0 && !stackSignalDaily ? (
+              /* Empty state */
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+                <TroyCoinIcon size={48} />
+                <Text style={{ color: '#999', fontSize: 15, textAlign: 'center', marginTop: 16, lineHeight: 22 }}>Troy is monitoring the markets. The Stack Signal will arrive shortly.</Text>
+              </View>
+            ) : (
+              /* Article feed */
+              <FlatList
+                data={stackSignalArticles.filter(a => !a.is_stack_signal)}
+                keyExtractor={(item) => item.id?.toString() || item.slug}
+                contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={stackSignalRefreshing}
+                    onRefresh={refreshStackSignal}
+                    tintColor="#C9A84C"
+                  />
+                }
+                onEndReached={loadMoreStackSignal}
+                onEndReachedThreshold={0.3}
+                ListHeaderComponent={() => {
+                  /* Daily Synthesis Card */
+                  const daily = stackSignalDaily;
+                  return (
+                    <View style={{ borderRadius: 12, borderWidth: 1, borderColor: '#C9A84C', backgroundColor: '#111', marginBottom: 20, overflow: 'hidden' }}>
+                      {daily && daily.image_url ? (
+                        <Image source={{ uri: daily.image_url }} style={{ width: '100%', aspectRatio: 16/9 }} resizeMode="cover" />
+                      ) : null}
+                      <View style={{ padding: 16 }}>
+                        <Text style={{ color: '#C9A84C', fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: 4 }}>THE STACK SIGNAL</Text>
+                        <Text style={{ color: '#999', fontSize: 12, marginBottom: 10 }}>
+                          {daily && daily.published_at
+                            ? new Date(daily.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                            : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                        </Text>
+                        {daily && daily.title ? (
+                          <>
+                            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>{daily.title}</Text>
+                            {daily.troy_one_liner ? (
+                              <Text style={{ color: '#C9A84C', fontSize: 14, fontStyle: 'italic', marginBottom: 12, lineHeight: 20 }}>{daily.troy_one_liner}</Text>
+                            ) : null}
+                            {daily.troy_commentary ? (
+                              <Markdown style={{
+                                body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
+                                paragraph: { marginTop: 0, marginBottom: 8 },
+                                strong: { fontWeight: '700' },
+                                em: { fontStyle: 'italic' },
+                                bullet_list: { marginTop: 2, marginBottom: 2 },
+                                ordered_list: { marginTop: 2, marginBottom: 2 },
+                                list_item: { marginTop: 1, marginBottom: 1 },
+                              }}>{daily.troy_commentary}</Markdown>
+                            ) : null}
+                            {daily.sources && Array.isArray(daily.sources) && daily.sources.length > 0 ? (
+                              <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#222' }}>
+                                <Text style={{ color: '#666', fontSize: 11, fontWeight: '600', marginBottom: 6 }}>SOURCES</Text>
+                                {daily.sources.slice(0, 5).map((src, idx) => (
+                                  <TouchableOpacity key={idx} onPress={() => Linking.openURL(src.url)} style={{ marginBottom: 4 }}>
+                                    <Text style={{ color: '#4A90D9', fontSize: 13 }}>{src.name || src.url}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                                {daily.sources.length > 5 && (
+                                  <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>and {daily.sources.length - 5} more sources</Text>
+                                )}
+                              </View>
+                            ) : null}
+                          </>
+                        ) : (
+                          <Text style={{ color: '#666', fontSize: 14, fontStyle: 'italic' }}>Troy's daily synthesis arrives at 6:30 AM</Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                }}
+                renderItem={({ item }) => {
+                  const isExpanded = expandedArticleId === item.id;
+                  const categoryColors = {
+                    price_action: '#C9A84C',
+                    comex_vaults: '#E8432A',
+                    central_banks: '#C9A84C',
+                    macro: '#4A90D9',
+                    supply: '#7B8D6F',
+                    geopolitical: '#D4A574',
+                    sentiment: '#9B59B6',
+                    silver: '#C0C0C0',
+                    gold: '#C9A84C',
+                    mining: '#7B8D6F',
+                    market_data: '#4A90D9',
+                  };
+                  const catColor = categoryColors[item.category] || '#C9A84C';
+                  const timeAgo = (() => {
+                    if (!item.published_at) return '';
+                    const diff = Date.now() - new Date(item.published_at).getTime();
+                    const mins = Math.floor(diff / 60000);
+                    if (mins < 60) return `${mins}m ago`;
+                    const hrs = Math.floor(mins / 60);
+                    if (hrs < 24) return `${hrs}h ago`;
+                    const days = Math.floor(hrs / 24);
+                    if (days === 1) return 'Yesterday';
+                    return `${days}d ago`;
+                  })();
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={async () => {
+                        if (isExpanded) {
+                          setExpandedArticleId(null);
+                          return;
+                        }
+                        setExpandedArticleId(item.id);
+                        // Fetch full article details if not already loaded
+                        if (!item.troy_commentary && item.slug) {
+                          try {
+                            const fullRes = await stackSignalAPI.fetchArticle(item.slug);
+                            const full = fullRes?.article || fullRes;
+                            if (full && full.troy_commentary) {
+                              setStackSignalArticles(prev => prev.map(a =>
+                                a.id === item.id ? { ...a, troy_commentary: full.troy_commentary, sources: full.sources } : a
+                              ));
+                            }
+                          } catch (err) {
+                            if (__DEV__) console.log('Stack Signal article fetch error:', err.message);
+                          }
+                        }
+                      }}
+                      style={{ backgroundColor: '#111', borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}
+                    >
+                      {item.image_url ? (
+                        <Image source={{ uri: item.image_url }} style={{ width: '100%', aspectRatio: 16/9 }} resizeMode="cover" />
+                      ) : null}
+                      <View style={{ padding: 14 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          {item.category ? (
+                            <View style={{ backgroundColor: catColor + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
+                              <Text style={{ color: catColor, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>{(item.category || '').replace(/_/g, ' ')}</Text>
+                            </View>
+                          ) : <View />}
+                          <Text style={{ color: '#666', fontSize: 11 }}>{timeAgo}</Text>
+                        </View>
+                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 4 }}>{item.title}</Text>
+                        {item.troy_one_liner ? (
+                          <Text style={{ color: '#999', fontSize: 13, fontStyle: 'italic', lineHeight: 18 }} numberOfLines={isExpanded ? undefined : 2}>{item.troy_one_liner}</Text>
+                        ) : null}
+
+                        {isExpanded && (
+                          <View style={{ marginTop: 12 }}>
+                            {item.troy_commentary ? (
+                              <Markdown style={{
+                                body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
+                                paragraph: { marginTop: 0, marginBottom: 8 },
+                                strong: { fontWeight: '700' },
+                                em: { fontStyle: 'italic' },
+                                bullet_list: { marginTop: 2, marginBottom: 2 },
+                                ordered_list: { marginTop: 2, marginBottom: 2 },
+                                list_item: { marginTop: 1, marginBottom: 1 },
+                              }}>{item.troy_commentary}</Markdown>
+                            ) : (
+                              <ActivityIndicator size="small" color="#C9A84C" style={{ marginVertical: 12 }} />
+                            )}
+
+                            {(item.gold_price_at_publish || item.silver_price_at_publish) ? (
+                              <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#222' }}>
+                                {item.gold_price_at_publish ? (
+                                  <Text style={{ color: '#666', fontSize: 11 }}>Au ${Number(item.gold_price_at_publish).toLocaleString()}</Text>
+                                ) : null}
+                                {item.silver_price_at_publish ? (
+                                  <Text style={{ color: '#666', fontSize: 11 }}>Ag ${Number(item.silver_price_at_publish).toFixed(2)}</Text>
+                                ) : null}
+                              </View>
+                            ) : null}
+
+                            {item.sources && Array.isArray(item.sources) && item.sources.length > 0 ? (
+                              <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#222' }}>
+                                <Text style={{ color: '#666', fontSize: 11, fontWeight: '600', marginBottom: 6 }}>SOURCES</Text>
+                                {item.sources.map((src, idx) => (
+                                  <TouchableOpacity key={idx} onPress={() => Linking.openURL(src.url)} style={{ marginBottom: 4 }}>
+                                    <Text style={{ color: '#4A90D9', fontSize: 13 }}>{src.name || src.url}</Text>
+                                  </TouchableOpacity>
+                                ))}
+                              </View>
+                            ) : null}
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={() => (
+                  <View style={{ alignItems: 'center', padding: 40 }}>
+                    <Text style={{ color: '#666', fontSize: 14 }}>No articles yet</Text>
+                  </View>
+                )}
+              />
+            )}
           </SafeAreaView>
         </View>
       )}
