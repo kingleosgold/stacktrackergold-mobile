@@ -4812,44 +4812,7 @@ app.post('/api/daily-brief/generate', async (req, res) => {
     // Generate portfolio intelligence alongside the daily brief
     try { await generatePortfolioIntelligence(userId); } catch (piErr) { console.log(`🧠 [Portfolio Intelligence] Skipped for ${userId}: ${piErr.message}`); }
 
-    // Send push notification after successful generation (if user has daily_brief enabled)
-    if (result && result.brief && result.brief.brief_text && isSupabaseAvailable()) {
-      try {
-        // Check notification preferences
-        const { data: notifPref } = await getSupabase()
-          .from('notification_preferences')
-          .select('daily_brief')
-          .eq('user_id', userId)
-          .single();
-        const briefEnabled = !notifPref || notifPref.daily_brief !== false;
-
-        if (briefEnabled) {
-          const { data: tokenData } = await getSupabase()
-            .from('push_tokens')
-            .select('expo_push_token')
-            .eq('user_id', userId)
-            .order('last_active', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (tokenData && isValidExpoPushToken(tokenData.expo_push_token)) {
-            const firstSentence = result.brief.brief_text.split(/[.!]\s/)[0];
-            const body = firstSentence.length > 100 ? firstSentence.slice(0, 97) + '...' : firstSentence;
-            await sendPushNotification(tokenData.expo_push_token, {
-              title: '☀️ Your daily brief from Troy is ready',
-              body,
-              data: { type: 'daily_brief' },
-              sound: 'default',
-            });
-            console.log(`📝 [Daily Brief] Push sent to ${userId}`);
-          }
-        } else {
-          console.log(`📝 [Daily Brief] Push skipped for ${userId} (disabled in preferences)`);
-        }
-      } catch (pushErr) {
-        console.log(`📝 [Daily Brief] Push skipped for ${userId}: ${pushErr.message}`);
-      }
-    }
+    // Push notifications disabled — stg-api cron handles all push delivery now
 
     return res.json(result);
 
