@@ -1560,6 +1560,11 @@ function AppContent() {
   const alertSwipe = useRef(useSwipeBack(() => { setShowAddAlertModal(false); setNewAlert({ metal: 'silver', targetPrice: '', direction: 'above' }); })).current;
   const milestoneSwipe = useRef(useSwipeBack(() => { setShowMilestoneModal(false); setTempSilverMilestone(''); setTempGoldMilestone(''); })).current;
   const detailSwipe = useRef(useSwipeBack(() => { setShowDetailView(false); setDetailItem(null); setDetailMetal(null); })).current;
+  const notificationsSwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
+  const appearanceSwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
+  const displaySwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
+  const exportSwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
+  const advancedSwipe = useRef(useSwipeBack(() => setSettingsSubPage(null))).current;
 
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importData, setImportData] = useState([]);
@@ -9040,362 +9045,6 @@ function AppContent() {
 
           const pageStyle = { flex: 1, backgroundColor: settingsBg, marginHorizontal: -20, marginTop: -20, paddingHorizontal: 16, paddingTop: 8 };
 
-          // ===== NOTIFICATIONS SUB-PAGE =====
-          if (settingsSubPage === 'notifications') {
-            const notifSwitchTrack = { false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' };
-            const notifSwitchBg = isDarkMode ? '#39393d' : '#e9e9eb';
-            // Render helper (NOT a component) to avoid React unmount/remount on re-render
-            const renderNotifRow = (prefKey, label, description, { isFirst, isLast, indented, disabled } = {}) => (
-              <View key={prefKey} style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: groupBg,
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                paddingLeft: indented ? 40 : 16,
-                minHeight: 44,
-                opacity: disabled ? 0.4 : 1,
-                ...(isFirst ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {}),
-                ...(isLast ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {}),
-              }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{label}</Text>
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>{description}</Text>
-                </View>
-                <Switch
-                  value={notifPrefs[prefKey]}
-                  onValueChange={(value) => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    saveNotifPref(prefKey, value);
-                  }}
-                  trackColor={notifSwitchTrack}
-                  thumbColor="#fff"
-                  ios_backgroundColor={notifSwitchBg}
-                  disabled={disabled}
-                />
-              </View>
-            );
-            return (
-              <View style={pageStyle}>
-                <SubPageHeader title="Notifications" />
-                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700', marginLeft: 16, marginBottom: 8 }}>Notifications</Text>
-
-                {/* Push Notifications Section */}
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 16, marginBottom: 6 }}>Push Notifications</Text>
-                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                  {renderNotifRow('daily_brief', "Your Daily Brief", 'Daily market summary from Troy each morning', { isFirst: true })}
-                  <RowSeparator />
-                  {renderNotifRow('breaking_news', 'Market Intelligence', 'Breaking news and major market events', {})}
-                  <RowSeparator />
-                  {renderNotifRow('price_alerts', 'Price Alerts', 'Triggered when your price targets are hit', { isLast: true })}
-                </View>
-
-                {/* COMEX Vault Alerts Section */}
-                <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 24, marginBottom: 6 }}>COMEX Vault Alerts</Text>
-                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                  {renderNotifRow('comex_alerts', 'All Vault Changes', 'Master toggle for COMEX vault notifications', { isFirst: true })}
-                  <RowSeparator />
-                  {renderNotifRow('comex_gold', 'Gold (Au)', 'Gold vault inventory changes', { indented: true, disabled: !notifPrefs.comex_alerts })}
-                  <RowSeparator />
-                  {renderNotifRow('comex_silver', 'Silver (Ag)', 'Silver vault inventory changes', { indented: true, disabled: !notifPrefs.comex_alerts })}
-                  <RowSeparator />
-                  {renderNotifRow('comex_platinum', 'Platinum (Pt)', 'Platinum vault inventory changes', { indented: true, disabled: !notifPrefs.comex_alerts })}
-                  <RowSeparator />
-                  {renderNotifRow('comex_palladium', 'Palladium (Pd)', 'Palladium vault inventory changes', { isLast: true, indented: true, disabled: !notifPrefs.comex_alerts })}
-                </View>
-                <SectionFooter text="Get notified when COMEX vault registered or eligible inventory changes significantly." />
-
-                <View style={{ height: 50 }} />
-              </View>
-            );
-          }
-
-          // ===== APPEARANCE SUB-PAGE =====
-          if (settingsSubPage === 'appearance') {
-            return (
-              <View style={pageStyle}>
-                <SubPageHeader title="Appearance" />
-                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700', marginLeft: 16, marginBottom: 8 }}>Appearance</Text>
-                <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
-                  <View style={{
-                    backgroundColor: groupBg,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    borderRadius: 10,
-                  }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      {[
-                        { key: 'dark', label: 'Dark', icon: '🌙' },
-                        { key: 'light', label: 'Light', icon: '☀️' },
-                        { key: 'system', label: 'Auto', icon: '⚙️' },
-                      ].map((option) => (
-                        <TouchableOpacity
-                          key={option.key}
-                          style={{
-                            flex: 1,
-                            paddingVertical: 10,
-                            paddingHorizontal: 8,
-                            borderRadius: 8,
-                            backgroundColor: themePreference === option.key
-                              ? (isDarkMode ? '#48484a' : '#e5e5ea')
-                              : 'transparent',
-                            alignItems: 'center',
-                          }}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            changeTheme(option.key);
-                          }}
-                        >
-                          <Text style={{ fontSize: 20, marginBottom: 4 }}>{option.icon}</Text>
-                          <Text style={{
-                            color: themePreference === option.key ? colors.text : colors.muted,
-                            fontWeight: themePreference === option.key ? '600' : '400',
-                            fontSize: scaledFonts.small,
-                          }}>
-                            {option.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                </View>
-                <SectionFooter text={themePreference === 'system' ? 'Follows your iOS appearance settings' : `${themePreference === 'dark' ? 'Dark' : 'Light'} mode enabled`} />
-                <View style={{ height: 50 }} />
-              </View>
-            );
-          }
-
-          // ===== DISPLAY SUB-PAGE =====
-          if (settingsSubPage === 'display') {
-            return (
-              <View style={pageStyle}>
-                <SubPageHeader title="Display" />
-                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700', marginLeft: 16, marginBottom: 8 }}>Display</Text>
-                <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
-                  {/* Large Text */}
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundColor: groupBg,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    minHeight: 44,
-                    borderTopLeftRadius: 10,
-                    borderTopRightRadius: 10,
-                  }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Large Text</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Increase font sizes throughout the app</Text>
-                    </View>
-                    <Switch
-                      value={largeText}
-                      onValueChange={(value) => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        toggleLargeText(value);
-                      }}
-                      trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
-                      thumbColor="#fff"
-                      ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
-                    />
-                  </View>
-                  <RowSeparator />
-                  {/* Widget Hide Values */}
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundColor: groupBg,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    minHeight: 44,
-                  }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Hide Values on Widget</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Show dots instead of dollar amounts</Text>
-                    </View>
-                    <Switch
-                      value={hideWidgetValues}
-                      onValueChange={(value) => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setHideWidgetValues(value);
-                        AsyncStorage.setItem('stack_hide_widget_values', value ? 'true' : 'false');
-                      }}
-                      trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
-                      thumbColor="#fff"
-                      ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
-                    />
-                  </View>
-                  <RowSeparator />
-                  {/* Show Troy Button */}
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    backgroundColor: groupBg,
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    minHeight: 44,
-                    borderBottomLeftRadius: 10,
-                    borderBottomRightRadius: 10,
-                  }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Show Troy Button</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Display the floating Troy assistant button</Text>
-                    </View>
-                    <Switch
-                      value={showTroyFab}
-                      onValueChange={(value) => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setShowTroyFab(value);
-                        AsyncStorage.setItem('stack_show_troy_fab', value ? 'true' : 'false');
-                      }}
-                      trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
-                      thumbColor="#fff"
-                      ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
-                    />
-                  </View>
-                </View>
-                <View style={{ height: 50 }} />
-              </View>
-            );
-          }
-
-          // ===== EXPORT & BACKUP SUB-PAGE =====
-          if (settingsSubPage === 'exportBackup') {
-            return (
-              <View style={pageStyle}>
-                <SubPageHeader title="Export & Backup" />
-                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700', marginLeft: 16, marginBottom: 8 }}>Export & Backup</Text>
-                <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
-                  <SettingsRow
-                    label="Export to Backup"
-                    onPress={createBackup}
-                    isFirst={true}
-                    isLast={false}
-                  />
-                  <RowSeparator />
-                  <SettingsRow
-                    label="Restore from Backup"
-                    onPress={restoreBackup}
-                    isFirst={false}
-                    isLast={false}
-                  />
-                  <RowSeparator />
-                  <SettingsRow
-                    label="Export as CSV"
-                    onPress={exportCSV}
-                    isFirst={false}
-                    isLast={true}
-                  />
-                </View>
-                <SectionFooter text="Backups include all holdings and settings. Export to Files, iCloud Drive, or any storage." />
-
-                {/* Clear All Data */}
-                <View style={{ marginTop: 40 }}>
-                  <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: groupBg,
-                        paddingVertical: 12,
-                        paddingHorizontal: 16,
-                        minHeight: 44,
-                        borderRadius: 10,
-                        alignItems: 'center',
-                      }}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        Alert.alert(
-                          'Clear All Data',
-                          'Are you sure? This will permanently delete all your holdings and settings.',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Continue',
-                              style: 'destructive',
-                              onPress: () => {
-                                Alert.prompt(
-                                  'This cannot be undone',
-                                  'Type DELETE to confirm.',
-                                  [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    {
-                                      text: 'Clear Everything',
-                                      style: 'destructive',
-                                      onPress: (text) => {
-                                        if (text === 'DELETE') {
-                                          clearAllData();
-                                        } else {
-                                          Alert.alert('Not deleted', 'You must type DELETE exactly to confirm.');
-                                        }
-                                      },
-                                    },
-                                  ],
-                                  'plain-text',
-                                  '',
-                                  'default'
-                                );
-                              },
-                            },
-                          ]
-                        );
-                      }}
-                    >
-                      <Text style={{ color: '#FF3B30', fontSize: scaledFonts.normal }}>Clear All Data</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <SectionFooter text="This will permanently delete all holdings, settings, and preferences. This action cannot be undone." />
-                </View>
-
-                <View style={{ height: 50 }} />
-              </View>
-            );
-          }
-
-          if (settingsSubPage === 'advanced') {
-            return (
-              <View style={pageStyle}>
-                <SubPageHeader title="Advanced" />
-                <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700', marginLeft: 16, marginBottom: 8 }}>Advanced</Text>
-
-                {supabaseUser && (
-                  <>
-                    <SectionHeader title="Support" />
-                    <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                      <TouchableOpacity
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          backgroundColor: groupBg,
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          minHeight: 44,
-                          borderRadius: 10,
-                        }}
-                        onPress={() => {
-                          Clipboard.setString(supabaseUser.id);
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert('Copied', 'Support ID copied to clipboard');
-                        }}
-                      >
-                        <View style={{ flex: 1, marginRight: 12 }}>
-                          <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Support ID</Text>
-                          <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginTop: 4 }} numberOfLines={1}>{supabaseUser.id}</Text>
-                        </View>
-                        <Text style={{ color: '#007AFF', fontSize: scaledFonts.small }}>Copy</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <SectionFooter text="Share this ID with support when requesting help." />
-                  </>
-                )}
-
-                <View style={{ height: 50 }} />
-              </View>
-            );
-          }
-
           // ===== MAIN SETTINGS PAGE =====
           return (
             <View style={pageStyle}>
@@ -9997,6 +9646,413 @@ function AppContent() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* ===== NOTIFICATIONS SETTINGS SUB-PAGE ===== */}
+      {settingsSubPage === 'notifications' && (
+        <View {...notificationsSwipe.panHandlers} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9998 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSettingsSubPage(null); }} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 28, fontWeight: '300' }}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', flex: 1 }}>Notifications</Text>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {(() => {
+                const grpBg = isDarkMode ? '#1c1c1e' : '#ffffff';
+                const sepColor = isDarkMode ? '#38383a' : '#c6c6c8';
+                const notifSwitchTrack = { false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' };
+                const notifSwitchBg = isDarkMode ? '#39393d' : '#e9e9eb';
+                const renderNotifRow = (prefKey, label, description, { isFirst, isLast, indented, disabled } = {}) => (
+                  <View key={prefKey} style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: grpBg,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    paddingLeft: indented ? 40 : 16,
+                    minHeight: 44,
+                    opacity: disabled ? 0.4 : 1,
+                    ...(isFirst ? { borderTopLeftRadius: 10, borderTopRightRadius: 10 } : {}),
+                    ...(isLast ? { borderBottomLeftRadius: 10, borderBottomRightRadius: 10 } : {}),
+                  }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{label}</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>{description}</Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs[prefKey]}
+                      onValueChange={(value) => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        saveNotifPref(prefKey, value);
+                      }}
+                      trackColor={notifSwitchTrack}
+                      thumbColor="#fff"
+                      ios_backgroundColor={notifSwitchBg}
+                      disabled={disabled}
+                    />
+                  </View>
+                );
+                const Sep = () => (<View style={{ backgroundColor: grpBg }}><View style={{ height: 0.5, backgroundColor: sepColor, marginLeft: 16 }} /></View>);
+                return (
+                  <>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 8, marginBottom: 6 }}>Push Notifications</Text>
+                    <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                      {renderNotifRow('daily_brief', "Your Daily Brief", 'Daily market summary from Troy each morning', { isFirst: true })}
+                      <Sep />
+                      {renderNotifRow('breaking_news', 'Market Intelligence', 'Breaking news and major market events', {})}
+                      <Sep />
+                      {renderNotifRow('price_alerts', 'Price Alerts', 'Triggered when your price targets are hit', { isLast: true })}
+                    </View>
+
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600', textTransform: 'uppercase', marginLeft: 16, marginTop: 24, marginBottom: 6 }}>COMEX Vault Alerts</Text>
+                    <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                      {renderNotifRow('comex_alerts', 'All Vault Changes', 'Master toggle for COMEX vault notifications', { isFirst: true })}
+                      <Sep />
+                      {renderNotifRow('comex_gold', 'Gold (Au)', 'Gold vault inventory changes', { indented: true, disabled: !notifPrefs.comex_alerts })}
+                      <Sep />
+                      {renderNotifRow('comex_silver', 'Silver (Ag)', 'Silver vault inventory changes', { indented: true, disabled: !notifPrefs.comex_alerts })}
+                      <Sep />
+                      {renderNotifRow('comex_platinum', 'Platinum (Pt)', 'Platinum vault inventory changes', { indented: true, disabled: !notifPrefs.comex_alerts })}
+                      <Sep />
+                      {renderNotifRow('comex_palladium', 'Palladium (Pd)', 'Palladium vault inventory changes', { isLast: true, indented: true, disabled: !notifPrefs.comex_alerts })}
+                    </View>
+                    <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, marginTop: 8, marginLeft: 16, marginRight: 16, lineHeight: 18 }}>Get notified when COMEX vault registered or eligible inventory changes significantly.</Text>
+                  </>
+                );
+              })()}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
+
+      {/* ===== APPEARANCE SETTINGS SUB-PAGE ===== */}
+      {settingsSubPage === 'appearance' && (
+        <View {...appearanceSwipe.panHandlers} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9998 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSettingsSubPage(null); }} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 28, fontWeight: '300' }}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', flex: 1 }}>Appearance</Text>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
+                <View style={{
+                  backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff',
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: 10,
+                }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {[
+                      { key: 'dark', label: 'Dark', icon: '🌙' },
+                      { key: 'light', label: 'Light', icon: '☀️' },
+                      { key: 'system', label: 'Auto', icon: '⚙️' },
+                    ].map((option) => (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          paddingHorizontal: 8,
+                          borderRadius: 8,
+                          backgroundColor: themePreference === option.key
+                            ? (isDarkMode ? '#48484a' : '#e5e5ea')
+                            : 'transparent',
+                          alignItems: 'center',
+                        }}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          changeTheme(option.key);
+                        }}
+                      >
+                        <Text style={{ fontSize: 20, marginBottom: 4 }}>{option.icon}</Text>
+                        <Text style={{
+                          color: themePreference === option.key ? colors.text : colors.muted,
+                          fontWeight: themePreference === option.key ? '600' : '400',
+                          fontSize: scaledFonts.small,
+                        }}>
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+              <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, marginTop: 8, marginLeft: 16, marginRight: 16, lineHeight: 18 }}>{themePreference === 'system' ? 'Follows your iOS appearance settings' : `${themePreference === 'dark' ? 'Dark' : 'Light'} mode enabled`}</Text>
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
+
+      {/* ===== DISPLAY SETTINGS SUB-PAGE ===== */}
+      {settingsSubPage === 'display' && (
+        <View {...displaySwipe.panHandlers} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9998 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSettingsSubPage(null); }} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 28, fontWeight: '300' }}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', flex: 1 }}>Display</Text>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {(() => {
+                const grpBg = isDarkMode ? '#1c1c1e' : '#ffffff';
+                const sepColor = isDarkMode ? '#38383a' : '#c6c6c8';
+                const Sep = () => (<View style={{ backgroundColor: grpBg }}><View style={{ height: 0.5, backgroundColor: sepColor, marginLeft: 16 }} /></View>);
+                return (
+                  <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
+                    {/* Large Text */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: grpBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderTopLeftRadius: 10,
+                      borderTopRightRadius: 10,
+                    }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Large Text</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Increase font sizes throughout the app</Text>
+                      </View>
+                      <Switch
+                        value={largeText}
+                        onValueChange={(value) => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          toggleLargeText(value);
+                        }}
+                        trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
+                        thumbColor="#fff"
+                        ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
+                      />
+                    </View>
+                    <Sep />
+                    {/* Widget Hide Values */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: grpBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                    }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Hide Values on Widget</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Show dots instead of dollar amounts</Text>
+                      </View>
+                      <Switch
+                        value={hideWidgetValues}
+                        onValueChange={(value) => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setHideWidgetValues(value);
+                          AsyncStorage.setItem('stack_hide_widget_values', value ? 'true' : 'false');
+                        }}
+                        trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
+                        thumbColor="#fff"
+                        ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
+                      />
+                    </View>
+                    <Sep />
+                    {/* Show Troy Button */}
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: grpBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderBottomLeftRadius: 10,
+                      borderBottomRightRadius: 10,
+                    }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Show Troy Button</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.small, marginTop: 2 }}>Display the floating Troy assistant button</Text>
+                      </View>
+                      <Switch
+                        value={showTroyFab}
+                        onValueChange={(value) => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setShowTroyFab(value);
+                          AsyncStorage.setItem('stack_show_troy_fab', value ? 'true' : 'false');
+                        }}
+                        trackColor={{ false: isDarkMode ? '#39393d' : '#e9e9eb', true: '#34c759' }}
+                        thumbColor="#fff"
+                        ios_backgroundColor={isDarkMode ? '#39393d' : '#e9e9eb'}
+                      />
+                    </View>
+                  </View>
+                );
+              })()}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
+
+      {/* ===== EXPORT & BACKUP SETTINGS SUB-PAGE ===== */}
+      {settingsSubPage === 'exportBackup' && (
+        <View {...exportSwipe.panHandlers} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9998 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSettingsSubPage(null); }} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 28, fontWeight: '300' }}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', flex: 1 }}>Export & Backup</Text>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {(() => {
+                const grpBg = isDarkMode ? '#1c1c1e' : '#ffffff';
+                const sepColor = isDarkMode ? '#38383a' : '#c6c6c8';
+                const chevColor = isDarkMode ? '#48484a' : '#c7c7cc';
+                const Sep = () => (<View style={{ backgroundColor: grpBg }}><View style={{ height: 0.5, backgroundColor: sepColor, marginLeft: 16 }} /></View>);
+                const Row = ({ label, onPress, isFirst, isLast }) => (
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: grpBg,
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      minHeight: 44,
+                      borderTopLeftRadius: isFirst ? 10 : 0,
+                      borderTopRightRadius: isFirst ? 10 : 0,
+                      borderBottomLeftRadius: isLast ? 10 : 0,
+                      borderBottomRightRadius: isLast ? 10 : 0,
+                    }}
+                    onPress={onPress}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>{label}</Text>
+                    <Text style={{ color: chevColor, fontSize: scaledFonts.large, fontWeight: '600' }}>›</Text>
+                  </TouchableOpacity>
+                );
+                return (
+                  <>
+                    <View style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
+                      <Row label="Export to Backup" onPress={createBackup} isFirst={true} isLast={false} />
+                      <Sep />
+                      <Row label="Restore from Backup" onPress={restoreBackup} isFirst={false} isLast={false} />
+                      <Sep />
+                      <Row label="Export as CSV" onPress={exportCSV} isFirst={false} isLast={true} />
+                    </View>
+                    <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, marginTop: 8, marginLeft: 16, marginRight: 16, lineHeight: 18 }}>Backups include all holdings and settings. Export to Files, iCloud Drive, or any storage.</Text>
+
+                    {/* Clear All Data */}
+                    <View style={{ marginTop: 40 }}>
+                      <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: grpBg,
+                            paddingVertical: 12,
+                            paddingHorizontal: 16,
+                            minHeight: 44,
+                            borderRadius: 10,
+                            alignItems: 'center',
+                          }}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            Alert.alert(
+                              'Clear All Data',
+                              'Are you sure? This will permanently delete all your holdings and settings.',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                {
+                                  text: 'Continue',
+                                  style: 'destructive',
+                                  onPress: () => {
+                                    Alert.prompt(
+                                      'This cannot be undone',
+                                      'Type DELETE to confirm.',
+                                      [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                          text: 'Clear Everything',
+                                          style: 'destructive',
+                                          onPress: (text) => {
+                                            if (text === 'DELETE') {
+                                              clearAllData();
+                                            } else {
+                                              Alert.alert('Not deleted', 'You must type DELETE exactly to confirm.');
+                                            }
+                                          },
+                                        },
+                                      ],
+                                      'plain-text',
+                                      '',
+                                      'default'
+                                    );
+                                  },
+                                },
+                              ]
+                            );
+                          }}
+                        >
+                          <Text style={{ color: '#FF3B30', fontSize: scaledFonts.normal }}>Clear All Data</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, marginTop: 8, marginLeft: 16, marginRight: 16, lineHeight: 18 }}>This will permanently delete all holdings, settings, and preferences. This action cannot be undone.</Text>
+                    </View>
+                  </>
+                );
+              })()}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
+
+      {/* ===== ADVANCED SETTINGS SUB-PAGE ===== */}
+      {settingsSubPage === 'advanced' && (
+        <View {...advancedSwipe.panHandlers} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 9998 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' }}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSettingsSubPage(null); }} style={{ marginRight: 12 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ color: '#C9A84C', fontSize: 28, fontWeight: '300' }}>{'\u2039'}</Text>
+              </TouchableOpacity>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700', flex: 1 }}>Advanced</Text>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+              {supabaseUser && (
+                <>
+                  <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, fontWeight: '400', textTransform: 'uppercase', marginBottom: 8, marginTop: 24, marginLeft: 16, letterSpacing: 0.5 }}>Support</Text>
+                  <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff',
+                        paddingVertical: 12,
+                        paddingHorizontal: 16,
+                        minHeight: 44,
+                        borderRadius: 10,
+                      }}
+                      onPress={() => {
+                        Clipboard.setString(supabaseUser.id);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        Alert.alert('Copied', 'Support ID copied to clipboard');
+                      }}
+                    >
+                      <View style={{ flex: 1, marginRight: 12 }}>
+                        <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>Support ID</Text>
+                        <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginTop: 4 }} numberOfLines={1}>{supabaseUser.id}</Text>
+                      </View>
+                      <Text style={{ color: '#007AFF', fontSize: scaledFonts.small }}>Copy</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, marginTop: 8, marginLeft: 16, marginRight: 16, lineHeight: 18 }}>Share this ID with support when requesting help.</Text>
+                </>
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      )}
 
       {/* ACCOUNT SCREEN */}
       {showAccountScreen && (
