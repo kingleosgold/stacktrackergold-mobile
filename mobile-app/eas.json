@@ -16,7 +16,7 @@
         "buildType": "apk"
       },
       "env": {
-        "API_URL": "http://localhost:3000"
+        "API_URL": "https://api.stacktrackergold.com"
       }
     },
     "preview": {
@@ -35,6 +35,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "ios": {
         "simulator": false,
         "resourceClass": "m-medium",
