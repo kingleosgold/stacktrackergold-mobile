@@ -26,7 +26,7 @@ import * as XLSX from 'xlsx';
 import * as Notifications from 'expo-notifications';
 import * as StoreReview from 'expo-store-review';
 import { CloudStorage, CloudStorageScope } from 'react-native-cloud-storage';
-import { initializePurchases, loginRevenueCat, hasGoldEntitlement, getUserEntitlements, restorePurchases, logoutRevenueCat } from './src/utils/entitlements';
+import { initializePurchases, loginRevenueCat, hasGoldEntitlement, hasSilverEntitlement, getUserEntitlements, restorePurchases, logoutRevenueCat } from './src/utils/entitlements';
 import { syncWidgetData, isWidgetKitAvailable } from './src/utils/widgetKit';
 import { registerBackgroundFetch, getBackgroundFetchStatus } from './src/utils/backgroundTasks';
 // LineChart removed — all charts now use ScrubChart
@@ -109,6 +109,18 @@ const isVersionBelow = (current, minimum) => {
     if ((cur[i] || 0) > (min[i] || 0)) return false;
   }
   return false;
+};
+
+/**
+ * Determine user subscription tier from RevenueCat customerInfo
+ * @param {object} customerInfo - RevenueCat customer info object
+ * @returns {'free'|'silver'|'gold'} User's current tier
+ */
+const getUserTier = (customerInfo) => {
+  const active = customerInfo?.entitlements?.active || {};
+  if (active['Lifetime'] || active['Gold']) return 'gold';
+  if (active['Silver']) return 'silver';
+  return 'free';
 };
 
 // ============================================
@@ -1595,6 +1607,8 @@ function AppContent() {
 
   // Entitlements (__DEV__ is automatically false in production builds, so this never affects real users)
   const [hasGold, setHasGold] = useState(__DEV__ ? true : false);
+  const [hasSilver, setHasSilver] = useState(false);
+  const [userTier, setUserTier] = useState(__DEV__ ? 'gold' : 'free'); // 'free', 'silver', 'gold'
   const [subscriptionLoading, setSubscriptionLoading] = useState(true); // Don't show upgrade prompts until loaded
 
   // Server-side scan tracking
@@ -2621,8 +2635,12 @@ function AppContent() {
   // Check if user has Gold access (Gold subscription or Lifetime)
   const hasGoldAccess = hasGold || hasLifetimeAccess;
 
+  // Check if user has any paid access (Silver, Gold, or Lifetime)
+  const hasPaidAccess = hasGold || hasSilver || hasLifetimeAccess;
+
   // Troy daily question limits
   const TROY_FREE_LIMIT = 3;
+  const TROY_SILVER_LIMIT = 10;
   const TROY_GOLD_LIMIT = 30;
 
   // Save holdings to iCloud
@@ -3139,17 +3157,21 @@ function AppContent() {
 
       const activeEntitlements = customerInfo?.entitlements?.active || {};
       const isGold = activeEntitlements['Gold'] !== undefined;
+      const isSilver = activeEntitlements['Silver'] !== undefined;
       const isLifetime = activeEntitlements['Lifetime'] !== undefined;
       const userId = customerInfo?.originalAppUserId || null;
+      const tier = getUserTier(customerInfo);
 
       if (__DEV__) console.log('📋 RevenueCat User ID:', userId);
-      if (__DEV__) console.log('🏆 Has Gold:', isGold, 'Has Lifetime:', isLifetime);
+      if (__DEV__) console.log('🏆 Has Gold:', isGold, 'Has Silver:', isSilver, 'Has Lifetime:', isLifetime, 'Tier:', tier);
 
       setHasGold(__DEV__ ? true : isGold);
+      setHasSilver(__DEV__ ? false : isSilver);
       setHasLifetimeAccess(__DEV__ ? true : isLifetime);
+      setUserTier(__DEV__ ? 'gold' : tier);
       setRevenueCatUserId(userId);
 
-      return __DEV__ || isGold || isLifetime;
+      return __DEV__ || isGold || isSilver || isLifetime;
     } catch (error) {
       if (__DEV__) console.log('❌ Error checking entitlements:', error);
       return __DEV__ || false;
@@ -3159,10 +3181,12 @@ function AppContent() {
   // Restore purchases handler (used by inline upgrade bars)
   const handleRestore = async () => {
     try {
-      const hasGoldNow = await restorePurchases();
-      if (hasGoldNow) {
-        setHasGold(true);
-        Alert.alert('Purchases Restored!', 'Your Gold subscription has been restored.');
+      const restored = await restorePurchases();
+      if (restored.hasGold || restored.hasSilver) {
+        await checkEntitlements(); // Re-check all entitlements to set correct tier
+        Alert.alert('Purchases Restored!', restored.hasGold
+          ? 'Your Gold subscription has been restored.'
+          : 'Your Silver subscription has been restored.');
       } else {
         Alert.alert('No Purchases Found', 'No active subscriptions were found to restore.');
       }
@@ -3424,14 +3448,14 @@ function AppContent() {
     const FREE_TIER_LIMIT = 25;
     const totalItems = silverItems.length + goldItems.length + platinumItems.length + palladiumItems.length;
 
-    if (!hasGold && !hasLifetimeAccess && totalItems >= FREE_TIER_LIMIT) {
+    if (!hasPaidAccess && totalItems >= FREE_TIER_LIMIT) {
       // User has reached free tier limit, show paywall
       // Haptic feedback on hitting limit
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
       Alert.alert(
-        'Upgrade to Gold',
-        `You've reached the free tier limit of ${FREE_TIER_LIMIT} items. Upgrade to Gold for unlimited items!`,
+        'Upgrade for More Items',
+        `You've reached the free tier limit of ${FREE_TIER_LIMIT} items. Upgrade for unlimited items!`,
         [
           { text: 'Maybe Later', style: 'cancel' },
           { text: 'Upgrade Now', onPress: () => setShowPaywallModal(true) }
@@ -3639,13 +3663,18 @@ function AppContent() {
     const text = (messageText || troyInputText).trim();
     if (!text || troyLoading) return;
 
-    // Daily limit check
-    const dailyLimit = hasGoldAccess ? TROY_GOLD_LIMIT : TROY_FREE_LIMIT;
+    // Daily limit check — Silver gets 10/day, Gold gets 30/day, Free gets 3/day
+    const dailyLimit = hasGoldAccess ? TROY_GOLD_LIMIT : hasSilver ? TROY_SILVER_LIMIT : TROY_FREE_LIMIT;
     if (advisorQuestionsToday >= dailyLimit) {
-      if (!hasGoldAccess) {
+      if (!hasPaidAccess) {
         setShowTroyChat(false);
         setShowPaywallModal(true);
         return;
+      } else if (hasSilver && !hasGoldAccess) {
+        Alert.alert('Daily Limit', "You've used your 10 Silver questions today. Upgrade to Gold for 30 questions/day!", [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => { setShowTroyChat(false); setShowPaywallModal(true); } },
+        ]);
       } else {
         Alert.alert('Daily Limit', "You've reached your daily limit. Check back tomorrow!");
         return;
@@ -3782,12 +3811,13 @@ function AppContent() {
   };
 
   const canScan = () => {
-    if (hasGold || hasLifetimeAccess) return true; // Gold tier or lifetime access has unlimited scans
+    if (hasGoldAccess) return true; // Gold tier or lifetime access has unlimited scans
+    // Silver gets 10/month, free gets 5/month — both use scanUsage tracking
     return scanUsage.scansUsed < scanUsage.scansLimit;
   };
 
   const checkScanLimit = () => {
-    if (hasGold || hasLifetimeAccess) return true; // Gold tier or lifetime access bypass
+    if (hasGoldAccess) return true; // Gold tier or lifetime access bypass
 
     if (scanUsage.scansUsed >= scanUsage.scansLimit) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -3800,10 +3830,10 @@ function AppContent() {
 
       Alert.alert(
         'Scan Limit Reached',
-        `You've used all ${scanUsage.scansLimit} free scans this month.${resetDateStr ? ` Resets on ${resetDateStr}.` : ''}\n\nUpgrade to Gold for unlimited scans!`,
+        `You've used all ${scanUsage.scansLimit} scans this month.${resetDateStr ? ` Resets on ${resetDateStr}.` : ''}\n\n${hasSilver ? 'Upgrade to Gold for unlimited scans!' : 'Upgrade for more scans!'}`,
         [
           { text: 'Maybe Later', style: 'cancel' },
-          { text: 'Upgrade to Gold', onPress: () => setShowPaywallModal(true) }
+          { text: hasSilver ? 'Upgrade to Gold' : 'Upgrade', onPress: () => setShowPaywallModal(true) }
         ]
       );
       return false;
@@ -4810,12 +4840,12 @@ function AppContent() {
 
   // Fetch spot price history for all metals when analytics tab becomes active or ranges change
   useEffect(() => {
-    if (tab === 'analytics' && (hasGold || hasLifetimeAccess)) {
+    if (tab === 'analytics' && (hasGold || hasSilver || hasLifetimeAccess)) {
       ['gold', 'silver', 'platinum', 'palladium'].forEach(metal => {
         fetchSpotPriceHistoryForMetal(metal, spotHistoryMetal[metal].range);
       });
     }
-  }, [tab, hasGold, hasLifetimeAccess, spotHistoryMetal.gold.range, spotHistoryMetal.silver.range, spotHistoryMetal.platinum.range, spotHistoryMetal.palladium.range]);
+  }, [tab, hasGold, hasSilver, hasLifetimeAccess, spotHistoryMetal.gold.range, spotHistoryMetal.silver.range, spotHistoryMetal.platinum.range, spotHistoryMetal.palladium.range]);
 
   // Fetch sparkline data when Today tab loads
   useEffect(() => {
@@ -7049,6 +7079,7 @@ function AppContent() {
 
           const effSparklineData = demoData ? demoData.sparklineData : sparklineData;
           const effHasGoldAccess = demoData ? true : hasGoldAccess;
+          const effHasPaidAccess = demoData ? true : hasPaidAccess;
 
           // Metal movers data (fixed grid: Ag top-left, Au top-right, Pt bottom-left, Pd bottom-right)
           const metalMovers = [
@@ -7133,7 +7164,7 @@ function AppContent() {
 
               {/* ===== YOUR DAILY BRIEF ===== */}
               <View onLayout={(e) => { sectionOffsets.current['morningBrief'] = e.nativeEvent.layout.y; }}>
-              {effHasGoldAccess ? (
+              {effHasPaidAccess ? (
                 <View style={{
                   backgroundColor: todayCardBg,
                   borderRadius: 16,
@@ -7206,7 +7237,7 @@ function AppContent() {
                     <View style={{ flex: 1, backgroundColor: todayCardBg, opacity: 0.95 }} />
                   </View>
                   <TouchableOpacity onPress={() => setShowPaywallModal(true)} style={{ marginTop: 4 }}>
-                    <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Your Daily Brief with Gold →</Text>
+                    <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Your Daily Brief — upgrade now →</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -7228,7 +7259,7 @@ function AppContent() {
                     <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Your Daily Brief</Text>
                   </View>
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>
-                    Get your daily brief with Gold
+                    Get your daily brief — upgrade to unlock
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
                     <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>UPGRADE</Text>
@@ -7430,7 +7461,7 @@ function AppContent() {
                             borderBottomWidth: i < holdingsImpact.length - 1 ? 1 : 0,
                             borderBottomColor: todayCardBorder,
                           }}>
-                            {effHasGoldAccess || i === 0 ? (
+                            {effHasPaidAccess || i === 0 ? (
                               <>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: m.color }} />
@@ -7472,14 +7503,14 @@ function AppContent() {
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.normal }}>Add holdings to see daily impact</Text>
                     </View>
                   )}
-                {!effHasGoldAccess && holdingsImpact.length > 1 && (
+                {!effHasPaidAccess && holdingsImpact.length > 1 && (
                   <>
                     <TouchableOpacity
                       onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                       style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
                     >
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                      <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock full insights — start free</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Plans from $4.99/mo · Cancel anytime</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
                       <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, textDecorationLine: 'underline' }}>Restore Purchases</Text>
@@ -7759,12 +7790,14 @@ function AppContent() {
                           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                           style={{ marginTop: 10, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' }}
                         >
-                          <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                          <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                          <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>{hasSilver ? 'Upgrade to Gold' : 'Unlock with Gold'}</Text>
+                          {!hasSilver && <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>$9.99/mo · Cancel anytime</Text>}
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
-                          <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-                        </TouchableOpacity>
+                        {!hasSilver && (
+                          <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center' }}>
+                            <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, textDecorationLine: 'underline' }}>Restore Purchases</Text>
+                          </TouchableOpacity>
+                        )}
                       </>
                     )}
                   </View>
@@ -7884,8 +7917,8 @@ function AppContent() {
                           <Text style={{ color: colors.text, fontSize: scaledFonts.medium, fontWeight: '600', marginBottom: 6 }}>
                             {intelligenceBriefs.length - 1} more market brief{intelligenceBriefs.length - 1 > 1 ? 's' : ''} today
                           </Text>
-                          <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                          <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Then $9.99/mo {'\u00B7'} Cancel anytime</Text>
+                          <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>{hasSilver ? 'Upgrade to Gold' : 'Try Gold free for 7 days'}</Text>
+                          {!hasSilver && <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Then $9.99/mo {'\u00B7'} Cancel anytime</Text>}
                         </TouchableOpacity>
                       )}
                     </View>
@@ -8449,6 +8482,7 @@ function AppContent() {
           const effPortfolioIntel = demoData ? demoData.portfolioIntel : portfolioIntel;
           const effAnalyticsSnapshots = demoData ? demoData.analyticsSnapshots : analyticsSnapshots;
           const effHasGoldAccess = demoData ? true : hasGoldAccess;
+          const effHasPaidAccess = demoData ? true : hasPaidAccess;
           const effAnalyticsLoading = demoData ? false : analyticsLoading;
           const effPortfolioIntelLoading = demoData ? false : portfolioIntelLoading;
           const effGoldSpotA = demoData ? demoData.goldSpot : goldSpot;
@@ -8465,12 +8499,14 @@ function AppContent() {
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywallModal(true); }}
                   style={{ marginHorizontal: 2, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(212, 168, 67, 0.3)', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center', backgroundColor: 'rgba(212, 168, 67, 0.05)' }}
                 >
-                  <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Try Gold free for 7 days</Text>
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Then $9.99/mo · Cancel anytime</Text>
+                  <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>{hasSilver ? 'Upgrade to Gold for full analytics' : 'Unlock advanced analytics — start free'}</Text>
+                  {!hasSilver && <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, marginTop: 2 }}>Plans from $4.99/mo · Cancel anytime</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, textDecorationLine: 'underline' }}>Restore Purchases</Text>
-                </TouchableOpacity>
+                {!hasSilver && (
+                  <TouchableOpacity onPress={handleRestore} style={{ marginTop: 6, alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny, textDecorationLine: 'underline' }}>Restore Purchases</Text>
+                  </TouchableOpacity>
+                )}
               </>
             )}
 
@@ -8534,7 +8570,7 @@ function AppContent() {
                   <View style={{ flex: 1, backgroundColor: colors.cardBg, opacity: 0.95 }} />
                 </View>
                 <TouchableOpacity onPress={() => setShowPaywallModal(true)} style={{ marginTop: 4 }}>
-                  <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Troy's full stack take with Gold →</Text>
+                  <Text style={{ color: '#D4A843', fontSize: scaledFonts.small, fontWeight: '600' }}>Unlock Troy's full stack take — upgrade to Gold →</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -8557,7 +8593,7 @@ function AppContent() {
                   <Text style={{ color: colors.muted, fontSize: scaledFonts.small, fontWeight: '600' }}>Troy's Take</Text>
                 </View>
                 <Text style={{ color: colors.muted, fontSize: scaledFonts.small }}>
-                  Get Troy's stack take with Gold
+                  Get Troy's take — upgrade to Gold
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: 'rgba(251,191,36,0.15)', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4 }}>
                   <Text style={{ color: colors.gold, fontSize: scaledFonts.tiny, fontWeight: '600' }}>UPGRADE</Text>
@@ -8726,7 +8762,7 @@ function AppContent() {
                 <View onLayout={(e) => { sectionOffsets.current['holdingsBreakdown'] = e.nativeEvent.layout.y; }} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                   <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 12, fontSize: scaledFonts.medium }]}>Holdings Breakdown</Text>
                   {effTotalMeltValueA > 0 ? (
-                    effHasGoldAccess ? (
+                    effHasPaidAccess ? (
                       <PieChart
                         data={(demoData ? [
                           { label: 'Gold', value: 68.2 * demoData.goldSpot, color: colors.gold },
@@ -8751,7 +8787,7 @@ function AppContent() {
                       >
                         <Text style={{ fontSize: 28, marginBottom: 8 }}>{'\uD83D\uDD12'}</Text>
                         <Text style={{ color: colors.text, fontSize: scaledFonts.normal, fontWeight: '600', marginBottom: 4 }}>Stack Breakdown</Text>
-                        <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Available with Gold</Text>
+                        <Text style={{ color: colors.gold, fontSize: scaledFonts.small, fontWeight: '600' }}>Upgrade to unlock</Text>
                       </TouchableOpacity>
                     )
                   ) : (
@@ -9051,26 +9087,26 @@ function AppContent() {
                   <Text style={[styles.cardTitle, { color: colors.text, fontSize: scaledFonts.medium }]}>Break-Even Analysis</Text>
                   {totalSilverOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.silver}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                      <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver: {effHasGoldAccess ? `$${formatCurrency(silverBreakeven)}` : '$•••••'}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{silverSpot >= silverBreakeven ? 'Profitable!' : (effHasGoldAccess ? `Need +$${formatCurrency(silverBreakeven - silverSpot)}` : 'Not yet')}</Text>
+                      <Text style={{ color: colors.silver, fontSize: scaledFonts.normal }}>Silver: {effHasPaidAccess ? `$${formatCurrency(silverBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{silverSpot >= silverBreakeven ? 'Profitable!' : (effHasPaidAccess ? `Need +$${formatCurrency(silverBreakeven - silverSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                   {totalGoldOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.gold}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                      <Text style={{ color: colors.gold, fontSize: scaledFonts.normal }}>Gold: {effHasGoldAccess ? `$${formatCurrency(goldBreakeven)}` : '$•••••'}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{goldSpot >= goldBreakeven ? 'Profitable!' : (effHasGoldAccess ? `Need +$${formatCurrency(goldBreakeven - goldSpot)}` : 'Not yet')}</Text>
+                      <Text style={{ color: colors.gold, fontSize: scaledFonts.normal }}>Gold: {effHasPaidAccess ? `$${formatCurrency(goldBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{goldSpot >= goldBreakeven ? 'Profitable!' : (effHasPaidAccess ? `Need +$${formatCurrency(goldBreakeven - goldSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                   {totalPlatinumOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.platinum}22`, padding: 12, borderRadius: 8, marginBottom: 8 }}>
-                      <Text style={{ color: colors.platinum, fontSize: scaledFonts.normal }}>Platinum: {effHasGoldAccess ? `$${formatCurrency(platinumBreakeven)}` : '$•••••'}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{platinumSpot >= platinumBreakeven ? 'Profitable!' : (effHasGoldAccess ? `Need +$${formatCurrency(platinumBreakeven - platinumSpot)}` : 'Not yet')}</Text>
+                      <Text style={{ color: colors.platinum, fontSize: scaledFonts.normal }}>Platinum: {effHasPaidAccess ? `$${formatCurrency(platinumBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{platinumSpot >= platinumBreakeven ? 'Profitable!' : (effHasPaidAccess ? `Need +$${formatCurrency(platinumBreakeven - platinumSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                   {totalPalladiumOzt > 0 && (
                     <View style={{ backgroundColor: `${colors.palladium}22`, padding: 12, borderRadius: 8 }}>
-                      <Text style={{ color: colors.palladium, fontSize: scaledFonts.normal }}>Palladium: {effHasGoldAccess ? `$${formatCurrency(palladiumBreakeven)}` : '$•••••'}/oz needed</Text>
-                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{palladiumSpot >= palladiumBreakeven ? 'Profitable!' : (effHasGoldAccess ? `Need +$${formatCurrency(palladiumBreakeven - palladiumSpot)}` : 'Not yet')}</Text>
+                      <Text style={{ color: colors.palladium, fontSize: scaledFonts.normal }}>Palladium: {effHasPaidAccess ? `$${formatCurrency(palladiumBreakeven)}` : '$•••••'}/oz needed</Text>
+                      <Text style={{ color: colors.muted, fontSize: scaledFonts.tiny }}>{palladiumSpot >= palladiumBreakeven ? 'Profitable!' : (effHasPaidAccess ? `Need +$${formatCurrency(palladiumBreakeven - palladiumSpot)}` : 'Not yet')}</Text>
                     </View>
                   )}
                 </View>
@@ -9247,19 +9283,19 @@ function AppContent() {
                     }}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      hasGoldAccess ? setShowBenefitsScreen(true) : setShowPaywallModal(true);
+                      hasPaidAccess ? setShowBenefitsScreen(true) : setShowPaywallModal(true);
                     }}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: hasGoldAccess ? 'rgba(251, 191, 36, 0.2)' : 'rgba(113, 113, 122, 0.2)', alignItems: 'center', justifyContent: 'center' }}>
-                        <Text style={{ fontSize: 16 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : '🥈'}</Text>
+                      <View style={{ width: 30, height: 30, borderRadius: 6, backgroundColor: hasPaidAccess ? (hasGoldAccess ? 'rgba(251, 191, 36, 0.2)' : 'rgba(168, 181, 200, 0.2)') : 'rgba(113, 113, 122, 0.2)', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 16 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : hasSilver ? '🥈' : '🆓'}</Text>
                       </View>
                       <Text style={{ color: colors.text, fontSize: scaledFonts.normal }}>
-                        {hasLifetimeAccess ? 'Lifetime Member' : hasGold ? 'Gold Member' : 'Free'}
+                        {hasLifetimeAccess ? 'Lifetime Member' : hasGold ? 'Gold Member' : hasSilver ? 'Silver Member' : 'Free'}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      {!hasGoldAccess && <Text style={{ color: '#007AFF', fontSize: scaledFonts.small }}>Upgrade</Text>}
+                      {!hasGoldAccess && <Text style={{ color: '#007AFF', fontSize: scaledFonts.small }}>{hasSilver ? 'Upgrade to Gold' : 'Upgrade'}</Text>}
                       {hasLifetimeAccess && <Text style={{ color: colors.success, fontSize: scaledFonts.small }}>Thank you!</Text>}
                       <Text style={{ color: chevronColor, fontSize: scaledFonts.large, fontWeight: '600' }}>›</Text>
                     </View>
@@ -10256,17 +10292,37 @@ function AppContent() {
                               <Text style={{ color: '#C9A84C', fontSize: 14, fontStyle: 'italic', marginBottom: 12, lineHeight: 20 }}>{daily.troy_one_liner}</Text>
                             ) : null}
                             {daily.troy_commentary ? (
-                              <Markdown style={{
-                                body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
-                                paragraph: { marginTop: 0, marginBottom: 8 },
-                                strong: { fontWeight: '700' },
-                                em: { fontStyle: 'italic' },
-                                bullet_list: { marginTop: 2, marginBottom: 2 },
-                                ordered_list: { marginTop: 2, marginBottom: 2 },
-                                list_item: { marginTop: 1, marginBottom: 1 },
-                              }}>{daily.troy_commentary}</Markdown>
+                              hasPaidAccess ? (
+                                <Markdown style={{
+                                  body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
+                                  paragraph: { marginTop: 0, marginBottom: 8 },
+                                  strong: { fontWeight: '700' },
+                                  em: { fontStyle: 'italic' },
+                                  bullet_list: { marginTop: 2, marginBottom: 2 },
+                                  ordered_list: { marginTop: 2, marginBottom: 2 },
+                                  list_item: { marginTop: 1, marginBottom: 1 },
+                                }}>{daily.troy_commentary}</Markdown>
+                              ) : (
+                                <View>
+                                  <View style={{ maxHeight: 60, overflow: 'hidden' }}>
+                                    <Text style={{ color: '#f5f5f5', fontSize: 15, lineHeight: 22 }}>{daily.troy_commentary}</Text>
+                                  </View>
+                                  <View style={{ height: 40, marginTop: -40 }}>
+                                    <View style={{ flex: 1, backgroundColor: '#111', opacity: 0 }} />
+                                    <View style={{ flex: 1, backgroundColor: '#111', opacity: 0.5 }} />
+                                    <View style={{ flex: 1, backgroundColor: '#111', opacity: 0.8 }} />
+                                    <View style={{ flex: 1, backgroundColor: '#111', opacity: 0.95 }} />
+                                  </View>
+                                  <TouchableOpacity
+                                    onPress={() => setShowPaywallModal(true)}
+                                    style={{ marginTop: 8, borderWidth: 1, borderColor: 'rgba(201,168,76,0.4)', borderRadius: 8, paddingVertical: 10, alignItems: 'center', backgroundColor: 'rgba(201,168,76,0.08)' }}
+                                  >
+                                    <Text style={{ color: '#C9A84C', fontSize: 13, fontWeight: '600' }}>Upgrade to Silver to read Troy's full analysis</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )
                             ) : null}
-                            {daily.sources && Array.isArray(daily.sources) && daily.sources.length > 0 ? (
+                            {hasPaidAccess && daily.sources && Array.isArray(daily.sources) && daily.sources.length > 0 ? (
                               <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#222' }}>
                                 <Text style={{ color: '#666', fontSize: 11, fontWeight: '600', marginBottom: 6 }}>SOURCES</Text>
                                 {daily.sources.slice(0, 5).map((src, idx) => (
@@ -10323,8 +10379,8 @@ function AppContent() {
                           return;
                         }
                         setExpandedArticleId(item.id);
-                        // Fetch full article details if not already loaded
-                        if (!item.troy_commentary && item.slug) {
+                        // Fetch full article details if not already loaded (only for paid users)
+                        if (hasPaidAccess && !item.troy_commentary && item.slug) {
                           try {
                             const fullRes = await stackSignalAPI.fetchArticle(item.slug);
                             const full = fullRes?.article || fullRes;
@@ -10359,21 +10415,31 @@ function AppContent() {
 
                         {isExpanded && (
                           <View style={{ marginTop: 12 }}>
-                            {item.troy_commentary ? (
-                              <Markdown style={{
-                                body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
-                                paragraph: { marginTop: 0, marginBottom: 8 },
-                                strong: { fontWeight: '700' },
-                                em: { fontStyle: 'italic' },
-                                bullet_list: { marginTop: 2, marginBottom: 2 },
-                                ordered_list: { marginTop: 2, marginBottom: 2 },
-                                list_item: { marginTop: 1, marginBottom: 1 },
-                              }}>{item.troy_commentary}</Markdown>
+                            {hasPaidAccess ? (
+                              item.troy_commentary ? (
+                                <Markdown style={{
+                                  body: { color: '#f5f5f5', fontSize: 15, lineHeight: 22 },
+                                  paragraph: { marginTop: 0, marginBottom: 8 },
+                                  strong: { fontWeight: '700' },
+                                  em: { fontStyle: 'italic' },
+                                  bullet_list: { marginTop: 2, marginBottom: 2 },
+                                  ordered_list: { marginTop: 2, marginBottom: 2 },
+                                  list_item: { marginTop: 1, marginBottom: 1 },
+                                }}>{item.troy_commentary}</Markdown>
+                              ) : (
+                                <ActivityIndicator size="small" color="#C9A84C" style={{ marginVertical: 12 }} />
+                              )
                             ) : (
-                              <ActivityIndicator size="small" color="#C9A84C" style={{ marginVertical: 12 }} />
+                              <TouchableOpacity
+                                onPress={() => setShowPaywallModal(true)}
+                                style={{ borderWidth: 1, borderColor: 'rgba(201,168,76,0.4)', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', backgroundColor: 'rgba(201,168,76,0.08)' }}
+                              >
+                                <Text style={{ color: '#C9A84C', fontSize: 13, fontWeight: '600' }}>Upgrade to Silver to read Troy's full analysis</Text>
+                                <Text style={{ color: '#666', fontSize: 11, marginTop: 4 }}>Plans from $4.99/mo</Text>
+                              </TouchableOpacity>
                             )}
 
-                            {(item.gold_price_at_publish || item.silver_price_at_publish) ? (
+                            {hasPaidAccess && (item.gold_price_at_publish || item.silver_price_at_publish) ? (
                               <View style={{ flexDirection: 'row', gap: 12, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#222' }}>
                                 {item.gold_price_at_publish ? (
                                   <Text style={{ color: '#666', fontSize: 11 }}>Au ${Number(item.gold_price_at_publish).toLocaleString()}</Text>
@@ -10384,7 +10450,7 @@ function AppContent() {
                               </View>
                             ) : null}
 
-                            {item.sources && Array.isArray(item.sources) && item.sources.length > 0 ? (
+                            {hasPaidAccess && item.sources && Array.isArray(item.sources) && item.sources.length > 0 ? (
                               <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#222' }}>
                                 <Text style={{ color: '#666', fontSize: 11, fontWeight: '600', marginBottom: 6 }}>SOURCES</Text>
                                 {item.sources.map((src, idx) => (
@@ -10439,16 +10505,16 @@ function AppContent() {
             <ScrollView style={{ flex: 1, padding: 16 }}>
             {/* Current plan header */}
             <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-              <Text style={{ fontSize: 48, marginBottom: 12 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : '🥈'}</Text>
+              <Text style={{ fontSize: 48, marginBottom: 12 }}>{hasLifetimeAccess ? '💎' : hasGold ? '👑' : hasSilver ? '🥈' : '🆓'}</Text>
               <Text style={{ color: colors.text, fontSize: scaledFonts.xlarge, fontWeight: '700', marginBottom: 4 }}>
-                {hasLifetimeAccess ? 'Lifetime Member' : hasGold ? 'Gold Member' : 'Free Plan'}
+                {hasLifetimeAccess ? 'Lifetime Member' : hasGold ? 'Gold Member' : hasSilver ? 'Silver Member' : 'Free Plan'}
               </Text>
               {hasLifetimeAccess && <Text style={{ color: colors.success, fontSize: scaledFonts.normal }}>Thank you for your support!</Text>}
             </View>
 
             {/* Free features - always shown */}
             <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, fontWeight: '400', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4, letterSpacing: 0.5 }}>
-              {hasGoldAccess ? 'Everything Included' : 'Free Features'}
+              {hasPaidAccess ? 'Included' : 'Free Features'}
             </Text>
             <View style={{ backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
               {[
@@ -10473,18 +10539,44 @@ function AppContent() {
               ))}
             </View>
 
+            {/* Silver features */}
+            <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, fontWeight: '400', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4, letterSpacing: 0.5 }}>
+              {hasPaidAccess ? 'Silver Features' : 'Silver — $4.99/mo'}
+            </Text>
+            <View style={{ backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
+              {[
+                { icon: 'troy', label: 'Your Daily Brief' },
+                { icon: 'troy', label: 'Troy — 10 questions/day' },
+                { icon: '📈', label: 'Spot Price History charts' },
+                { icon: '📊', label: 'Holdings Breakdown & Break-Even' },
+                { icon: '📰', label: 'The Stack Signal' },
+                { icon: '📸', label: '10 receipt scans/month' },
+              ].map((item, i, arr) => (
+                <View key={i}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 }}>
+                    {item.icon === 'troy' ? <TroyCoinIcon size={20} /> : <Text style={{ fontSize: 18 }}>{item.icon}</Text>}
+                    <Text style={{ color: colors.text, fontSize: scaledFonts.normal, flex: 1 }}>{item.label}</Text>
+                    {hasPaidAccess ? (
+                      <Text style={{ color: colors.success, fontSize: 16 }}>✓</Text>
+                    ) : (
+                      <Text style={{ color: '#A8B5C8', fontSize: 14 }}>🔒</Text>
+                    )}
+                  </View>
+                  {i < arr.length - 1 && <View style={{ height: 0.5, backgroundColor: isDarkMode ? '#38383a' : '#c6c6c8', marginLeft: 50 }} />}
+                </View>
+              ))}
+            </View>
+
             {/* Gold features */}
             <Text style={{ color: isDarkMode ? '#8e8e93' : '#6d6d72', fontSize: scaledFonts.small, fontWeight: '400', textTransform: 'uppercase', marginBottom: 8, marginLeft: 4, letterSpacing: 0.5 }}>
-              {hasGoldAccess ? 'Gold Features' : 'Upgrade to Gold'}
+              {hasGoldAccess ? 'Gold Features' : 'Gold — $9.99/mo'}
             </Text>
             <View style={{ backgroundColor: isDarkMode ? '#1c1c1e' : '#ffffff', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
               {[
                 { icon: '🧠', label: 'Market Intelligence' },
                 { icon: '🏦', label: 'COMEX Vault Watch' },
-                { icon: 'troy', label: "Your Daily Brief" },
-                { icon: 'troy', label: 'Troy — AI Stack Analyst' },
-                { icon: '📈', label: 'Spot Price History charts' },
-                { icon: '📊', label: 'Advanced Analytics' },
+                { icon: 'troy', label: 'Troy — 30 questions/day' },
+                { icon: '📊', label: 'Advanced Analytics & Cost Basis' },
                 { icon: '📸', label: 'Unlimited receipt scans' },
                 { icon: '☁️', label: 'Cloud sync across devices' },
                 ...(Platform.OS === 'ios' ? [{ icon: '📱', label: 'Home screen widgets' }] : []),
@@ -10504,7 +10596,7 @@ function AppContent() {
               ))}
             </View>
 
-            {/* Upgrade button for free users */}
+            {/* Upgrade button for non-Gold users */}
             {!hasGoldAccess && (
               <TouchableOpacity
                 style={{
@@ -10520,7 +10612,7 @@ function AppContent() {
                   setTimeout(() => setShowPaywallModal(true), 300);
                 }}
               >
-                <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.medium }}>Upgrade to Gold</Text>
+                <Text style={{ color: '#000', fontWeight: '700', fontSize: scaledFonts.medium }}>{hasSilver ? 'Upgrade to Gold' : 'Choose a Plan'}</Text>
               </TouchableOpacity>
             )}
 
@@ -11140,6 +11232,7 @@ function AppContent() {
         visible={showPaywallModal}
         onClose={() => setShowPaywallModal(false)}
         onPurchaseSuccess={checkEntitlements}
+        userTier={userTier}
       />
 
       {/* PRICE ALERTS */}
