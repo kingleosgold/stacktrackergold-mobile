@@ -13,7 +13,7 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const sizeOf = require('image-size');
 const axios = require('axios');
-const cron = require('node-cron');
+// const cron = require('node-cron'); // DISABLED — all crons moved to stg-api
 
 const app = express();
 
@@ -5440,9 +5440,9 @@ fetchLiveSpotPrices().then(() => {
     console.log('⚡ Price Fetching: ON-DEMAND ONLY (10-min cache)');
     console.log('💸 API: MetalPriceAPI Primary, GoldAPI Fallback (10,000/month each)');
     console.log('🗄️ Scan Storage: /tmp/scan-usage.json');
-    console.log('🔔 Price Alerts: ENABLED (checking every 5 min)');
-    console.log('🧠 Intelligence Cron:', GEMINI_API_KEY ? 'ENABLED (6:30 AM EST daily)' : 'DISABLED (no GEMINI_API_KEY)');
-    console.log('📝 Daily Brief Cron:', GEMINI_API_KEY ? 'ENABLED (6:35 AM EST daily)' : 'DISABLED (no GEMINI_API_KEY)');
+    console.log('🔔 Price Alerts: DISABLED — moved to stg-api');
+    console.log('🧠 Intelligence Cron: DISABLED — moved to stg-api');
+    console.log('📝 Daily Brief Cron: DISABLED — moved to stg-api');
     console.log('💳 Stripe:', stripe ? 'ENABLED' : 'DISABLED (no STRIPE_SECRET_KEY)');
 
     // SQL reminder for daily_briefs table
@@ -5462,30 +5462,7 @@ fetchLiveSpotPrices().then(() => {
     `);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    // Start price alert checker (runs every 5 minutes)
-    console.log('🔔 [Alert Checker] Starting price alert checker...');
-    startPriceAlertChecker(() => {
-      // Ensure we have fresh prices before checking
-      const cacheAge = spotPriceCache.lastUpdated
-        ? (Date.now() - spotPriceCache.lastUpdated.getTime()) / 1000 / 60
-        : Infinity;
-
-      console.log(`🔔 [Alert Checker] Price cache age: ${cacheAge.toFixed(1)} min`);
-
-      if (cacheAge > 10) {
-        console.log('🔔 [Alert Checker] Cache stale, fetching fresh prices...');
-        return fetchLiveSpotPrices().then(() => spotPriceCache.prices);
-      }
-
-      console.log('🔔 [Alert Checker] Using cached prices:', spotPriceCache.prices);
-      return Promise.resolve(spotPriceCache.prices);
-    });
-
-    // Note: startPriceAlertChecker already runs immediately on startup,
-    // so no separate initial check needed. The checker handles token lookup
-    // from the push_tokens table correctly.
-
-    // DISABLED — crons now run on stg-api
+    // DISABLED — all crons moved to stg-api (api.stacktrackergold.com)
     // // Intelligence cron: daily at 6:00 AM EST (11:00 UTC)
     // // Runs 35 min before Daily Brief so vault alerts don't overlap with brief notification
     // if (GEMINI_API_KEY) {
