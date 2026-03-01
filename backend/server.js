@@ -2853,7 +2853,7 @@ app.get('/terms', (req, res) => {
     <ul>
       <li><strong>Gold Monthly:</strong> $9.99/month — auto-renews monthly</li>
       <li><strong>Gold Yearly:</strong> $79.99/year — auto-renews annually</li>
-      <li><strong>Lifetime:</strong> $199.99 — one-time purchase, never expires</li>
+      <li><strong>Lifetime:</strong> $149.99 — one-time purchase, never expires</li>
     </ul>
     <p>
       All subscriptions are processed through the Apple App Store. Subscription terms:
