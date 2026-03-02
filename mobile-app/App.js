@@ -3617,9 +3617,10 @@ function AppContent() {
     setShowTroyChat(true);
     setTroyLoading(true);
     try {
-      const conversations = await troyAPI.listConversations();
-      setTroyConversations(Array.isArray(conversations) ? conversations : []);
-      if (conversations && conversations.length > 0) {
+      const result = await troyAPI.listConversations();
+      const conversations = result?.conversations || (Array.isArray(result) ? result : []);
+      setTroyConversations(conversations);
+      if (conversations.length > 0) {
         await loadConversation(conversations[0].id);
       } else {
         setActiveConversationId(null);
