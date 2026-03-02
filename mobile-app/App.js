@@ -1167,10 +1167,12 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const startPageY = useRef(0);
   const gradientId = `scrubChartFill-${chartId}`;
 
-  // Chart layout (yLabelW and chartW computed after data bounds for dynamic sizing)
+  // Chart layout
+  const yLabelW = 52;
   const xLabelH = 18;
   const topPad = 6;
   const rightPad = 8;
+  const chartW = width - yLabelW - rightPad;
   const chartH = height - xLabelH - topPad;
 
   // Filter out invalid data points and ensure ascending date order
@@ -1181,18 +1183,7 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   // (real prices don't jump 35% between 15-min data points; sustained jumps are preserved)
   if (data.length > 2) {
     data = data.filter((pt, i) => {
-      if (i === 0) {
-        // Check first point against its neighbor
-        const next = data[1].value;
-        if (next > 0 && Math.abs(pt.value - next) / next > 0.5) return false;
-        return true;
-      }
-      if (i === data.length - 1) {
-        // Check last point against its neighbor (catches bad trailing snapshots)
-        const prev = data[i - 1].value;
-        if (prev > 0 && Math.abs(pt.value - prev) / prev > 0.5) return false;
-        return true;
-      }
+      if (i === 0 || i === data.length - 1) return true;
       const prev = data[i - 1].value;
       const next = data[i + 1].value;
       const avgNeighbor = (prev + next) / 2;
@@ -1229,19 +1220,12 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   const values = data.map(d => d.value);
   const secValues = secondaryData ? secondaryData.filter(d => d.value != null && d.value > 0).map(d => d.value) : [];
   const allValues = [...values, ...secValues];
-  let minVal = Math.min(...allValues);
-  let maxVal = Math.max(...allValues);
+  const minVal = Math.min(...allValues);
+  const maxVal = Math.max(...allValues);
   const valRange = maxVal - minVal || 1;
   const niceMin = minVal - valRange * 0.02;
   const niceMax = maxVal + valRange * 0.02;
   const niceRange = niceMax - niceMin;
-
-  // Y-axis step — computed here so label width can adapt to data range
-  const yLabelCount = 5;
-  const yStep = (maxVal - minVal) / (yLabelCount - 1);
-  // Full dollar amounts (e.g. "$600,198") need more room than "$600k"
-  const yLabelW = (maxVal >= 100000 && yStep < 1000) ? 72 : 52;
-  const chartW = width - yLabelW - rightPad;
 
   // SVG viewBox dimensions
   const svgW = chartW;
@@ -1271,19 +1255,14 @@ const ScrubChart = ({ data, color, fillColor, width, height, range, decimalPlace
   }
 
   // Y-axis labels (5 levels)
+  const yLabelCount = 5;
   const yLabels = [];
   for (let i = 0; i < yLabelCount; i++) {
     yLabels.push(maxVal - (i / (yLabelCount - 1)) * (maxVal - minVal));
   }
   const formatY = yFormat || ((v) => {
-    // Format based on step size to ensure adjacent labels are visually distinct
-    if (yStep >= 1000) {
-      return `$${Math.round(v / 1000)}k`;
-    } else if (yStep >= 1) {
-      return `$${Math.round(v).toLocaleString()}`;
-    } else {
-      return `$${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-    }
+    if (v >= 100000) return `$${(v / 1000).toLocaleString('en-US', { maximumFractionDigits: 0 })}k`;
+    return `$${Math.round(v).toLocaleString('en-US')}`;
   });
 
   // X-axis labels (5 evenly spaced, deduplicated)
@@ -8625,7 +8604,6 @@ function AppContent() {
           const effPlatinumSpotA = demoData ? demoData.platinumSpot : platinumSpot;
           const effPalladiumSpotA = demoData ? demoData.palladiumSpot : palladiumSpot;
           const effTotalMeltValueA = demoData ? demoData.totalMeltValue : totalMeltValue;
-
           return (
           <>
             {/* Inline upgrade bar for non-Gold */}
@@ -8748,12 +8726,9 @@ function AppContent() {
                       const first = effAnalyticsSnapshots[0].total_value || 0;
                       const last = effAnalyticsSnapshots[effAnalyticsSnapshots.length - 1].total_value || 0;
                       const pct = first > 0 ? ((last - first) / first * 100) : 0;
-                      const absPct = Math.abs(pct);
-                      const displayPct = absPct < 0.05 ? '0.0%' : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
-                      const pctColor = absPct < 0.05 ? colors.muted : (pct >= 0 ? '#4CAF50' : '#F44336');
                       return (
-                        <Text style={{ color: pctColor, fontSize: scaledFonts.small, fontWeight: '600' }}>
-                          {displayPct}
+                        <Text style={{ color: pct >= 0 ? '#4CAF50' : '#F44336', fontSize: scaledFonts.small, fontWeight: '600' }}>
+                          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
                         </Text>
                       );
                     })()}
