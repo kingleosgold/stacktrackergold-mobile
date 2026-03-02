@@ -4479,16 +4479,26 @@ function AppContent() {
   /**
    * Filter snapshots array by time range (client-side filtering)
    */
+  // Get today's date string in Eastern Time (Hermes-safe, no toLocaleString)
+  const getEasternDateString = () => {
+    const now = new Date();
+    const jan = new Date(now.getFullYear(), 0, 1);
+    const jul = new Date(now.getFullYear(), 6, 1);
+    const stdOffset = Math.max(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+    const isDST = now.getTimezoneOffset() < stdOffset;
+    const etOffsetHours = isDST ? -4 : -5;
+    const etMs = now.getTime() + (etOffsetHours * 60 + now.getTimezoneOffset()) * 60000;
+    const etDate = new Date(etMs);
+    return etDate.getFullYear() + '-' + String(etDate.getMonth() + 1).padStart(2, '0') + '-' + String(etDate.getDate()).padStart(2, '0');
+  };
+
   const filterSnapshotsByRange = (snapshots, range) => {
     if (!snapshots || snapshots.length === 0) return [];
     if (range === 'ALL') return snapshots;
 
-    // Today in Eastern time
-    const now = new Date();
-    const eastern = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-    const today = new Date(eastern.getFullYear(), eastern.getMonth(), eastern.getDate());
+    const todayStr = getEasternDateString();
+    const cutoff = new Date(todayStr + 'T00:00:00');
 
-    const cutoff = new Date(today);
     switch (range) {
       case '1M': cutoff.setMonth(cutoff.getMonth() - 1); break;
       case '3M': cutoff.setMonth(cutoff.getMonth() - 3); break;
@@ -4499,8 +4509,6 @@ function AppContent() {
     }
 
     const cutoffStr = cutoff.toISOString().split('T')[0];
-    const todayStr = today.toISOString().split('T')[0];
-
     const filtered = snapshots.filter(s => s.date >= cutoffStr && s.date <= todayStr);
 
     // If no data in range, return all data (don't show empty chart)
