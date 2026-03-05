@@ -3312,7 +3312,7 @@ function AppContent() {
 
   // RevenueCat real-time listener — updates tier immediately on purchase/restore/expiry
   useEffect(() => {
-    const listener = Purchases.addCustomerInfoUpdateListener(async (customerInfo) => {
+    const removeListener = Purchases.addCustomerInfoUpdateListener(async (customerInfo) => {
       if (!customerInfo) return;
       const activeEntitlements = customerInfo?.entitlements?.active || {};
       const isGold = activeEntitlements['Gold'] !== undefined;
@@ -3334,7 +3334,7 @@ function AppContent() {
       }
     });
 
-    return () => listener.remove();
+    return () => { if (removeListener) removeListener(); };
   }, [supabaseUser?.id]);
 
   // Register background fetch for iOS (keeps widget data fresh when app is closed)
